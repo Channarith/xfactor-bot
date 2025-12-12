@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Optional, Callable
 from dataclasses import dataclass
 
+import pandas as pd
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileCreatedEvent
 from loguru import logger
@@ -28,6 +29,29 @@ class ParsedDocument:
     @property
     def is_structured(self) -> bool:
         return self.structured_data is not None and len(self.structured_data) > 0
+
+
+def safe_get_symbol(row: pd.Series) -> Optional[str]:
+    """
+    Safely get symbol from row, handling NaN values.
+    
+    Args:
+        row: DataFrame row
+        
+    Returns:
+        Symbol string or None if not found/NaN
+    """
+    # Try 'symbol' column first
+    symbol = row.get('symbol')
+    if symbol is not None and pd.notna(symbol):
+        return str(symbol).strip()
+    
+    # Try 'ticker' column as fallback
+    ticker = row.get('ticker')
+    if ticker is not None and pd.notna(ticker):
+        return str(ticker).strip()
+    
+    return None
 
 
 class DocumentParser:
@@ -109,8 +133,6 @@ class DocumentParser:
     async def _parse_spreadsheet(self, file_path: Path) -> ParsedDocument:
         """Parse CSV or Excel spreadsheet."""
         try:
-            import pandas as pd
-            
             loop = asyncio.get_event_loop()
             
             def extract():
@@ -133,16 +155,18 @@ class DocumentParser:
                 # Extract structured data
                 structured_data = []
                 for _, row in df.iterrows():
-                    symbol = row.get('symbol') or row.get('ticker')
+                    # Use safe_get_symbol to handle NaN values properly
+                    symbol = safe_get_symbol(row)
                     if symbol:
+                        # Safely extract other fields, handling NaN
                         structured_data.append({
-                            "symbol": str(symbol).upper(),
-                            "rating": row.get('rating'),
-                            "price_target": row.get('price_target'),
-                            "action": row.get('action'),
-                            "sentiment": row.get('sentiment'),
-                            "analyst": row.get('analyst'),
-                            "source": row.get('source'),
+                            "symbol": symbol.upper(),
+                            "rating": row.get('rating') if pd.notna(row.get('rating')) else None,
+                            "price_target": float(row.get('price_target')) if pd.notna(row.get('price_target')) else None,
+                            "action": str(row.get('action')) if pd.notna(row.get('action')) else None,
+                            "sentiment": float(row.get('sentiment')) if pd.notna(row.get('sentiment')) else None,
+                            "analyst": str(row.get('analyst')) if pd.notna(row.get('analyst')) else None,
+                            "source": str(row.get('source')) if pd.notna(row.get('source')) else None,
                         })
                 
                 return ParsedDocument(
