@@ -1,0 +1,148 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Environments
+.env
+.env.local
+.env.*.local
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ruff
+.ruff_cache/
+
+# Logs
+logs/
+*.log
+
+# Local data
+data/*.db
+data/*.sqlite
+data/*.csv
+!data/.gitkeep
+
+# Processed news files
+new_news/processed/*
+new_news/failed/*
+new_news/archive/*
+!new_news/incoming/.gitkeep
+!new_news/processed/.gitkeep
+!new_news/failed/.gitkeep
+!new_news/archive/.gitkeep
+
+# ML Models (large files)
+ml_models/*.bin
+ml_models/*.pt
+ml_models/*.pth
+ml_models/*.onnx
+!ml_models/.gitkeep
+
+# Docker
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+*.pem
+*.key
+secrets/
+
+# Node.js (frontend)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.cache/
+frontend/.env.local
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Grafana
+docker/grafana/data/
+
+# Prometheus
+docker/prometheus/data/
+
+# TimescaleDB data
+docker/timescale/data/
+
+# Redis data
+docker/redis/data/
+
