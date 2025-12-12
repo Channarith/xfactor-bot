@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Dashboard } from './components/Dashboard'
 import { Header } from './components/Header'
 import { AIAssistant } from './components/AIAssistant'
+import { AuthProvider } from './context/AuthContext'
 
 function App() {
   const [connected, setConnected] = useState(false)
@@ -70,13 +71,15 @@ function App() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header connected={connected} />
-      <main className="container mx-auto p-4">
-        <Dashboard />
-      </main>
-      <AIAssistant />
-    </div>
+    <AuthProvider>
+      <div className="min-h-screen bg-background">
+        <Header connected={connected} />
+        <main className="container mx-auto p-4">
+          <Dashboard />
+        </main>
+        <AIAssistant />
+      </div>
+    </AuthProvider>
   )
 }
 

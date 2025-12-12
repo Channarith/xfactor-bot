@@ -10,6 +10,7 @@ import {
   Wallet,
   Users
 } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 import { PortfolioCard } from './PortfolioCard'
 import { PositionsTable } from './PositionsTable'
 import { StrategyPanel } from './StrategyPanel'
@@ -145,8 +146,8 @@ export function Dashboard() {
 
 // Inner components that strip the card wrapper
 function BotManagerInner() {
-  // Simplified bot display for collapsed view
-  return <BotManager token="" />
+  const { token } = useAuth()
+  return <BotManager token={token} />
 }
 
 function PositionsTableInner() {
@@ -158,7 +159,8 @@ function StrategyPanelInner() {
 }
 
 function RiskControlsInner() {
-  return <RiskControls />
+  const { token } = useAuth()
+  return <RiskControls token={token} />
 }
 
 function AdminPanelInner() {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Lock, Unlock, Power, AlertTriangle, Check, X, Eye, EyeOff, Bot } from 'lucide-react'
 import { BotManager } from './BotManager'
+import { useAuth } from '../context/AuthContext'
 
 interface Feature {
   feature: string
@@ -14,55 +15,38 @@ interface GroupedFeatures {
 }
 
 export function AdminPanel() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const { token, isAuthenticated, login: authLogin, logout: authLogout } = useAuth()
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [token, setToken] = useState('')
   const [error, setError] = useState('')
   const [features, setFeatures] = useState<GroupedFeatures>({})
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'features' | 'bots'>('features')
 
+  // Fetch features when authenticated
+  useEffect(() => {
+    if (isAuthenticated && token) {
+      fetchFeatures(token)
+    }
+  }, [isAuthenticated, token])
+
   const login = async () => {
     setError('')
     setLoading(true)
     
-    try {
-      const response = await fetch('/api/admin/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-      })
-      
-      const data = await response.json()
-      
-      if (data.success) {
-        setToken(data.token)
-        setIsAuthenticated(true)
-        setPassword('')
-        fetchFeatures(data.token)
-      } else {
-        setError('Invalid password')
-      }
-    } catch (e) {
-      setError('Login failed')
+    const success = await authLogin(password)
+    
+    if (success) {
+      setPassword('')
+    } else {
+      setError('Invalid password')
     }
     
     setLoading(false)
   }
 
   const logout = async () => {
-    try {
-      await fetch('/api/admin/logout', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-    } catch (e) {
-      // Ignore logout errors
-    }
-    
-    setIsAuthenticated(false)
-    setToken('')
+    await authLogout()
     setFeatures({})
   }
 

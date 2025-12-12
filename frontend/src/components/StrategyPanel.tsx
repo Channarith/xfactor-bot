@@ -201,11 +201,40 @@ export function StrategyPanel() {
 
   const saveSettings = async () => {
     setSaving(true)
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 800))
+    try {
+      // Save strategy toggles
+      const strategyUpdates = toggles.reduce((acc, t) => {
+        if (t.category === 'technical' || t.category === 'momentum' || t.category === 'sentiment') {
+          acc[t.id] = t.enabled
+        }
+        return acc
+      }, {} as Record<string, boolean>)
+      
+      // Save key parameters
+      const updates = [
+        { category: 'strategies', parameter: 'technical_weight', value: sliders.find(s => s.id === 'rsi_oversold')?.value || 30 },
+        { category: 'technical', parameter: 'rsi_oversold', value: sliders.find(s => s.id === 'rsi_oversold')?.value || 30 },
+        { category: 'technical', parameter: 'rsi_overbought', value: sliders.find(s => s.id === 'rsi_overbought')?.value || 70 },
+        { category: 'technical', parameter: 'ma_fast_period', value: sliders.find(s => s.id === 'sma_fast')?.value || 20 },
+        { category: 'technical', parameter: 'ma_slow_period', value: sliders.find(s => s.id === 'sma_slow')?.value || 50 },
+        { category: 'news', parameter: 'sentiment_threshold', value: sliders.find(s => s.id === 'sentiment_threshold')?.value || 0.6 },
+      ]
+      
+      // Send all updates
+      await Promise.all(updates.map(u => 
+        fetch(`/api/config/parameters/${u.category}/${u.parameter}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: u.value }),
+        })
+      ))
+      
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (e) {
+      console.error('Failed to save settings:', e)
+    }
     setSaving(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
   }
 
   const resetToDefaults = () => {
