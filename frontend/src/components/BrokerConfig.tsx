@@ -12,6 +12,17 @@ interface BrokerFormData {
   clientId: string
   accountId: string
   usePaper: boolean
+  // IBKR trading permissions
+  enableOptions: boolean
+  enableFutures: boolean
+  enableForex: boolean
+  enableCrypto: boolean
+  // Options settings
+  optionsLevel: number  // 1-4 for IBKR
+  optionsBuyingPower: string
+  // Futures settings
+  futuresMarginType: 'intraday' | 'overnight'
+  futuresContracts: string[]
 }
 
 export function BrokerConfig() {
@@ -28,7 +39,17 @@ export function BrokerConfig() {
     clientId: '1',
     accountId: '',
     usePaper: true,
+    enableOptions: false,
+    enableFutures: false,
+    enableForex: false,
+    enableCrypto: false,
+    optionsLevel: 2,
+    optionsBuyingPower: '',
+    futuresMarginType: 'overnight',
+    futuresContracts: [],
   })
+  
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   const brokers = [
     { 
@@ -364,6 +385,151 @@ export function BrokerConfig() {
                     </div>
                   </div>
                 )}
+                
+                {/* Advanced Trading Settings */}
+                <div className="border-t border-border pt-4 mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvanced(!showAdvanced)}
+                    className="flex items-center justify-between w-full text-left"
+                  >
+                    <span className="font-medium">Advanced Trading Settings</span>
+                    <span className={`transition-transform ${showAdvanced ? 'rotate-180' : ''}`}>▼</span>
+                  </button>
+                  
+                  {showAdvanced && (
+                    <div className="mt-4 space-y-4">
+                      {/* Trading Permissions */}
+                      <div className="p-4 rounded-lg bg-secondary/50">
+                        <h4 className="font-medium mb-3">Trading Permissions</h4>
+                        <div className="grid grid-cols-2 gap-3">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={formData.enableOptions}
+                              onChange={(e) => setFormData({...formData, enableOptions: e.target.checked})}
+                              className="w-4 h-4 rounded"
+                            />
+                            <span className="text-sm">Options Trading</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={formData.enableFutures}
+                              onChange={(e) => setFormData({...formData, enableFutures: e.target.checked})}
+                              className="w-4 h-4 rounded"
+                            />
+                            <span className="text-sm">Futures Trading</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={formData.enableForex}
+                              onChange={(e) => setFormData({...formData, enableForex: e.target.checked})}
+                              className="w-4 h-4 rounded"
+                            />
+                            <span className="text-sm">Forex Trading</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={formData.enableCrypto}
+                              onChange={(e) => setFormData({...formData, enableCrypto: e.target.checked})}
+                              className="w-4 h-4 rounded"
+                            />
+                            <span className="text-sm">Crypto Trading</span>
+                          </label>
+                        </div>
+                      </div>
+                      
+                      {/* Options Configuration */}
+                      {formData.enableOptions && (
+                        <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                          <h4 className="font-medium text-blue-400 mb-3">📊 Options Configuration</h4>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="text-sm text-muted-foreground">Options Level (IBKR)</label>
+                              <select
+                                value={formData.optionsLevel}
+                                onChange={(e) => setFormData({...formData, optionsLevel: parseInt(e.target.value)})}
+                                className="w-full mt-1 px-3 py-2 rounded-lg bg-secondary border border-border"
+                              >
+                                <option value={1}>Level 1 - Covered Calls/Puts</option>
+                                <option value={2}>Level 2 - Long Calls/Puts, Spreads</option>
+                                <option value={3}>Level 3 - Naked Puts, Straddles</option>
+                                <option value={4}>Level 4 - Naked Calls, Full Permissions</option>
+                              </select>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              <p className="font-medium mb-1">Level Permissions:</p>
+                              <ul className="space-y-0.5">
+                                <li>• Level 1: Buy-writes, covered calls</li>
+                                <li>• Level 2: Long options, spreads, iron condors</li>
+                                <li>• Level 3: Naked puts, cash-secured puts</li>
+                                <li>• Level 4: Full naked options permissions</li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Futures Configuration */}
+                      {formData.enableFutures && (
+                        <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                          <h4 className="font-medium text-amber-400 mb-3">📈 Futures Configuration</h4>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="text-sm text-muted-foreground">Margin Type</label>
+                              <select
+                                value={formData.futuresMarginType}
+                                onChange={(e) => setFormData({...formData, futuresMarginType: e.target.value as 'intraday' | 'overnight'})}
+                                className="w-full mt-1 px-3 py-2 rounded-lg bg-secondary border border-border"
+                              >
+                                <option value="intraday">Intraday (50% margin)</option>
+                                <option value="overnight">Overnight (Full margin)</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-sm text-muted-foreground">Enabled Contracts</label>
+                              <div className="grid grid-cols-3 gap-2 mt-2">
+                                {['ES', 'NQ', 'RTY', 'YM', 'CL', 'GC', 'SI', 'ZB', 'ZN'].map(contract => (
+                                  <label key={contract} className="flex items-center gap-2 text-sm cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={formData.futuresContracts.includes(contract)}
+                                      onChange={(e) => {
+                                        const contracts = e.target.checked
+                                          ? [...formData.futuresContracts, contract]
+                                          : formData.futuresContracts.filter(c => c !== contract)
+                                        setFormData({...formData, futuresContracts: contracts})
+                                      }}
+                                      className="w-3 h-3 rounded"
+                                    />
+                                    <span>{contract}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              <p className="font-medium mb-1">Contract Descriptions:</p>
+                              <ul className="grid grid-cols-2 gap-1">
+                                <li>• ES: E-mini S&P 500</li>
+                                <li>• NQ: E-mini Nasdaq 100</li>
+                                <li>• RTY: E-mini Russell 2000</li>
+                                <li>• YM: E-mini Dow Jones</li>
+                                <li>• CL: Crude Oil</li>
+                                <li>• GC: Gold</li>
+                                <li>• SI: Silver</li>
+                                <li>• ZB: 30-Year T-Bonds</li>
+                                <li>• ZN: 10-Year T-Notes</li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
             

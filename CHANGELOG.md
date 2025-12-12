@@ -5,6 +5,66 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2024-12-12
+
+### Added
+- **Backtesting Engine**: Complete historical simulation system
+  - Event-driven architecture with realistic execution modeling
+  - Slippage and commission calculations
+  - Multiple data sources (yfinance, Alpaca, IBKR, CSV)
+  - Walk-forward analysis support for strategy validation
+  - Performance metrics: Sharpe, Sortino, max drawdown, win rate
+
+- **ML-Based Strategy Optimizer**: Machine learning optimization for trading strategies
+  - Multiple algorithms: Grid Search, Random Search, Bayesian, Genetic
+  - Cross-validation to prevent overfitting
+  - Parameter sensitivity analysis
+  - Early stopping with convergence detection
+  - Multiple objective metrics (Sharpe, Sortino, Calmar, profit factor)
+
+- **Portfolio Rebalancer**: Automated portfolio rebalancing system
+  - Multiple methods: Threshold, Calendar, Tactical, Hybrid
+  - Drift monitoring and alerts
+  - Tax-efficient trading optimization
+  - Transaction cost estimation
+  - Multi-asset class support
+
+- **Tax-Loss Harvesting**: Automated tax optimization
+  - Automatic loss identification
+  - Wash sale rule compliance (30-day window tracking)
+  - Replacement security selection
+  - Year-end tax impact estimation
+  - Gain/loss offsetting strategies
+
+- **Multi-Account Support**: Manage multiple trading accounts
+  - Connect to multiple brokers simultaneously
+  - Unified portfolio view across all accounts
+  - Cross-account position tracking
+  - Account-specific trading rules
+  - Aggregated performance metrics
+
+- **IBKR Options/Futures Configuration**: Advanced trading setup in Admin Panel
+  - Options trading levels (1-4) with permissions
+  - Futures contract selection (ES, NQ, RTY, YM, CL, GC, SI, ZB, ZN)
+  - Margin type configuration (intraday/overnight)
+  - Forex and crypto trading toggles
+
+### Changed
+- **WebSocket Reconnection**: Improved stability with exponential backoff
+  - Connection timeout handling (10s)
+  - Heartbeat ping/pong every 30 seconds
+  - Max 10 reconnect attempts with jitter
+  - Visibility change and online event handlers
+  - Clean connection state management
+
+- Header now shows WebSocket connection state (connecting, connected, error)
+
+### New Modules
+- `src/backtesting/` - Backtesting engine and walk-forward analysis
+- `src/ml/` - ML-based strategy optimization
+- `src/portfolio/` - Rebalancing and tax-loss harvesting
+- `src/accounts/` - Multi-account management
+
 ## [0.7.0] - 2024-12-12
 
 ### Added

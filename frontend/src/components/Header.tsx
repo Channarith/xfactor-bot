@@ -3,11 +3,14 @@ import { Pause, Power, Play, Lock, ShieldAlert, X } from 'lucide-react'
 import { TradingModeSelector } from './TradingModeSelector'
 import { useAuth } from '../context/AuthContext'
 
+type WSState = 'connecting' | 'connected' | 'disconnected' | 'error'
+
 interface HeaderProps {
   connected: boolean
+  wsState?: WSState
 }
 
-export function Header({ connected }: HeaderProps) {
+export function Header({ connected, wsState = 'disconnected' }: HeaderProps) {
   const { isAuthenticated, token } = useAuth()
   const [logoError, setLogoError] = useState(false)
   const [showAuthModal, setShowAuthModal] = useState(false)
@@ -93,13 +96,21 @@ export function Header({ connected }: HeaderProps) {
           </div>
           
           <div className="flex items-center gap-6">
-            {/* Connection Status */}
-            <div className="flex items-center gap-2">
-              <div className={`h-2.5 w-2.5 rounded-full ${connected ? 'bg-profit money-glow' : 'bg-loss'}`} />
-              <span className="text-sm text-muted-foreground">
-                {connected ? 'Connected' : 'Disconnected'}
-              </span>
-            </div>
+          {/* Connection Status */}
+          <div className="flex items-center gap-2">
+            <div className={`h-2.5 w-2.5 rounded-full ${
+              wsState === 'connected' ? 'bg-profit money-glow' : 
+              wsState === 'connecting' ? 'bg-amber-500 animate-pulse' :
+              wsState === 'error' ? 'bg-loss animate-pulse' :
+              'bg-muted-foreground'
+            }`} />
+            <span className="text-sm text-muted-foreground">
+              {wsState === 'connected' ? 'Connected' : 
+               wsState === 'connecting' ? 'Connecting...' :
+               wsState === 'error' ? 'Connection Error' :
+               'Disconnected'}
+            </span>
+          </div>
             
             {/* Trading Controls */}
             <div className="flex items-center gap-2">
