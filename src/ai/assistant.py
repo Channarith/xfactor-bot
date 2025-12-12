@@ -2,13 +2,17 @@
 AI Trading Assistant.
 Provides natural language interface for querying system performance,
 analyzing data sources, and getting optimization recommendations.
+
+Supports multiple LLM providers:
+- OpenAI (GPT-4, GPT-3.5)
+- Ollama (Local LLMs - Llama, Mistral, etc.)
+- Anthropic (Claude)
 """
 
 import json
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
-from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from src.ai.context_builder import ContextBuilder, SystemContext, get_context_builder
@@ -16,6 +20,8 @@ from src.config.settings import get_settings
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+LLMProvider = Literal["openai", "ollama", "anthropic"]
 
 
 class ChatMessage(BaseModel):
@@ -42,8 +48,8 @@ class ConversationHistory(BaseModel):
             other_msgs = [m for m in self.messages if m.role != "system"]
             self.messages = system_msgs + other_msgs[-(self.max_messages - len(system_msgs)):]
     
-    def get_openai_messages(self) -> list[dict[str, str]]:
-        """Convert to OpenAI message format."""
+    def get_messages(self) -> list[dict[str, str]]:
+        """Convert to message format."""
         return [{"role": m.role, "content": m.content} for m in self.messages]
     
     def clear(self):
@@ -54,6 +60,7 @@ class ConversationHistory(BaseModel):
 class AIAssistant:
     """
     AI-powered trading assistant for natural language queries.
+    Supports multiple LLM providers: OpenAI, Ollama, Anthropic.
     """
     
     SYSTEM_PROMPT = """You are an expert trading assistant for an automated trading bot system. 
@@ -100,20 +107,58 @@ Current system context will be provided with each query."""
         "What optimizations would you recommend?",
     ]
     
-    def __init__(self):
+    def __init__(self, provider: Optional[LLMProvider] = None):
         self.settings = get_settings()
         self.context_builder = get_context_builder()
         self.conversations: dict[str, ConversationHistory] = {}
-        self._client: Optional[AsyncOpenAI] = None
+        
+        # Determine LLM provider
+        self.provider = provider or self.settings.llm_provider
+        
+        # Client instances (lazy initialized)
+        self._openai_client = None
+        self._ollama_client = None
+        self._anthropic_client = None
+        
+        logger.info(f"AI Assistant initialized with provider: {self.provider}")
+    
+    def set_provider(self, provider: LLMProvider):
+        """Switch LLM provider at runtime."""
+        self.provider = provider
+        logger.info(f"Switched LLM provider to: {provider}")
     
     @property
-    def client(self) -> AsyncOpenAI:
+    def openai_client(self):
         """Get or create OpenAI client."""
-        if self._client is None:
+        if self._openai_client is None:
+            from openai import AsyncOpenAI
             if not self.settings.openai_api_key:
                 raise ValueError("OpenAI API key not configured. Set OPENAI_API_KEY in .env")
-            self._client = AsyncOpenAI(api_key=self.settings.openai_api_key)
-        return self._client
+            
+            kwargs = {"api_key": self.settings.openai_api_key}
+            if self.settings.openai_base_url:
+                kwargs["base_url"] = self.settings.openai_base_url
+            
+            self._openai_client = AsyncOpenAI(**kwargs)
+        return self._openai_client
+    
+    @property
+    def ollama_client(self):
+        """Get or create Ollama client."""
+        if self._ollama_client is None:
+            from src.ai.ollama_client import get_ollama_client
+            self._ollama_client = get_ollama_client()
+        return self._ollama_client
+    
+    @property
+    def anthropic_client(self):
+        """Get or create Anthropic client."""
+        if self._anthropic_client is None:
+            import anthropic
+            if not self.settings.anthropic_api_key:
+                raise ValueError("Anthropic API key not configured. Set ANTHROPIC_API_KEY in .env")
+            self._anthropic_client = anthropic.AsyncAnthropic(api_key=self.settings.anthropic_api_key)
+        return self._anthropic_client
     
     def get_or_create_conversation(self, session_id: str) -> ConversationHistory:
         """Get or create conversation history for a session."""
@@ -121,11 +166,58 @@ Current system context will be provided with each query."""
             self.conversations[session_id] = ConversationHistory()
         return self.conversations[session_id]
     
+    async def _call_openai(self, messages: list[dict[str, str]]) -> str:
+        """Call OpenAI API."""
+        response = await self.openai_client.chat.completions.create(
+            model=self.settings.openai_model,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=1500,
+        )
+        return response.choices[0].message.content
+    
+    async def _call_ollama(self, messages: list[dict[str, str]]) -> str:
+        """Call Ollama API."""
+        # Check if Ollama is available
+        if not await self.ollama_client.is_available():
+            raise ConnectionError(
+                f"Ollama server not available at {self.settings.ollama_host}. "
+                "Please ensure Ollama is running: 'ollama serve'"
+            )
+        
+        return await self.ollama_client.chat(
+            messages=messages,
+            model=self.settings.ollama_model,
+            temperature=0.7,
+            max_tokens=1500,
+        )
+    
+    async def _call_anthropic(self, messages: list[dict[str, str]]) -> str:
+        """Call Anthropic API."""
+        # Anthropic uses a different message format
+        system_content = ""
+        filtered_messages = []
+        
+        for msg in messages:
+            if msg["role"] == "system":
+                system_content = msg["content"]
+            else:
+                filtered_messages.append(msg)
+        
+        response = await self.anthropic_client.messages.create(
+            model=self.settings.anthropic_model,
+            max_tokens=1500,
+            system=system_content,
+            messages=filtered_messages,
+        )
+        return response.content[0].text
+    
     async def chat(
         self,
         query: str,
         session_id: str = "default",
         include_context: bool = True,
+        provider: Optional[LLMProvider] = None,
     ) -> str:
         """
         Process a chat query and return AI response.
@@ -134,10 +226,13 @@ Current system context will be provided with each query."""
             query: The user's question
             session_id: Session identifier for conversation history
             include_context: Whether to include system context
+            provider: Override the default LLM provider for this request
             
         Returns:
             AI assistant's response
         """
+        current_provider = provider or self.provider
+        
         try:
             conversation = self.get_or_create_conversation(session_id)
             
@@ -165,30 +260,80 @@ Current system context will be provided with each query."""
             # Add current query
             messages.append({"role": "user", "content": query})
             
-            # Call OpenAI API
-            response = await self.client.chat.completions.create(
-                model="gpt-4-turbo-preview",
-                messages=messages,
-                temperature=0.7,
-                max_tokens=1500,
-            )
+            # Call the appropriate LLM
+            logger.info(f"Calling {current_provider} for chat (session: {session_id})")
             
-            assistant_message = response.choices[0].message.content
+            if current_provider == "openai":
+                assistant_message = await self._call_openai(messages)
+            elif current_provider == "ollama":
+                assistant_message = await self._call_ollama(messages)
+            elif current_provider == "anthropic":
+                assistant_message = await self._call_anthropic(messages)
+            else:
+                raise ValueError(f"Unknown LLM provider: {current_provider}")
             
             # Update conversation history
             conversation.add_message("user", query)
             conversation.add_message("assistant", assistant_message)
             
-            logger.info(f"AI chat completed for session {session_id}")
+            logger.info(f"AI chat completed for session {session_id} using {current_provider}")
             return assistant_message
             
         except ValueError as e:
             logger.error(f"Configuration error: {e}")
-            return f"Configuration error: {str(e)}. Please ensure your OpenAI API key is set."
+            return f"Configuration error: {str(e)}"
+            
+        except ConnectionError as e:
+            logger.error(f"Connection error: {e}")
+            return f"Connection error: {str(e)}"
             
         except Exception as e:
             logger.error(f"AI chat error: {e}")
             return f"I encountered an error processing your request: {str(e)}"
+    
+    async def get_available_providers(self) -> dict[str, dict]:
+        """
+        Check which LLM providers are available.
+        
+        Returns:
+            Dictionary with provider status and info
+        """
+        providers = {}
+        
+        # Check OpenAI
+        providers["openai"] = {
+            "available": bool(self.settings.openai_api_key),
+            "model": self.settings.openai_model,
+            "reason": "API key not configured" if not self.settings.openai_api_key else None,
+        }
+        
+        # Check Ollama
+        try:
+            from src.ai.ollama_client import get_ollama_client
+            client = get_ollama_client()
+            ollama_available = await client.is_available()
+            ollama_models = await client.list_models() if ollama_available else []
+            providers["ollama"] = {
+                "available": ollama_available,
+                "model": self.settings.ollama_model,
+                "host": self.settings.ollama_host,
+                "models": [m.get("name", "") for m in ollama_models],
+                "reason": None if ollama_available else "Ollama server not running",
+            }
+        except Exception as e:
+            providers["ollama"] = {
+                "available": False,
+                "reason": str(e),
+            }
+        
+        # Check Anthropic
+        providers["anthropic"] = {
+            "available": bool(self.settings.anthropic_api_key),
+            "model": self.settings.anthropic_model,
+            "reason": "API key not configured" if not self.settings.anthropic_api_key else None,
+        }
+        
+        return providers
     
     async def get_quick_insights(self) -> list[str]:
         """
@@ -224,6 +369,9 @@ Current system context will be provided with each query."""
             running_bots = sum(1 for b in context.bots if b.status == "running")
             if running_bots > 0:
                 insights.append(f"🤖 {running_bots} bot(s) actively trading")
+            
+            # LLM provider info
+            insights.append(f"🧠 AI powered by {self.provider.upper()}")
             
             # Risk insights
             if context.circuit_breaker_status.get("kill_switch_active"):
@@ -299,6 +447,7 @@ Current system context will be provided with each query."""
             
             return {
                 "timestamp": datetime.utcnow().isoformat(),
+                "llm_provider": self.provider,
                 "summary": {
                     "total_recommendations": len(recommendations),
                     "warnings": len(warnings),
@@ -345,4 +494,3 @@ def get_ai_assistant() -> AIAssistant:
     if _assistant is None:
         _assistant = AIAssistant()
     return _assistant
-

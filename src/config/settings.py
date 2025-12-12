@@ -170,13 +170,27 @@ class Settings(BaseSettings):
     telegram_chat_id: str = Field(default="", description="Telegram chat ID")
     
     # =========================================================================
-    # AI/ML API Keys
+    # AI/ML Configuration
     # =========================================================================
+    # LLM Provider: "openai", "ollama", "anthropic"
+    llm_provider: str = Field(default="openai", description="LLM provider to use")
+    
+    # OpenAI Configuration
     openai_api_key: str = Field(default="", description="OpenAI API key")
     openai_model: str = Field(default="gpt-4-turbo-preview", description="OpenAI model to use")
+    openai_base_url: str = Field(default="", description="OpenAI API base URL (for custom endpoints)")
     
+    # Ollama Configuration (Local LLM)
+    ollama_host: str = Field(default="http://localhost:11434", description="Ollama server URL")
+    ollama_model: str = Field(default="llama3.1", description="Ollama model to use")
+    ollama_timeout: int = Field(default=120, description="Ollama request timeout in seconds")
+    ollama_keep_alive: str = Field(default="5m", description="How long to keep model in memory")
+    
+    # Anthropic Claude Configuration
     anthropic_api_key: str = Field(default="", description="Anthropic Claude API key")
+    anthropic_model: str = Field(default="claude-3-opus-20240229", description="Anthropic model to use")
     
+    # HuggingFace Configuration
     huggingface_api_key: str = Field(default="", description="HuggingFace API key")
     
     # =========================================================================

@@ -7,9 +7,24 @@ interface Message {
   timestamp: Date
 }
 
-interface Insight {
-  text: string
+interface ProviderInfo {
+  available: boolean
+  model?: string
+  host?: string
+  reason?: string
+  models?: string[]
 }
+
+interface ProvidersData {
+  current_provider: string
+  providers: {
+    openai: ProviderInfo
+    ollama: ProviderInfo
+    anthropic: ProviderInfo
+  }
+}
+
+type LLMProvider = 'openai' | 'ollama' | 'anthropic'
 
 export function AIAssistant() {
   const [messages, setMessages] = useState<Message[]>([])
@@ -19,6 +34,9 @@ export function AIAssistant() {
   const [examples, setExamples] = useState<string[]>([])
   const [sessionId] = useState(() => `session-${Date.now()}`)
   const [isExpanded, setIsExpanded] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [providers, setProviders] = useState<ProvidersData | null>(null)
+  const [currentProvider, setCurrentProvider] = useState<LLMProvider>('openai')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -30,10 +48,59 @@ export function AIAssistant() {
   }, [messages])
 
   useEffect(() => {
-    // Fetch initial insights and examples
+    // Fetch initial insights, examples, and providers
     fetchInsights()
     fetchExamples()
+    fetchProviders()
   }, [])
+
+  const fetchProviders = async () => {
+    try {
+      const res = await fetch('/api/ai/providers')
+      if (res.ok) {
+        const data = await res.json()
+        setProviders(data)
+        setCurrentProvider(data.current_provider || 'openai')
+      }
+    } catch (err) {
+      console.error('Failed to fetch providers:', err)
+    }
+  }
+
+  const switchProvider = async (provider: LLMProvider) => {
+    try {
+      const res = await fetch('/api/ai/providers/set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider }),
+      })
+      if (res.ok) {
+        setCurrentProvider(provider)
+        fetchProviders() // Refresh provider info
+        // Show confirmation message
+        const confirmMsg: Message = {
+          id: `msg-${Date.now()}-system`,
+          role: 'assistant',
+          content: `✅ Switched to ${provider.toUpperCase()} provider${
+            provider === 'ollama' ? ' (local LLM)' : ''
+          }`,
+          timestamp: new Date(),
+        }
+        setMessages(prev => [...prev, confirmMsg])
+      } else {
+        const error = await res.json()
+        const errorMsg: Message = {
+          id: `msg-${Date.now()}-error`,
+          role: 'assistant',
+          content: `❌ Failed to switch provider: ${error.detail}`,
+          timestamp: new Date(),
+        }
+        setMessages(prev => [...prev, errorMsg])
+      }
+    } catch (err) {
+      console.error('Failed to switch provider:', err)
+    }
+  }
 
   const fetchInsights = async () => {
     try {
@@ -172,10 +239,27 @@ export function AIAssistant() {
           </div>
           <div>
             <h3 className="text-white font-semibold">AI Trading Assistant</h3>
-            <p className="text-white/70 text-xs">Ask about performance & optimization</p>
+            <p className="text-white/70 text-xs flex items-center gap-1">
+              <span className={`w-2 h-2 rounded-full ${
+                currentProvider === 'ollama' ? 'bg-green-400' : 
+                currentProvider === 'anthropic' ? 'bg-orange-400' : 'bg-blue-400'
+              }`} />
+              {currentProvider === 'ollama' ? 'Ollama (Local)' : 
+               currentProvider === 'anthropic' ? 'Claude' : 'GPT-4'}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className={`p-2 hover:bg-white/10 rounded-lg transition-colors ${showSettings ? 'bg-white/20' : ''}`}
+            title="LLM Settings"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
           <button
             onClick={clearChat}
             className="p-2 hover:bg-white/10 rounded-lg transition-colors"
@@ -195,6 +279,88 @@ export function AIAssistant() {
           </button>
         </div>
       </div>
+
+      {/* Provider Settings Panel */}
+      {showSettings && providers && (
+        <div className="p-3 bg-slate-800 border-b border-slate-700/50">
+          <p className="text-xs text-slate-400 mb-2 font-medium">LLM Provider</p>
+          <div className="grid grid-cols-3 gap-2">
+            {/* OpenAI */}
+            <button
+              onClick={() => providers.providers.openai?.available && switchProvider('openai')}
+              disabled={!providers.providers.openai?.available}
+              className={`p-2 rounded-lg text-xs font-medium transition-all ${
+                currentProvider === 'openai' 
+                  ? 'bg-blue-600 text-white' 
+                  : providers.providers.openai?.available
+                    ? 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    : 'bg-slate-700/50 text-slate-500 cursor-not-allowed'
+              }`}
+              title={providers.providers.openai?.reason || providers.providers.openai?.model}
+            >
+              <div className="flex flex-col items-center gap-1">
+                <span>🤖</span>
+                <span>OpenAI</span>
+                {currentProvider === 'openai' && <span className="text-[10px] opacity-70">Active</span>}
+              </div>
+            </button>
+
+            {/* Ollama */}
+            <button
+              onClick={() => providers.providers.ollama?.available && switchProvider('ollama')}
+              disabled={!providers.providers.ollama?.available}
+              className={`p-2 rounded-lg text-xs font-medium transition-all ${
+                currentProvider === 'ollama' 
+                  ? 'bg-green-600 text-white' 
+                  : providers.providers.ollama?.available
+                    ? 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    : 'bg-slate-700/50 text-slate-500 cursor-not-allowed'
+              }`}
+              title={providers.providers.ollama?.reason || `Model: ${providers.providers.ollama?.model}`}
+            >
+              <div className="flex flex-col items-center gap-1">
+                <span>🦙</span>
+                <span>Ollama</span>
+                {currentProvider === 'ollama' && <span className="text-[10px] opacity-70">Local</span>}
+              </div>
+            </button>
+
+            {/* Anthropic */}
+            <button
+              onClick={() => providers.providers.anthropic?.available && switchProvider('anthropic')}
+              disabled={!providers.providers.anthropic?.available}
+              className={`p-2 rounded-lg text-xs font-medium transition-all ${
+                currentProvider === 'anthropic' 
+                  ? 'bg-orange-600 text-white' 
+                  : providers.providers.anthropic?.available
+                    ? 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    : 'bg-slate-700/50 text-slate-500 cursor-not-allowed'
+              }`}
+              title={providers.providers.anthropic?.reason || providers.providers.anthropic?.model}
+            >
+              <div className="flex flex-col items-center gap-1">
+                <span>🧠</span>
+                <span>Claude</span>
+                {currentProvider === 'anthropic' && <span className="text-[10px] opacity-70">Active</span>}
+              </div>
+            </button>
+          </div>
+
+          {/* Ollama Models */}
+          {currentProvider === 'ollama' && providers.providers.ollama?.models && (
+            <div className="mt-2 pt-2 border-t border-slate-700">
+              <p className="text-[10px] text-slate-500 mb-1">Available Ollama models:</p>
+              <div className="flex flex-wrap gap-1">
+                {providers.providers.ollama.models.slice(0, 5).map((model) => (
+                  <span key={model} className="text-[10px] bg-slate-700 text-slate-400 px-1.5 py-0.5 rounded">
+                    {model}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Quick Insights */}
       {insights.length > 0 && messages.length === 0 && (

@@ -5,6 +5,40 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2024-12-11
+
+### Added
+- **Ollama Integration**: Connect to local LLM models
+  - Support for Ollama running at localhost:11434
+  - Compatible with Llama 3.1, Mistral, CodeLlama, Phi, Gemma, etc.
+  - OllamaClient with chat, generate, and embeddings support
+  - Streaming response support
+  - Model listing and pulling via API
+
+- **Multi-LLM Provider Support**: Switch between AI providers
+  - OpenAI (GPT-4, GPT-3.5)
+  - Ollama (Local LLMs)
+  - Anthropic (Claude)
+  - Runtime provider switching via API
+  - Per-request provider override
+
+- **New API Endpoints**:
+  - `GET /api/ai/providers` - List available LLM providers
+  - `POST /api/ai/providers/set` - Switch default provider
+  - `GET /api/ai/ollama/status` - Check Ollama server status
+  - `GET /api/ai/ollama/models` - List installed Ollama models
+  - `POST /api/ai/ollama/pull/{model}` - Pull new Ollama model
+
+- **UI Provider Selector**: Choose LLM provider in AI Assistant
+  - Settings panel with provider buttons
+  - Visual indicator of current provider
+  - Available model display for Ollama
+
+### Changed
+- AI Assistant now supports multiple providers
+- Chat requests can override provider per-message
+- Settings expanded with Ollama configuration options
+
 ## [0.5.0] - 2024-12-11
 
 ### Added
