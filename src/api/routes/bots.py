@@ -23,18 +23,57 @@ class CreateBotRequest(BaseModel):
     description: str = ""
     bot_id: Optional[str] = None
     symbols: list[str] = Field(default_factory=lambda: ["SPY", "QQQ", "AAPL", "MSFT", "NVDA"])
-    strategies: list[str] = Field(default_factory=lambda: ["Technical", "Momentum"])
+    
+    # All available strategies with defaults
+    strategies: list[str] = Field(default_factory=lambda: [
+        "Technical", "Momentum", "MeanReversion", "NewsSentiment",
+        "Breakout", "TrendFollowing", "Scalping", "SwingTrading",
+        "VWAP", "RSI", "MACD", "BollingerBands", "MovingAverageCrossover",
+        "InsiderFollowing", "SocialSentiment", "AIAnalysis"
+    ])
     strategy_weights: dict[str, float] = Field(default_factory=lambda: {
         "Technical": 0.6,
         "Momentum": 0.5,
         "MeanReversion": 0.4,
         "NewsSentiment": 0.4,
+        "Breakout": 0.5,
+        "TrendFollowing": 0.5,
+        "Scalping": 0.3,
+        "SwingTrading": 0.5,
+        "VWAP": 0.4,
+        "RSI": 0.5,
+        "MACD": 0.5,
+        "BollingerBands": 0.4,
+        "MovingAverageCrossover": 0.5,
+        "InsiderFollowing": 0.3,
+        "SocialSentiment": 0.3,
+        "AIAnalysis": 0.6,
     })
+    
+    # AI Strategy Prompt - describe strategy in natural language
+    ai_strategy_prompt: str = Field(
+        default="",
+        description="Natural language description of your trading strategy. The AI will interpret this to configure the bot."
+    )
+    
+    # Risk parameters
     max_position_size: float = 25000.0
     max_positions: int = 10
     max_daily_loss_pct: float = 2.0
     trade_frequency_seconds: int = 60
     enable_news_trading: bool = True
+    
+    # Instrument type
+    instrument_type: str = "stock"  # stock, options, futures, crypto
+    
+    # Options settings (if instrument_type is options)
+    options_type: str = "call"
+    options_dte_min: int = 7
+    options_dte_max: int = 45
+    
+    # Futures settings (if instrument_type is futures)
+    futures_contracts: list[str] = Field(default_factory=list)
+    futures_use_micro: bool = True
 
 
 class UpdateBotRequest(BaseModel):
@@ -72,6 +111,73 @@ async def get_bots_summary():
         "running": manager.running_count,
         "max": manager.MAX_BOTS,
     }
+
+
+@router.get("/strategies")
+async def get_available_strategies():
+    """Get all available trading strategies."""
+    from src.bot.bot_instance import ALL_STRATEGIES, DEFAULT_STRATEGY_WEIGHTS
+    
+    strategies = []
+    for strat in ALL_STRATEGIES:
+        strategies.append({
+            "name": strat,
+            "default_weight": DEFAULT_STRATEGY_WEIGHTS.get(strat, 0.5),
+            "description": get_strategy_description(strat),
+            "category": get_strategy_category(strat),
+        })
+    
+    return {
+        "strategies": strategies,
+        "count": len(strategies),
+        "categories": list(set(s["category"] for s in strategies)),
+    }
+
+
+def get_strategy_description(name: str) -> str:
+    """Get description for a strategy."""
+    descriptions = {
+        "Technical": "Traditional technical analysis with RSI, MACD, and chart patterns",
+        "Momentum": "Trade in direction of strong price and volume momentum",
+        "MeanReversion": "Fade extreme moves expecting price to revert to mean",
+        "NewsSentiment": "Trade based on news headlines and sentiment analysis",
+        "Breakout": "Enter on price breakouts from consolidation patterns",
+        "TrendFollowing": "Follow established trends with trend-continuation signals",
+        "Scalping": "Ultra short-term trades capturing small price movements",
+        "SwingTrading": "Multi-day positions capturing swing highs and lows",
+        "VWAP": "Trade relative to volume-weighted average price",
+        "RSI": "Overbought/oversold signals using Relative Strength Index",
+        "MACD": "Moving Average Convergence Divergence crossover signals",
+        "BollingerBands": "Trade Bollinger Band breakouts and mean reversions",
+        "MovingAverageCrossover": "SMA/EMA crossover buy and sell signals",
+        "InsiderFollowing": "Follow insider buying/selling activity",
+        "SocialSentiment": "Trade based on social media buzz and sentiment",
+        "AIAnalysis": "AI-powered pattern recognition and prediction",
+    }
+    return descriptions.get(name, "")
+
+
+def get_strategy_category(name: str) -> str:
+    """Get category for a strategy."""
+    categories = {
+        "Technical": "Technical Analysis",
+        "Momentum": "Momentum",
+        "MeanReversion": "Mean Reversion",
+        "NewsSentiment": "Sentiment",
+        "Breakout": "Technical Analysis",
+        "TrendFollowing": "Momentum",
+        "Scalping": "Short-Term",
+        "SwingTrading": "Medium-Term",
+        "VWAP": "Technical Analysis",
+        "RSI": "Technical Analysis",
+        "MACD": "Technical Analysis",
+        "BollingerBands": "Technical Analysis",
+        "MovingAverageCrossover": "Technical Analysis",
+        "InsiderFollowing": "Sentiment",
+        "SocialSentiment": "Sentiment",
+        "AIAnalysis": "AI/ML",
+    }
+    return categories.get(name, "Other")
 
 
 @router.get("/templates")
@@ -159,9 +265,27 @@ async def create_bot(
             detail=f"Maximum of {manager.MAX_BOTS} bots reached",
         )
     
+    # If AI strategy prompt is provided, interpret it
+    ai_interpreted_config = {}
+    if request.ai_strategy_prompt:
+        ai_interpreted_config = await interpret_strategy_prompt(request.ai_strategy_prompt)
+    
+    # Determine instrument type
+    from src.bot.bot_instance import InstrumentType
+    instrument_type = InstrumentType.STOCK
+    if request.instrument_type == "options":
+        instrument_type = InstrumentType.OPTIONS
+    elif request.instrument_type == "futures":
+        instrument_type = InstrumentType.FUTURES
+    elif request.instrument_type == "crypto":
+        instrument_type = InstrumentType.CRYPTO
+    
     config = BotConfig(
         name=request.name,
         description=request.description,
+        ai_strategy_prompt=request.ai_strategy_prompt,
+        ai_interpreted_config=ai_interpreted_config,
+        instrument_type=instrument_type,
         symbols=request.symbols,
         strategies=request.strategies,
         strategy_weights=request.strategy_weights,
@@ -170,6 +294,11 @@ async def create_bot(
         max_daily_loss_pct=request.max_daily_loss_pct,
         trade_frequency_seconds=request.trade_frequency_seconds,
         enable_news_trading=request.enable_news_trading,
+        options_type=request.options_type,
+        options_dte_min=request.options_dte_min,
+        options_dte_max=request.options_dte_max,
+        futures_contracts=request.futures_contracts,
+        futures_use_micro=request.futures_use_micro,
     )
     
     bot = manager.create_bot(config, request.bot_id)
@@ -180,7 +309,78 @@ async def create_bot(
     return {
         "success": True,
         "bot": bot.get_status(),
+        "ai_interpretation": ai_interpreted_config if request.ai_strategy_prompt else None,
     }
+
+
+async def interpret_strategy_prompt(prompt: str) -> dict:
+    """
+    Use AI to interpret a natural language strategy description
+    and convert it to bot configuration parameters.
+    """
+    try:
+        from src.ai.assistant import get_ai_assistant
+        
+        assistant = get_ai_assistant()
+        
+        interpretation_prompt = f"""Analyze this trading strategy description and extract configuration parameters.
+Return a JSON object with the following structure:
+{{
+    "recommended_strategies": ["list of strategy names that match"],
+    "strategy_weights": {{"strategy_name": weight_0_to_1}},
+    "recommended_symbols": ["list of suggested symbols"],
+    "risk_level": "low|medium|high|aggressive",
+    "suggested_position_size": number,
+    "suggested_max_positions": number,
+    "trade_frequency": "scalping|intraday|swing|position",
+    "interpretation": "Brief explanation of how I interpreted this strategy",
+    "warnings": ["any risk warnings or concerns"]
+}}
+
+Available strategies:
+- Technical: RSI, MACD, moving averages, chart patterns
+- Momentum: Price momentum, volume momentum, relative strength
+- MeanReversion: Oversold/overbought reversions, statistical arbitrage
+- NewsSentiment: News-based trading, sentiment analysis
+- Breakout: Price breakouts, volume breakouts, range expansion
+- TrendFollowing: Trend identification, trend continuation
+- Scalping: Ultra short-term, quick profits
+- SwingTrading: Multi-day holds, swing highs/lows
+- VWAP: Volume-weighted average price strategies
+- RSI: RSI-based entry/exit signals
+- MACD: MACD crossover strategies
+- BollingerBands: Bollinger band breakouts and reversions
+- MovingAverageCrossover: SMA/EMA crossover signals
+- InsiderFollowing: Follow insider trading activity
+- SocialSentiment: Social media sentiment, trending stocks
+- AIAnalysis: AI-powered pattern recognition
+
+User's strategy description:
+"{prompt}"
+
+Return ONLY the JSON object, no other text."""
+
+        response = await assistant.chat(
+            query=interpretation_prompt,
+            session_id="strategy-interpreter",
+            include_context=False,
+        )
+        
+        # Try to parse the JSON response
+        import json
+        import re
+        
+        # Extract JSON from response
+        json_match = re.search(r'\{[\s\S]*\}', response)
+        if json_match:
+            config = json.loads(json_match.group())
+            return config
+        
+        return {"interpretation": response, "error": "Could not parse structured response"}
+        
+    except Exception as e:
+        logger.error(f"Failed to interpret strategy prompt: {e}")
+        return {"error": str(e), "interpretation": "Failed to interpret strategy"}
 
 
 # =========================================================================

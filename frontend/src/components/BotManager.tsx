@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { 
   Bot, Play, Pause, Square, Plus, Trash2, Settings, 
   Activity, AlertTriangle, ChevronDown, ChevronUp,
-  Search, SortAsc, SortDesc, X, Filter
+  Search, SortAsc, SortDesc, X, Filter, RefreshCw
 } from 'lucide-react'
 
 interface BotSummary {
@@ -59,10 +59,34 @@ export function BotManager({ token = '' }: BotManagerProps) {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [showFilters, setShowFilters] = useState(false)
   
+  // All available strategies
+  const ALL_STRATEGIES = [
+    { name: 'Technical', category: 'Technical Analysis', description: 'RSI, MACD, chart patterns' },
+    { name: 'Momentum', category: 'Momentum', description: 'Price and volume momentum' },
+    { name: 'MeanReversion', category: 'Mean Reversion', description: 'Fade extreme moves' },
+    { name: 'NewsSentiment', category: 'Sentiment', description: 'News-based trading' },
+    { name: 'Breakout', category: 'Technical Analysis', description: 'Price breakouts' },
+    { name: 'TrendFollowing', category: 'Momentum', description: 'Follow trends' },
+    { name: 'Scalping', category: 'Short-Term', description: 'Quick small profits' },
+    { name: 'SwingTrading', category: 'Medium-Term', description: 'Multi-day holds' },
+    { name: 'VWAP', category: 'Technical Analysis', description: 'Volume-weighted strategies' },
+    { name: 'RSI', category: 'Technical Analysis', description: 'Overbought/oversold signals' },
+    { name: 'MACD', category: 'Technical Analysis', description: 'MACD crossovers' },
+    { name: 'BollingerBands', category: 'Technical Analysis', description: 'Band breakouts' },
+    { name: 'MovingAverageCrossover', category: 'Technical Analysis', description: 'SMA/EMA crosses' },
+    { name: 'InsiderFollowing', category: 'Sentiment', description: 'Follow insider trades' },
+    { name: 'SocialSentiment', category: 'Sentiment', description: 'Social media buzz' },
+    { name: 'AIAnalysis', category: 'AI/ML', description: 'AI pattern recognition' },
+  ]
+  
   // New bot form state
   const [newBotName, setNewBotName] = useState('')
   const [newBotSymbols, setNewBotSymbols] = useState('SPY,QQQ,AAPL,MSFT,NVDA')
-  const [newBotStrategies, setNewBotStrategies] = useState(['Technical', 'Momentum'])
+  const [newBotStrategies, setNewBotStrategies] = useState<string[]>(ALL_STRATEGIES.map(s => s.name))
+  const [newBotAIPrompt, setNewBotAIPrompt] = useState('')
+  const [aiInterpretation, setAiInterpretation] = useState<any>(null)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [instrumentType, setInstrumentType] = useState('stock')
   
   // Filtered and sorted bots
   const filteredBots = useMemo(() => {
@@ -143,6 +167,7 @@ export function BotManager({ token = '' }: BotManagerProps) {
   const createBot = async () => {
     setLoading(true)
     setError('')
+    setAiInterpretation(null)
     
     try {
       const response = await fetch('/api/bots/', {
@@ -152,11 +177,18 @@ export function BotManager({ token = '' }: BotManagerProps) {
           name: newBotName,
           symbols: newBotSymbols.split(',').map(s => s.trim()),
           strategies: newBotStrategies,
+          ai_strategy_prompt: newBotAIPrompt,
+          instrument_type: instrumentType,
         }),
       })
       
       if (response.ok) {
+        const data = await response.json()
+        if (data.ai_interpretation) {
+          setAiInterpretation(data.ai_interpretation)
+        }
         setShowCreateForm(false)
+        setNewBotAIPrompt('')
         setNewBotName('')
         fetchBots()
       } else {
@@ -475,64 +507,200 @@ export function BotManager({ token = '' }: BotManagerProps) {
       
       {/* Create Bot Form */}
       {showCreateForm ? (
-        <div className="mt-4 p-3 border border-border/50 rounded-lg">
-          <h3 className="text-sm font-medium mb-3">Create New Bot</h3>
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs text-muted-foreground">Name</label>
-              <input
-                type="text"
-                value={newBotName}
-                onChange={(e) => setNewBotName(e.target.value)}
-                placeholder="My Trading Bot"
-                className="w-full mt-1 rounded bg-input px-3 py-1.5 text-sm"
-              />
+        <div className="mt-4 p-4 border border-border/50 rounded-lg bg-card/50">
+          <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+            <Bot className="h-4 w-4" />
+            Create New Bot
+          </h3>
+          <div className="space-y-4">
+            {/* Basic Info */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground">Bot Name *</label>
+                <input
+                  type="text"
+                  value={newBotName}
+                  onChange={(e) => setNewBotName(e.target.value)}
+                  placeholder="My Trading Bot"
+                  className="w-full mt-1 rounded bg-input px-3 py-2 text-sm border border-border"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Instrument Type</label>
+                <select
+                  value={instrumentType}
+                  onChange={(e) => setInstrumentType(e.target.value)}
+                  className="w-full mt-1 rounded bg-input px-3 py-2 text-sm border border-border"
+                >
+                  <option value="stock">Stocks</option>
+                  <option value="options">Options</option>
+                  <option value="futures">Futures</option>
+                  <option value="crypto">Crypto</option>
+                </select>
+              </div>
             </div>
+            
             <div>
               <label className="text-xs text-muted-foreground">Symbols (comma-separated)</label>
               <input
                 type="text"
                 value={newBotSymbols}
                 onChange={(e) => setNewBotSymbols(e.target.value)}
-                placeholder="SPY,QQQ,AAPL"
-                className="w-full mt-1 rounded bg-input px-3 py-1.5 text-sm"
+                placeholder="SPY, QQQ, AAPL, MSFT, NVDA"
+                className="w-full mt-1 rounded bg-input px-3 py-2 text-sm border border-border"
               />
             </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Strategies</label>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {['Technical', 'Momentum', 'MeanReversion', 'NewsSentiment'].map((strat) => (
-                  <button
-                    key={strat}
-                    onClick={() => {
-                      if (newBotStrategies.includes(strat)) {
-                        setNewBotStrategies(newBotStrategies.filter(s => s !== strat))
-                      } else {
-                        setNewBotStrategies([...newBotStrategies, strat])
-                      }
-                    }}
-                    className={`px-2 py-1 rounded text-xs ${
-                      newBotStrategies.includes(strat)
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-secondary text-muted-foreground'
-                    }`}
-                  >
-                    {strat}
-                  </button>
-                ))}
-              </div>
+            
+            {/* AI Strategy Prompt */}
+            <div className="p-3 rounded-lg bg-gradient-to-r from-violet-500/10 to-indigo-500/10 border border-violet-500/20">
+              <label className="text-xs font-medium text-violet-300 flex items-center gap-1">
+                🤖 AI Strategy Prompt (Optional)
+              </label>
+              <p className="text-[10px] text-muted-foreground mt-0.5 mb-2">
+                Describe your strategy in plain English. AI will configure the bot accordingly.
+              </p>
+              <textarea
+                value={newBotAIPrompt}
+                onChange={(e) => setNewBotAIPrompt(e.target.value)}
+                placeholder="Example: I want to follow momentum stocks that are breaking out on high volume. Focus on tech stocks, use tight stop losses, and take profits quickly. Follow insider buying activity and social media buzz."
+                className="w-full rounded bg-input/50 px-3 py-2 text-sm border border-border resize-none"
+                rows={3}
+              />
             </div>
-            <div className="flex gap-2">
+            
+            {/* AI Interpretation Result */}
+            {aiInterpretation && (
+              <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+                <p className="text-xs font-medium text-green-400 mb-2">✨ AI Interpretation</p>
+                <p className="text-xs text-muted-foreground">{aiInterpretation.interpretation}</p>
+                {aiInterpretation.warnings?.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-[10px] text-yellow-400">Warnings:</p>
+                    {aiInterpretation.warnings.map((w: string, i: number) => (
+                      <p key={i} className="text-[10px] text-yellow-300/70">• {w}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Strategies Section */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs text-muted-foreground">
+                  Trading Strategies ({newBotStrategies.length} selected)
+                </label>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => setNewBotStrategies(ALL_STRATEGIES.map(s => s.name))}
+                    className="text-[10px] text-primary hover:underline"
+                  >
+                    Select All
+                  </button>
+                  <span className="text-muted-foreground">|</span>
+                  <button
+                    onClick={() => setNewBotStrategies([])}
+                    className="text-[10px] text-muted-foreground hover:underline"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+              
+              {/* Strategy Categories */}
+              {['Technical Analysis', 'Momentum', 'Mean Reversion', 'Sentiment', 'Short-Term', 'Medium-Term', 'AI/ML'].map((category) => (
+                <div key={category} className="mb-2">
+                  <p className="text-[10px] text-muted-foreground mb-1">{category}</p>
+                  <div className="flex flex-wrap gap-1">
+                    {ALL_STRATEGIES.filter(s => s.category === category).map((strat) => (
+                      <button
+                        key={strat.name}
+                        onClick={() => {
+                          if (newBotStrategies.includes(strat.name)) {
+                            setNewBotStrategies(newBotStrategies.filter(s => s !== strat.name))
+                          } else {
+                            setNewBotStrategies([...newBotStrategies, strat.name])
+                          }
+                        }}
+                        title={strat.description}
+                        className={`px-2 py-1 rounded text-[10px] transition-colors ${
+                          newBotStrategies.includes(strat.name)
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
+                        }`}
+                      >
+                        {strat.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {/* Advanced Options Toggle */}
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+            >
+              {showAdvanced ? '▼' : '▶'} Advanced Options
+            </button>
+            
+            {showAdvanced && (
+              <div className="p-3 rounded bg-secondary/30 space-y-3">
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[10px] text-muted-foreground">Max Position Size</label>
+                    <input
+                      type="number"
+                      defaultValue={25000}
+                      className="w-full mt-1 rounded bg-input px-2 py-1 text-xs border border-border"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground">Max Positions</label>
+                    <input
+                      type="number"
+                      defaultValue={10}
+                      className="w-full mt-1 rounded bg-input px-2 py-1 text-xs border border-border"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground">Daily Loss Limit %</label>
+                    <input
+                      type="number"
+                      defaultValue={2}
+                      className="w-full mt-1 rounded bg-input px-2 py-1 text-xs border border-border"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Action Buttons */}
+            <div className="flex gap-2 pt-2">
               <button
                 onClick={createBot}
                 disabled={loading || !newBotName}
-                className="flex-1 rounded bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                className="flex-1 rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {loading ? 'Creating...' : 'Create Bot'}
+                {loading ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4" />
+                    Create Bot
+                  </>
+                )}
               </button>
               <button
-                onClick={() => setShowCreateForm(false)}
-                className="px-3 py-1.5 rounded bg-secondary text-sm"
+                onClick={() => {
+                  setShowCreateForm(false)
+                  setAiInterpretation(null)
+                }}
+                className="px-4 py-2 rounded bg-secondary text-sm hover:bg-secondary/80"
               >
                 Cancel
               </button>

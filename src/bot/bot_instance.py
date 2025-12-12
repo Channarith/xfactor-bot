@@ -32,26 +32,53 @@ class InstrumentType(str, Enum):
     CRYPTO = "crypto"
 
 
+# All available strategies
+ALL_STRATEGIES = [
+    "Technical", "Momentum", "MeanReversion", "NewsSentiment",
+    "Breakout", "TrendFollowing", "Scalping", "SwingTrading",
+    "VWAP", "RSI", "MACD", "BollingerBands", "MovingAverageCrossover",
+    "InsiderFollowing", "SocialSentiment", "AIAnalysis"
+]
+
+DEFAULT_STRATEGY_WEIGHTS = {
+    "Technical": 0.6,
+    "Momentum": 0.5,
+    "MeanReversion": 0.4,
+    "NewsSentiment": 0.4,
+    "Breakout": 0.5,
+    "TrendFollowing": 0.5,
+    "Scalping": 0.3,
+    "SwingTrading": 0.5,
+    "VWAP": 0.4,
+    "RSI": 0.5,
+    "MACD": 0.5,
+    "BollingerBands": 0.4,
+    "MovingAverageCrossover": 0.5,
+    "InsiderFollowing": 0.3,
+    "SocialSentiment": 0.3,
+    "AIAnalysis": 0.6,
+}
+
+
 @dataclass
 class BotConfig:
     """Configuration for a bot instance."""
     name: str
     description: str = ""
     
+    # AI Strategy Prompt - natural language strategy description
+    ai_strategy_prompt: str = ""
+    ai_interpreted_config: dict = field(default_factory=dict)  # AI-parsed configuration
+    
     # Instrument type
     instrument_type: InstrumentType = InstrumentType.STOCK
     
     # Trading configuration
     symbols: list[str] = field(default_factory=list)
-    strategies: list[str] = field(default_factory=lambda: ["Technical", "Momentum"])
+    strategies: list[str] = field(default_factory=lambda: ALL_STRATEGIES.copy())
     
     # Strategy weights
-    strategy_weights: dict[str, float] = field(default_factory=lambda: {
-        "Technical": 0.6,
-        "Momentum": 0.5,
-        "MeanReversion": 0.4,
-        "NewsSentiment": 0.4,
-    })
+    strategy_weights: dict[str, float] = field(default_factory=lambda: DEFAULT_STRATEGY_WEIGHTS.copy())
     
     # Risk parameters (per bot)
     max_position_size: float = 25000.0
