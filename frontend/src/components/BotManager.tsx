@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { 
   Bot, Play, Pause, Square, Plus, Trash2, Settings, 
-  Activity, AlertTriangle, ChevronDown, ChevronUp 
+  Activity, AlertTriangle, ChevronDown, ChevronUp,
+  Search, SortAsc, SortDesc, X, Filter
 } from 'lucide-react'
 
 interface BotSummary {
@@ -13,6 +14,9 @@ interface BotSummary {
   daily_pnl: number
   uptime_seconds: number
 }
+
+type SortField = 'name' | 'status' | 'daily_pnl' | 'uptime_seconds' | 'symbols_count'
+type SortDirection = 'asc' | 'desc'
 
 interface BotDetails {
   id: string
@@ -48,10 +52,72 @@ export function BotManager({ token = '' }: BotManagerProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   
+  // Search, Sort, Filter state
+  const [searchQuery, setSearchQuery] = useState('')
+  const [sortField, setSortField] = useState<SortField>('name')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [showFilters, setShowFilters] = useState(false)
+  
   // New bot form state
   const [newBotName, setNewBotName] = useState('')
   const [newBotSymbols, setNewBotSymbols] = useState('SPY,QQQ,AAPL,MSFT,NVDA')
   const [newBotStrategies, setNewBotStrategies] = useState(['Technical', 'Momentum'])
+  
+  // Filtered and sorted bots
+  const filteredBots = useMemo(() => {
+    let result = [...bots]
+    
+    // Apply search
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      result = result.filter(bot => 
+        bot.name.toLowerCase().includes(query) ||
+        bot.strategies.some(s => s.toLowerCase().includes(query)) ||
+        bot.id.toLowerCase().includes(query)
+      )
+    }
+    
+    // Apply status filter
+    if (statusFilter !== 'all') {
+      result = result.filter(bot => bot.status === statusFilter)
+    }
+    
+    // Apply sort
+    result.sort((a, b) => {
+      let aVal = a[sortField]
+      let bVal = b[sortField]
+      
+      if (typeof aVal === 'string') {
+        aVal = aVal.toLowerCase()
+        bVal = (bVal as string).toLowerCase()
+      }
+      
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
+      return 0
+    })
+    
+    return result
+  }, [bots, searchQuery, statusFilter, sortField, sortDirection])
+  
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
+  
+  const clearFilters = () => {
+    setSearchQuery('')
+    setStatusFilter('all')
+    setSortField('name')
+    setSortDirection('asc')
+  }
+  
+  const hasActiveFilters = searchQuery || statusFilter !== 'all'
 
   const authHeaders = {
     'Content-Type': 'application/json',
@@ -160,12 +226,13 @@ export function BotManager({ token = '' }: BotManagerProps) {
 
   return (
     <div className="rounded-lg border border-border bg-card p-4">
+      {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Bot className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold">Bot Manager</h2>
           <span className="text-sm text-muted-foreground">
-            ({bots.length}/25)
+            ({filteredBots.length}/{bots.length} shown, max 25)
           </span>
         </div>
         
@@ -194,6 +261,98 @@ export function BotManager({ token = '' }: BotManagerProps) {
         </div>
       </div>
       
+      {/* Search, Sort, Filter Bar */}
+      <div className="mb-4 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Search */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search bots by name, strategy..."
+              className="w-full pl-10 pr-8 py-2 text-sm rounded-lg bg-secondary border border-border focus:border-xfactor-teal focus:outline-none"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          
+          {/* Status Filter */}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
+              statusFilter !== 'all' ? 'bg-xfactor-teal/20 border-xfactor-teal text-xfactor-teal' : 'bg-secondary border-border'
+            }`}
+          >
+            <option value="all">All Status</option>
+            <option value="running">🟢 Running</option>
+            <option value="paused">🟡 Paused</option>
+            <option value="stopped">⚫ Stopped</option>
+            <option value="error">🔴 Error</option>
+          </select>
+          
+          {/* Sort Dropdown */}
+          <div className="flex items-center gap-1">
+            <select
+              value={sortField}
+              onChange={(e) => setSortField(e.target.value as SortField)}
+              className="px-3 py-2 text-sm rounded-lg bg-secondary border border-border"
+            >
+              <option value="name">Sort: Name</option>
+              <option value="status">Sort: Status</option>
+              <option value="daily_pnl">Sort: P&L</option>
+              <option value="uptime_seconds">Sort: Uptime</option>
+              <option value="symbols_count">Sort: Symbols</option>
+            </select>
+            <button
+              onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
+              className="p-2 rounded-lg bg-secondary border border-border hover:bg-secondary/80"
+              title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
+            >
+              {sortDirection === 'asc' ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
+            </button>
+          </div>
+          
+          {/* Clear Filters */}
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="px-3 py-2 text-sm text-loss hover:text-loss/80"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        
+        {/* Quick Status Filters */}
+        <div className="flex gap-2">
+          {['all', 'running', 'paused', 'stopped'].map((status) => {
+            const count = status === 'all' ? bots.length : bots.filter(b => b.status === status).length
+            return (
+              <button
+                key={status}
+                onClick={() => setStatusFilter(status)}
+                className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                  statusFilter === status
+                    ? 'bg-xfactor-teal text-white'
+                    : 'bg-secondary text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)} ({count})
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      
       {error && (
         <div className="mb-3 p-2 rounded bg-destructive/10 text-destructive text-sm">
           {error}
@@ -201,8 +360,8 @@ export function BotManager({ token = '' }: BotManagerProps) {
       )}
       
       {/* Bot List */}
-      <div className="space-y-2 max-h-80 overflow-y-auto">
-        {bots.map((bot) => (
+      <div className="space-y-2 max-h-96 overflow-y-auto">
+        {filteredBots.map((bot) => (
           <div
             key={bot.id}
             className="border border-border/50 rounded-lg p-3"
@@ -300,6 +459,12 @@ export function BotManager({ token = '' }: BotManagerProps) {
             )}
           </div>
         ))}
+        
+        {filteredBots.length === 0 && bots.length > 0 && (
+          <p className="text-center text-muted-foreground text-sm py-4">
+            No bots match your filters
+          </p>
+        )}
         
         {bots.length === 0 && (
           <p className="text-center text-muted-foreground text-sm py-4">

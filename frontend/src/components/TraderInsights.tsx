@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { 
   Users, TrendingUp, TrendingDown, ExternalLink, RefreshCw,
-  Star, DollarSign, Building2, User, ChevronLeft, ChevronRight,
-  BarChart3, Calendar, Megaphone, Activity, Brain
+  Star, Building2, User, ChevronLeft, ChevronRight,
+  BarChart3, Calendar, Megaphone, Brain, Search, SortAsc, SortDesc, X
 } from 'lucide-react'
+import { useDataFilters, FilterBar, type FieldDefinition, type SortConfig } from './DataFilters'
 
 // ============================================================================
 // Types
@@ -72,11 +73,11 @@ interface EarningsReport {
   ticker: string
   company: string
   reportDate: string
-  reportTime: 'BMO' | 'AMC' // Before Market Open / After Market Close
+  reportTime: 'BMO' | 'AMC'
   epsEstimate: number
   revenueEstimate: string
-  surpriseHistory: number // Average surprise %
-  optionsIV: number // Implied volatility
+  surpriseHistory: number
+  optionsIV: number
 }
 
 interface PressRelease {
@@ -106,12 +107,99 @@ interface AInvestSignal {
 type TabType = 'insiders' | 'traders' | 'finviz' | 'movingavg' | 'earnings' | 'press' | 'ainvest'
 
 // ============================================================================
-// Data Generation
+// Field Definitions for Each Tab
+// ============================================================================
+
+const insiderFields: FieldDefinition[] = [
+  { key: 'ticker', label: 'Ticker', type: 'string', sortable: true, filterable: true },
+  { key: 'insider', label: 'Insider', type: 'string', sortable: true, filterable: true },
+  { key: 'title', label: 'Title', type: 'select', sortable: true, filterable: true, options: [
+    { value: 'CEO', label: 'CEO' }, { value: 'CFO', label: 'CFO' }, { value: 'Director', label: 'Director' }, { value: 'VP', label: 'VP' }
+  ]},
+  { key: 'tradeType', label: 'Trade Type', type: 'select', sortable: true, filterable: true, options: [
+    { value: 'Buy', label: 'Buy' }, { value: 'Sell', label: 'Sell' }
+  ]},
+  { key: 'value', label: 'Value ($)', type: 'number', sortable: true, filterable: true },
+  { key: 'shares', label: 'Shares', type: 'number', sortable: true, filterable: true },
+  { key: 'date', label: 'Date', type: 'date', sortable: true, filterable: true },
+]
+
+const traderFields: FieldDefinition[] = [
+  { key: 'name', label: 'Name', type: 'string', sortable: true, filterable: true },
+  { key: 'handle', label: 'Handle', type: 'string', sortable: false, filterable: true },
+  { key: 'platform', label: 'Platform', type: 'select', sortable: true, filterable: true, options: [
+    { value: 'Twitter/X', label: 'Twitter/X' }, { value: 'Discord', label: 'Discord' }, { value: 'Web', label: 'Web' }
+  ]},
+  { key: 'winRate', label: 'Win Rate', type: 'number', sortable: true, filterable: true },
+  { key: 'followers', label: 'Followers', type: 'string', sortable: true, filterable: false },
+]
+
+const finvizFields: FieldDefinition[] = [
+  { key: 'ticker', label: 'Ticker', type: 'string', sortable: true, filterable: true },
+  { key: 'signal', label: 'Signal', type: 'select', sortable: true, filterable: true, options: [
+    { value: 'Unusual Volume', label: 'Unusual Volume' }, { value: 'New High', label: 'New High' },
+    { value: 'Breakout', label: 'Breakout' }, { value: 'Gap Up', label: 'Gap Up' },
+    { value: 'Oversold Bounce', label: 'Oversold Bounce' }, { value: 'Golden Cross', label: 'Golden Cross' }
+  ]},
+  { key: 'sector', label: 'Sector', type: 'select', sortable: true, filterable: true, options: [
+    { value: 'Technology', label: 'Technology' }, { value: 'Finance', label: 'Finance' },
+    { value: 'Healthcare', label: 'Healthcare' }, { value: 'Industrials', label: 'Industrials' }
+  ]},
+  { key: 'change', label: 'Change %', type: 'number', sortable: true, filterable: true },
+  { key: 'price', label: 'Price', type: 'number', sortable: true, filterable: true },
+]
+
+const maFields: FieldDefinition[] = [
+  { key: 'ticker', label: 'Ticker', type: 'string', sortable: true, filterable: true },
+  { key: 'signal', label: 'Signal', type: 'select', sortable: true, filterable: true, options: [
+    { value: 'Golden Cross', label: 'Golden Cross' }, { value: 'Death Cross', label: 'Death Cross' },
+    { value: 'Above All MAs', label: 'Above All MAs' }, { value: 'Below All MAs', label: 'Below All MAs' },
+    { value: 'Bounce 50MA', label: 'Bounce 50MA' }, { value: 'Bounce 200MA', label: 'Bounce 200MA' }
+  ]},
+  { key: 'price', label: 'Price', type: 'number', sortable: true, filterable: true },
+  { key: 'strength', label: 'Strength', type: 'number', sortable: true, filterable: true },
+]
+
+const earningsFields: FieldDefinition[] = [
+  { key: 'ticker', label: 'Ticker', type: 'string', sortable: true, filterable: true },
+  { key: 'reportDate', label: 'Report Date', type: 'date', sortable: true, filterable: true },
+  { key: 'reportTime', label: 'Time', type: 'select', sortable: true, filterable: true, options: [
+    { value: 'BMO', label: 'Before Market Open' }, { value: 'AMC', label: 'After Market Close' }
+  ]},
+  { key: 'epsEstimate', label: 'EPS Est', type: 'number', sortable: true, filterable: true },
+  { key: 'optionsIV', label: 'Options IV', type: 'number', sortable: true, filterable: true },
+]
+
+const pressFields: FieldDefinition[] = [
+  { key: 'ticker', label: 'Ticker', type: 'string', sortable: true, filterable: true },
+  { key: 'title', label: 'Title', type: 'string', sortable: false, filterable: true },
+  { key: 'category', label: 'Category', type: 'select', sortable: true, filterable: true, options: [
+    { value: 'FDA', label: 'FDA' }, { value: 'M&A', label: 'M&A' }, { value: 'Partnership', label: 'Partnership' },
+    { value: 'Product', label: 'Product' }, { value: 'Financial', label: 'Financial' },
+    { value: 'Legal', label: 'Legal' }, { value: 'Executive', label: 'Executive' }
+  ]},
+  { key: 'sentiment', label: 'Sentiment', type: 'number', sortable: true, filterable: true },
+  { key: 'source', label: 'Source', type: 'string', sortable: true, filterable: true },
+]
+
+const ainvestFields: FieldDefinition[] = [
+  { key: 'ticker', label: 'Ticker', type: 'string', sortable: true, filterable: true },
+  { key: 'recommendation', label: 'Rating', type: 'select', sortable: true, filterable: true, options: [
+    { value: 'Strong Buy', label: 'Strong Buy' }, { value: 'Buy', label: 'Buy' },
+    { value: 'Hold', label: 'Hold' }, { value: 'Sell', label: 'Sell' }, { value: 'Strong Sell', label: 'Strong Sell' }
+  ]},
+  { key: 'aiScore', label: 'AI Score', type: 'number', sortable: true, filterable: true },
+  { key: 'upside', label: 'Upside %', type: 'number', sortable: true, filterable: true },
+  { key: 'confidence', label: 'Confidence', type: 'number', sortable: true, filterable: true },
+]
+
+// ============================================================================
+// Data Generation (same as before, keeping for brevity)
 // ============================================================================
 
 const generateInsiderTrades = (count: number): InsiderTrade[] => {
   const tickers = ['NVDA', 'AAPL', 'MSFT', 'GOOGL', 'META', 'TSLA', 'AMZN', 'AMD', 'CRM', 'ORCL']
-  const companies = {
+  const companies: Record<string, string> = {
     'NVDA': 'NVIDIA Corporation', 'AAPL': 'Apple Inc', 'MSFT': 'Microsoft Corp',
     'GOOGL': 'Alphabet Inc', 'META': 'Meta Platforms', 'TSLA': 'Tesla Inc',
     'AMZN': 'Amazon.com', 'AMD': 'AMD Inc', 'CRM': 'Salesforce', 'ORCL': 'Oracle Corp'
@@ -123,20 +211,13 @@ const generateInsiderTrades = (count: number): InsiderTrade[] => {
     { name: 'Lisa Su', title: 'CEO' }, { name: 'CFO Office', title: 'CFO' },
     { name: 'Board Member', title: 'Director' }, { name: 'VP Sales', title: 'VP' }
   ]
-  
   return Array.from({ length: count }, (_, i) => {
     const ticker = tickers[i % tickers.length]
     const insider = insiders[Math.floor(Math.random() * insiders.length)]
     return {
-      id: `insider-${i}`,
-      ticker,
-      company: companies[ticker as keyof typeof companies],
-      insider: insider.name,
-      title: insider.title,
-      tradeType: Math.random() > 0.3 ? 'Sell' : 'Buy',
-      shares: Math.floor(Math.random() * 200000) + 10000,
-      price: Math.floor(Math.random() * 500) + 50,
-      value: Math.floor(Math.random() * 100000000) + 1000000,
+      id: `insider-${i}`, ticker, company: companies[ticker], insider: insider.name, title: insider.title,
+      tradeType: Math.random() > 0.3 ? 'Sell' : 'Buy', shares: Math.floor(Math.random() * 200000) + 10000,
+      price: Math.floor(Math.random() * 500) + 50, value: Math.floor(Math.random() * 100000000) + 1000000,
       date: new Date(Date.now() - i * 86400000).toISOString().split('T')[0],
       filingDate: new Date(Date.now() - i * 86400000 + 86400000).toISOString().split('T')[0]
     }
@@ -156,21 +237,16 @@ const generateTopTraders = (count: number): TopTrader[] => {
     { name: 'Gamma Squeeze', handle: '@GammaSqueeze', platform: 'Twitter/X', followers: '190K', winRate: 67 },
     { name: 'Whale Wisdom', handle: '@WhaleWisdom', platform: 'Web', followers: '110K', winRate: 69 },
   ]
-  
   const actions: TraderCall['action'][] = ['Long', 'Short', 'Buy Calls', 'Buy Puts']
   const tickers = ['SPY', 'QQQ', 'NVDA', 'TSLA', 'AAPL', 'AMD', 'META', 'GOOGL', 'AMZN', 'MSFT']
-  
   return Array.from({ length: count }, (_, i) => {
     const base = traders[i % traders.length]
     return {
-      id: `trader-${i}`,
-      ...base,
-      verified: Math.random() > 0.3,
+      id: `trader-${i}`, ...base, verified: Math.random() > 0.3,
       recentCalls: Array.from({ length: Math.floor(Math.random() * 3) + 1 }, (_, j) => ({
         ticker: tickers[Math.floor(Math.random() * tickers.length)],
         action: actions[Math.floor(Math.random() * actions.length)],
-        entry: Math.floor(Math.random() * 500) + 50,
-        target: Math.floor(Math.random() * 600) + 60,
+        entry: Math.floor(Math.random() * 500) + 50, target: Math.floor(Math.random() * 600) + 60,
         date: new Date(Date.now() - j * 86400000).toISOString().split('T')[0],
         status: ['Active', 'Hit Target', 'Stopped Out'][Math.floor(Math.random() * 3)] as TraderCall['status']
       }))
@@ -182,16 +258,11 @@ const generateFinvizSignals = (count: number): FinvizSignal[] => {
   const signals = ['Unusual Volume', 'New High', 'Breakout', 'Gap Up', 'Oversold Bounce', 'Golden Cross']
   const patterns = ['Bull Flag', 'Cup & Handle', 'Ascending Triangle', 'Double Bottom', 'Breakout', null]
   const tickers = ['SMCI', 'PLTR', 'MSTR', 'COIN', 'RKLB', 'IONQ', 'AFRM', 'SNOW', 'NET', 'CRWD']
-  
   return Array.from({ length: count }, (_, i) => ({
-    id: `finviz-${i}`,
-    ticker: tickers[i % tickers.length],
-    company: `Company ${tickers[i % tickers.length]}`,
+    id: `finviz-${i}`, ticker: tickers[i % tickers.length], company: `Company ${tickers[i % tickers.length]}`,
     sector: ['Technology', 'Finance', 'Healthcare', 'Industrials'][i % 4],
-    signal: signals[Math.floor(Math.random() * signals.length)],
-    price: Math.floor(Math.random() * 400) + 20,
-    change: Math.floor(Math.random() * 25) + 1,
-    volume: `${Math.floor(Math.random() * 80) + 5}M`,
+    signal: signals[Math.floor(Math.random() * signals.length)], price: Math.floor(Math.random() * 400) + 20,
+    change: Math.floor(Math.random() * 25) + 1, volume: `${Math.floor(Math.random() * 80) + 5}M`,
     pattern: patterns[Math.floor(Math.random() * patterns.length)] || undefined
   }))
 }
@@ -199,18 +270,12 @@ const generateFinvizSignals = (count: number): FinvizSignal[] => {
 const generateMovingAverageSignals = (count: number): MovingAverageSignal[] => {
   const signals: MovingAverageSignal['signal'][] = ['Golden Cross', 'Death Cross', 'Above All MAs', 'Below All MAs', 'Bounce 50MA', 'Bounce 200MA']
   const tickers = ['SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA', 'AMD', 'TSLA', 'META', 'GOOGL', 'AMZN']
-  
   return Array.from({ length: count }, (_, i) => {
     const price = Math.floor(Math.random() * 400) + 50
     return {
-      id: `ma-${i}`,
-      ticker: tickers[i % tickers.length],
-      company: `${tickers[i % tickers.length]} Inc`,
-      price,
-      sma20: price * (0.95 + Math.random() * 0.1),
-      sma50: price * (0.9 + Math.random() * 0.2),
-      sma200: price * (0.85 + Math.random() * 0.3),
-      signal: signals[Math.floor(Math.random() * signals.length)],
+      id: `ma-${i}`, ticker: tickers[i % tickers.length], company: `${tickers[i % tickers.length]} Inc`, price,
+      sma20: price * (0.95 + Math.random() * 0.1), sma50: price * (0.9 + Math.random() * 0.2),
+      sma200: price * (0.85 + Math.random() * 0.3), signal: signals[Math.floor(Math.random() * signals.length)],
       strength: Math.floor(Math.random() * 100)
     }
   })
@@ -218,41 +283,29 @@ const generateMovingAverageSignals = (count: number): MovingAverageSignal[] => {
 
 const generateEarningsReports = (count: number): EarningsReport[] => {
   const tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA', 'AMD', 'CRM', 'ORCL']
-  
   return Array.from({ length: count }, (_, i) => ({
-    id: `earnings-${i}`,
-    ticker: tickers[i % tickers.length],
-    company: `${tickers[i % tickers.length]} Corporation`,
+    id: `earnings-${i}`, ticker: tickers[i % tickers.length], company: `${tickers[i % tickers.length]} Corporation`,
     reportDate: new Date(Date.now() + (i + 1) * 86400000 * 3).toISOString().split('T')[0],
     reportTime: Math.random() > 0.5 ? 'BMO' : 'AMC',
-    epsEstimate: Math.floor(Math.random() * 500) / 100 + 1,
-    revenueEstimate: `$${Math.floor(Math.random() * 50) + 10}B`,
-    surpriseHistory: Math.floor(Math.random() * 20) - 5,
-    optionsIV: Math.floor(Math.random() * 80) + 30
+    epsEstimate: Math.floor(Math.random() * 500) / 100 + 1, revenueEstimate: `$${Math.floor(Math.random() * 50) + 10}B`,
+    surpriseHistory: Math.floor(Math.random() * 20) - 5, optionsIV: Math.floor(Math.random() * 80) + 30
   }))
 }
 
 const generatePressReleases = (count: number): PressRelease[] => {
   const categories: PressRelease['category'][] = ['FDA', 'M&A', 'Partnership', 'Product', 'Financial', 'Legal', 'Executive']
   const tickers = ['MRNA', 'PFE', 'NVDA', 'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'AMD', 'META']
-  const titles = [
-    '{ticker} Announces Strategic Partnership', '{ticker} Receives FDA Approval',
-    '{ticker} Reports Record Quarter', '{ticker} Launches New Product Line',
-    '{ticker} Acquires Competitor', '{ticker} Appoints New CEO',
-    '{ticker} Settles Legal Dispute', '{ticker} Expands Into New Markets'
-  ]
-  
+  const titles = ['{ticker} Announces Strategic Partnership', '{ticker} Receives FDA Approval', '{ticker} Reports Record Quarter',
+    '{ticker} Launches New Product Line', '{ticker} Acquires Competitor', '{ticker} Appoints New CEO',
+    '{ticker} Settles Legal Dispute', '{ticker} Expands Into New Markets']
   return Array.from({ length: count }, (_, i) => {
     const ticker = tickers[i % tickers.length]
     return {
-      id: `press-${i}`,
-      ticker,
-      company: `${ticker} Inc`,
+      id: `press-${i}`, ticker, company: `${ticker} Inc`,
       title: titles[Math.floor(Math.random() * titles.length)].replace('{ticker}', ticker),
       category: categories[Math.floor(Math.random() * categories.length)],
       timestamp: new Date(Date.now() - i * 3600000).toISOString(),
-      sentiment: (Math.random() - 0.3) * 1.5,
-      source: ['PR Newswire', 'Business Wire', 'GlobeNewswire', 'Company IR'][Math.floor(Math.random() * 4)]
+      sentiment: (Math.random() - 0.3) * 1.5, source: ['PR Newswire', 'Business Wire', 'GlobeNewswire', 'Company IR'][Math.floor(Math.random() * 4)]
     }
   })
 }
@@ -261,22 +314,14 @@ const generateAInvestSignals = (count: number): AInvestSignal[] => {
   const recommendations: AInvestSignal['recommendation'][] = ['Strong Buy', 'Buy', 'Hold', 'Sell', 'Strong Sell']
   const tickers = ['NVDA', 'AAPL', 'MSFT', 'GOOGL', 'META', 'TSLA', 'AMZN', 'AMD', 'PLTR', 'SMCI']
   const signalTypes = ['Momentum Surge', 'Value Play', 'Breakout Imminent', 'Oversold Bounce', 'Earnings Catalyst', 'Insider Buying', 'Institutional Accumulation', 'Technical Breakout']
-  
   return Array.from({ length: count }, (_, i) => {
     const currentPrice = Math.floor(Math.random() * 500) + 50
     const targetPrice = currentPrice * (1 + (Math.random() * 0.5 - 0.1))
     return {
-      id: `ainvest-${i}`,
-      ticker: tickers[i % tickers.length],
-      company: `${tickers[i % tickers.length]} Corporation`,
-      aiScore: Math.floor(Math.random() * 40) + 60,
-      recommendation: recommendations[Math.floor(Math.random() * 3)], // Bias toward bullish
-      targetPrice: Math.floor(targetPrice),
-      currentPrice,
-      upside: ((targetPrice - currentPrice) / currentPrice) * 100,
-      signals: Array.from({ length: Math.floor(Math.random() * 3) + 1 }, () => 
-        signalTypes[Math.floor(Math.random() * signalTypes.length)]
-      ),
+      id: `ainvest-${i}`, ticker: tickers[i % tickers.length], company: `${tickers[i % tickers.length]} Corporation`,
+      aiScore: Math.floor(Math.random() * 40) + 60, recommendation: recommendations[Math.floor(Math.random() * 3)],
+      targetPrice: Math.floor(targetPrice), currentPrice, upside: ((targetPrice - currentPrice) / currentPrice) * 100,
+      signals: Array.from({ length: Math.floor(Math.random() * 3) + 1 }, () => signalTypes[Math.floor(Math.random() * signalTypes.length)]),
       confidence: Math.floor(Math.random() * 30) + 70
     }
   })
@@ -300,6 +345,15 @@ export function TraderInsights() {
   const [earnings, setEarnings] = useState<EarningsReport[]>([])
   const [pressReleases, setPressReleases] = useState<PressRelease[]>([])
   const [ainvestSignals, setAinvestSignals] = useState<AInvestSignal[]>([])
+
+  // Filter states per tab
+  const insiderFilter = useDataFilters(insiderTrades, insiderFields)
+  const traderFilter = useDataFilters(topTraders, traderFields)
+  const finvizFilter = useDataFilters(finvizSignals, finvizFields)
+  const maFilter = useDataFilters(maSignals, maFields)
+  const earningsFilter = useDataFilters(earnings, earningsFields)
+  const pressFilter = useDataFilters(pressReleases, pressFields)
+  const ainvestFilter = useDataFilters(ainvestSignals, ainvestFields)
 
   const itemsPerPage = 10
   const maxItems = 100
@@ -327,20 +381,33 @@ export function TraderInsights() {
     }, 500)
   }
 
-  const getCurrentData = () => {
+  const getCurrentFilter = () => {
     switch (activeTab) {
-      case 'insiders': return insiderTrades
-      case 'traders': return topTraders
-      case 'finviz': return finvizSignals
-      case 'movingavg': return maSignals
-      case 'earnings': return earnings
-      case 'press': return pressReleases
-      case 'ainvest': return ainvestSignals
-      default: return []
+      case 'insiders': return insiderFilter
+      case 'traders': return traderFilter
+      case 'finviz': return finvizFilter
+      case 'movingavg': return maFilter
+      case 'earnings': return earningsFilter
+      case 'press': return pressFilter
+      case 'ainvest': return ainvestFilter
     }
   }
 
-  const data = getCurrentData()
+  const getCurrentFields = () => {
+    switch (activeTab) {
+      case 'insiders': return insiderFields
+      case 'traders': return traderFields
+      case 'finviz': return finvizFields
+      case 'movingavg': return maFields
+      case 'earnings': return earningsFields
+      case 'press': return pressFields
+      case 'ainvest': return ainvestFields
+    }
+  }
+
+  const filter = getCurrentFilter()
+  const fields = getCurrentFields()
+  const data = filter.filteredData
   const totalPages = Math.ceil(data.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
   const displayedData = data.slice(startIndex, startIndex + itemsPerPage)
@@ -353,13 +420,13 @@ export function TraderInsights() {
   }
 
   const tabs: { id: TabType; label: string; icon: React.ReactNode; count: number }[] = [
-    { id: 'insiders', label: 'OpenInsider', icon: <Building2 className="h-4 w-4" />, count: insiderTrades.length },
-    { id: 'traders', label: 'Top Traders', icon: <Users className="h-4 w-4" />, count: topTraders.length },
-    { id: 'finviz', label: 'Finviz', icon: <TrendingUp className="h-4 w-4" />, count: finvizSignals.length },
-    { id: 'movingavg', label: 'Moving Avg', icon: <BarChart3 className="h-4 w-4" />, count: maSignals.length },
-    { id: 'earnings', label: 'Earnings', icon: <Calendar className="h-4 w-4" />, count: earnings.length },
-    { id: 'press', label: 'Press Releases', icon: <Megaphone className="h-4 w-4" />, count: pressReleases.length },
-    { id: 'ainvest', label: 'AInvest AI', icon: <Brain className="h-4 w-4" />, count: ainvestSignals.length },
+    { id: 'insiders', label: 'OpenInsider', icon: <Building2 className="h-4 w-4" />, count: insiderFilter.filteredCount },
+    { id: 'traders', label: 'Top Traders', icon: <Users className="h-4 w-4" />, count: traderFilter.filteredCount },
+    { id: 'finviz', label: 'Finviz', icon: <TrendingUp className="h-4 w-4" />, count: finvizFilter.filteredCount },
+    { id: 'movingavg', label: 'Moving Avg', icon: <BarChart3 className="h-4 w-4" />, count: maFilter.filteredCount },
+    { id: 'earnings', label: 'Earnings', icon: <Calendar className="h-4 w-4" />, count: earningsFilter.filteredCount },
+    { id: 'press', label: 'Press Releases', icon: <Megaphone className="h-4 w-4" />, count: pressFilter.filteredCount },
+    { id: 'ainvest', label: 'AInvest AI', icon: <Brain className="h-4 w-4" />, count: ainvestFilter.filteredCount },
   ]
 
   // Pagination component
@@ -399,7 +466,7 @@ export function TraderInsights() {
         </div>
         <button
           onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-          disabled={currentPage === totalPages}
+          disabled={currentPage === totalPages || totalPages === 0}
           className="p-2 rounded-lg bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <ChevronRight className="h-4 w-4" />
@@ -416,7 +483,7 @@ export function TraderInsights() {
           {tabs.map(tab => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => { setActiveTab(tab.id); setCurrentPage(1) }}
               className={`px-3 py-1.5 text-xs rounded-lg transition-colors flex items-center gap-1.5 ${
                 activeTab === tab.id
                   ? 'bg-xfactor-teal text-white'
@@ -437,6 +504,23 @@ export function TraderInsights() {
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
+
+      {/* Filter Bar */}
+      <FilterBar
+        searchQuery={filter.searchQuery}
+        onSearchChange={filter.setSearchQuery}
+        sort={filter.sort}
+        onSortChange={filter.toggleSort}
+        filters={filter.filters}
+        onRemoveFilter={filter.removeFilter}
+        onClearAll={filter.clearFilters}
+        fields={fields}
+        onAddFilter={filter.addFilter}
+        totalCount={filter.totalCount}
+        filteredCount={filter.filteredCount}
+        placeholder={`Search ${activeTab}...`}
+        compact
+      />
 
       {/* OpenInsider Tab */}
       {activeTab === 'insiders' && (
@@ -469,7 +553,8 @@ export function TraderInsights() {
               </div>
             </div>
           ))}
-          <Pagination />
+          {displayedData.length === 0 && <div className="text-center py-8 text-muted-foreground">No results found</div>}
+          {data.length > 0 && <Pagination />}
         </div>
       )}
 
@@ -509,7 +594,8 @@ export function TraderInsights() {
               )}
             </div>
           ))}
-          <Pagination />
+          {displayedData.length === 0 && <div className="text-center py-8 text-muted-foreground">No results found</div>}
+          {data.length > 0 && <Pagination />}
         </div>
       )}
 
@@ -539,7 +625,8 @@ export function TraderInsights() {
               </div>
             </div>
           ))}
-          <Pagination />
+          {displayedData.length === 0 && <div className="text-center py-8 text-muted-foreground">No results found</div>}
+          {data.length > 0 && <Pagination />}
         </div>
       )}
 
@@ -570,7 +657,8 @@ export function TraderInsights() {
               </div>
             </div>
           ))}
-          <Pagination />
+          {displayedData.length === 0 && <div className="text-center py-8 text-muted-foreground">No results found</div>}
+          {data.length > 0 && <Pagination />}
         </div>
       )}
 
@@ -602,7 +690,8 @@ export function TraderInsights() {
               </div>
             </div>
           ))}
-          <Pagination />
+          {displayedData.length === 0 && <div className="text-center py-8 text-muted-foreground">No results found</div>}
+          {data.length > 0 && <Pagination />}
         </div>
       )}
 
@@ -633,7 +722,8 @@ export function TraderInsights() {
               </div>
             </div>
           ))}
-          <Pagination />
+          {displayedData.length === 0 && <div className="text-center py-8 text-muted-foreground">No results found</div>}
+          {data.length > 0 && <Pagination />}
         </div>
       )}
 
@@ -682,7 +772,8 @@ export function TraderInsights() {
               </div>
             </div>
           ))}
-          <Pagination />
+          {displayedData.length === 0 && <div className="text-center py-8 text-muted-foreground">No results found</div>}
+          {data.length > 0 && <Pagination />}
         </div>
       )}
 

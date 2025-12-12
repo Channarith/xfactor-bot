@@ -1,8 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { 
   RefreshCw, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, 
-  Minus, ExternalLink, Clock, Filter, Globe
+  Minus, Clock, Globe, Search, SortAsc, SortDesc, X
 } from 'lucide-react'
+import { 
+  useDataFilters, FilterBar, QuickFilters, 
+  type FieldDefinition, type FilterConfig 
+} from './DataFilters'
 
 interface NewsItem {
   id: string
@@ -22,7 +26,7 @@ interface NewsFeedProps {
   itemsPerPage?: number
 }
 
-// Generate more comprehensive mock news
+// Generate comprehensive mock news
 const generateMockNews = (count: number): NewsItem[] => {
   const tickers = ['NVDA', 'AAPL', 'MSFT', 'GOOGL', 'META', 'TSLA', 'AMZN', 'AMD', 'SPY', 'QQQ', 
                    'BABA', 'TSM', 'ASML', 'SAP', 'NVO', 'COIN', 'MSTR', 'PLTR', 'ARM', 'SMCI']
@@ -64,7 +68,6 @@ const generateMockNews = (count: number): NewsItem[] => {
     const minutesAgo = i * 3 + Math.floor(Math.random() * 5)
     const timestamp = new Date(now.getTime() - minutesAgo * 60000)
     
-    // Add some randomness to sentiment
     const sentimentVariance = (Math.random() - 0.5) * 0.2
     const sentiment = Math.max(-1, Math.min(1, template.sentiment + sentimentVariance))
 
@@ -84,20 +87,92 @@ const generateMockNews = (count: number): NewsItem[] => {
   return news.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
 }
 
+// Field definitions for filtering
+const newsFields: FieldDefinition[] = [
+  { key: 'ticker', label: 'Ticker', type: 'string', sortable: true, filterable: true },
+  { key: 'headline', label: 'Headline', type: 'string', sortable: false, filterable: true },
+  { key: 'sentiment', label: 'Sentiment', type: 'number', sortable: true, filterable: true },
+  { key: 'source', label: 'Source', type: 'string', sortable: true, filterable: true },
+  { 
+    key: 'category', 
+    label: 'Category', 
+    type: 'select', 
+    sortable: true, 
+    filterable: true,
+    options: [
+      { value: 'Earnings', label: 'Earnings' },
+      { value: 'M&A', label: 'M&A' },
+      { value: 'FDA', label: 'FDA' },
+      { value: 'Fed', label: 'Fed' },
+      { value: 'Macro', label: 'Macro' },
+      { value: 'Tech', label: 'Tech' },
+      { value: 'Crypto', label: 'Crypto' },
+      { value: 'Options Flow', label: 'Options Flow' },
+      { value: 'Insider', label: 'Insider' },
+      { value: 'Analyst', label: 'Analyst' },
+    ]
+  },
+  { 
+    key: 'region', 
+    label: 'Region', 
+    type: 'select', 
+    sortable: true, 
+    filterable: true,
+    options: [
+      { value: 'US', label: 'US' },
+      { value: 'EU', label: 'Europe' },
+      { value: 'Asia', label: 'Asia' },
+      { value: 'Global', label: 'Global' },
+    ]
+  },
+  { key: 'time', label: 'Time', type: 'string', sortable: true, filterable: false },
+]
+
+// Quick filter presets
+const quickFilterOptions = [
+  { label: '🟢 Bullish', filter: { field: 'sentiment', operator: 'gt' as const, value: 0.2 } },
+  { label: '🔴 Bearish', filter: { field: 'sentiment', operator: 'lt' as const, value: -0.2 } },
+  { label: '📊 Earnings', filter: { field: 'category', operator: 'eq' as const, value: 'Earnings' } },
+  { label: '🤝 M&A', filter: { field: 'category', operator: 'eq' as const, value: 'M&A' } },
+  { label: '💊 FDA', filter: { field: 'category', operator: 'eq' as const, value: 'FDA' } },
+  { label: '🏛️ Fed', filter: { field: 'category', operator: 'eq' as const, value: 'Fed' } },
+  { label: '🇺🇸 US', filter: { field: 'region', operator: 'eq' as const, value: 'US' } },
+  { label: '🇪🇺 EU', filter: { field: 'region', operator: 'eq' as const, value: 'EU' } },
+  { label: '🌏 Asia', filter: { field: 'region', operator: 'eq' as const, value: 'Asia' } },
+]
+
 export function NewsFeed({ maxItems = 100, itemsPerPage = 10 }: NewsFeedProps) {
   const [allNews, setAllNews] = useState<NewsItem[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const [loading, setLoading] = useState(false)
-  const [filter, setFilter] = useState<'all' | 'bullish' | 'bearish'>('all')
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
+
+  // Use the data filters hook
+  const {
+    filteredData,
+    searchQuery,
+    setSearchQuery,
+    sort,
+    toggleSort,
+    filters,
+    addFilter,
+    removeFilter,
+    clearFilters,
+    totalCount,
+    filteredCount
+  } = useDataFilters(allNews, newsFields)
 
   useEffect(() => {
     loadNews()
   }, [])
 
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, filters, sort])
+
   const loadNews = () => {
     setLoading(true)
-    // Simulate API call
     setTimeout(() => {
       setAllNews(generateMockNews(maxItems))
       setLastUpdate(new Date())
@@ -106,17 +181,10 @@ export function NewsFeed({ maxItems = 100, itemsPerPage = 10 }: NewsFeedProps) {
     }, 500)
   }
 
-  // Filter news
-  const filteredNews = allNews.filter(item => {
-    if (filter === 'bullish') return item.sentiment > 0.2
-    if (filter === 'bearish') return item.sentiment < -0.2
-    return true
-  })
-
   // Pagination
-  const totalPages = Math.ceil(filteredNews.length / itemsPerPage)
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
-  const displayedNews = filteredNews.slice(startIndex, startIndex + itemsPerPage)
+  const displayedNews = filteredData.slice(startIndex, startIndex + itemsPerPage)
 
   const getSentimentColor = (sentiment: number) => {
     if (sentiment > 0.3) return 'text-profit'
@@ -136,53 +204,56 @@ export function NewsFeed({ maxItems = 100, itemsPerPage = 10 }: NewsFeedProps) {
     return <Minus className="h-4 w-4 text-yellow-500" />
   }
 
+  const handleQuickFilter = (filter: FilterConfig) => {
+    const existingIndex = filters.findIndex(f => f.field === filter.field && f.value === filter.value)
+    if (existingIndex >= 0) {
+      removeFilter(existingIndex)
+    } else {
+      // Remove other filters on the same field for sentiment
+      const newFilters = filters.filter(f => f.field !== filter.field)
+      newFilters.forEach((_, i) => removeFilter(i))
+      addFilter(filter)
+    }
+  }
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
+      {/* Filter Bar */}
+      <FilterBar
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        sort={sort}
+        onSortChange={toggleSort}
+        filters={filters}
+        onRemoveFilter={removeFilter}
+        onClearAll={clearFilters}
+        fields={newsFields}
+        onAddFilter={addFilter}
+        totalCount={totalCount}
+        filteredCount={filteredCount}
+        placeholder="Search headlines, tickers, sources..."
+      />
+
+      {/* Quick Filters */}
+      <QuickFilters
+        options={quickFilterOptions}
+        activeFilters={filters}
+        onToggle={handleQuickFilter}
+      />
+
       {/* Header Controls */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          {/* Filter buttons */}
-          <div className="flex rounded-lg overflow-hidden border border-border">
-            <button
-              onClick={() => { setFilter('all'); setCurrentPage(1) }}
-              className={`px-3 py-1.5 text-xs transition-colors ${
-                filter === 'all' ? 'bg-xfactor-teal text-white' : 'bg-secondary hover:bg-secondary/80'
-              }`}
-            >
-              All ({allNews.length})
-            </button>
-            <button
-              onClick={() => { setFilter('bullish'); setCurrentPage(1) }}
-              className={`px-3 py-1.5 text-xs transition-colors border-l border-border ${
-                filter === 'bullish' ? 'bg-profit text-white' : 'bg-secondary hover:bg-secondary/80'
-              }`}
-            >
-              Bullish
-            </button>
-            <button
-              onClick={() => { setFilter('bearish'); setCurrentPage(1) }}
-              className={`px-3 py-1.5 text-xs transition-colors border-l border-border ${
-                filter === 'bearish' ? 'bg-loss text-white' : 'bg-secondary hover:bg-secondary/80'
-              }`}
-            >
-              Bearish
-            </button>
-          </div>
-          
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Globe className="h-3 w-3" />
-            <span>Global Sources</span>
-          </div>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Globe className="h-3 w-3" />
+          <span>Global Sources ({filteredCount} articles)</span>
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Last update */}
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <Clock className="h-3 w-3" />
             <span>Updated: {lastUpdate.toLocaleTimeString()}</span>
           </div>
           
-          {/* Refresh button */}
           <button
             onClick={loadNews}
             disabled={loading}
@@ -240,72 +311,80 @@ export function NewsFeed({ maxItems = 100, itemsPerPage = 10 }: NewsFeedProps) {
             </div>
           </div>
         ))}
+
+        {displayedNews.length === 0 && (
+          <div className="text-center py-8 text-muted-foreground">
+            No news matching your filters
+          </div>
+        )}
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between pt-2 border-t border-border">
-        <div className="text-sm text-muted-foreground">
-          Showing {startIndex + 1}-{Math.min(startIndex + itemsPerPage, filteredNews.length)} of {filteredNews.length} items
-        </div>
-        
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-            className="p-2 rounded-lg bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          
-          <div className="flex items-center gap-1">
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              let pageNum: number
-              if (totalPages <= 5) {
-                pageNum = i + 1
-              } else if (currentPage <= 3) {
-                pageNum = i + 1
-              } else if (currentPage >= totalPages - 2) {
-                pageNum = totalPages - 4 + i
-              } else {
-                pageNum = currentPage - 2 + i
-              }
-              
-              return (
-                <button
-                  key={pageNum}
-                  onClick={() => setCurrentPage(pageNum)}
-                  className={`w-8 h-8 rounded-lg text-sm transition-colors ${
-                    currentPage === pageNum
-                      ? 'bg-xfactor-teal text-white'
-                      : 'bg-secondary hover:bg-secondary/80'
-                  }`}
-                >
-                  {pageNum}
-                </button>
-              )
-            })}
-            {totalPages > 5 && currentPage < totalPages - 2 && (
-              <>
-                <span className="text-muted-foreground">...</span>
-                <button
-                  onClick={() => setCurrentPage(totalPages)}
-                  className="w-8 h-8 rounded-lg text-sm bg-secondary hover:bg-secondary/80 transition-colors"
-                >
-                  {totalPages}
-                </button>
-              </>
-            )}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-2 border-t border-border">
+          <div className="text-sm text-muted-foreground">
+            Showing {startIndex + 1}-{Math.min(startIndex + itemsPerPage, filteredData.length)} of {filteredData.length}
           </div>
           
-          <button
-            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-            className="p-2 rounded-lg bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="p-2 rounded-lg bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum: number
+                if (totalPages <= 5) {
+                  pageNum = i + 1
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i
+                } else {
+                  pageNum = currentPage - 2 + i
+                }
+                
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`w-8 h-8 rounded-lg text-sm transition-colors ${
+                      currentPage === pageNum
+                        ? 'bg-xfactor-teal text-white'
+                        : 'bg-secondary hover:bg-secondary/80'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                )
+              })}
+              {totalPages > 5 && currentPage < totalPages - 2 && (
+                <>
+                  <span className="text-muted-foreground">...</span>
+                  <button
+                    onClick={() => setCurrentPage(totalPages)}
+                    className="w-8 h-8 rounded-lg text-sm bg-secondary hover:bg-secondary/80 transition-colors"
+                  >
+                    {totalPages}
+                  </button>
+                </>
+              )}
+            </div>
+            
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="p-2 rounded-lg bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
