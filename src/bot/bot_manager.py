@@ -243,12 +243,71 @@ class BotManager:
 
 # Global bot manager instance
 _bot_manager: Optional[BotManager] = None
+_initialized: bool = False
+
+
+def _create_default_bots(manager: BotManager) -> None:
+    """Create default bot configurations."""
+    default_bots = [
+        BotConfig(
+            name="Tech Momentum",
+            description="Momentum trading on tech stocks",
+            symbols=["NVDA", "AMD", "TSLA", "META", "GOOGL"],
+            strategies=["Technical", "Momentum"],
+            max_position_size=25000,
+            max_positions=5,
+        ),
+        BotConfig(
+            name="ETF Swing Trader",
+            description="Swing trading on major ETFs",
+            symbols=["SPY", "QQQ", "IWM", "DIA"],
+            strategies=["Technical", "MeanReversion"],
+            max_position_size=30000,
+            max_positions=4,
+        ),
+        BotConfig(
+            name="News Sentiment Bot",
+            description="React to breaking news",
+            symbols=["AAPL", "MSFT", "AMZN", "NVDA"],
+            strategies=["NewsSentiment", "Momentum"],
+            max_position_size=20000,
+            max_positions=4,
+            enable_news_trading=True,
+        ),
+        BotConfig(
+            name="Mean Reversion",
+            description="Fade extreme moves",
+            symbols=["SPY", "QQQ", "XLF", "XLE"],
+            strategies=["MeanReversion"],
+            max_position_size=15000,
+            max_positions=4,
+        ),
+        BotConfig(
+            name="International ADR",
+            description="Trade international stocks",
+            symbols=["BABA", "TSM", "NVO", "ASML"],
+            strategies=["Technical", "NewsSentiment"],
+            max_position_size=20000,
+            max_positions=4,
+        ),
+    ]
+    
+    for config in default_bots:
+        manager.create_bot(config)
+    
+    logger.info(f"Created {len(default_bots)} default bots")
 
 
 def get_bot_manager() -> BotManager:
     """Get or create the global bot manager."""
-    global _bot_manager
+    global _bot_manager, _initialized
     if _bot_manager is None:
         _bot_manager = BotManager()
+    
+    # Initialize with default bots on first access
+    if not _initialized and _bot_manager.bot_count == 0:
+        _initialized = True
+        _create_default_bots(_bot_manager)
+    
     return _bot_manager
 
