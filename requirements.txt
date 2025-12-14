@@ -35,13 +35,15 @@ beautifulsoup4>=4.12.0
 playwright>=1.41.0
 feedparser>=6.0.10
 
-# NLP & Sentiment
-transformers>=4.37.0
-torch>=2.1.0
+# AI/LLM Providers (configurable in admin panel)
 openai>=1.10.0
+anthropic>=0.18.0
+
+# NLP & Sentiment (optional - for local processing)
+# transformers>=4.37.0  # Excluded from desktop build - use API instead
+# torch>=2.1.0          # Excluded from desktop build - use API instead
 langdetect>=1.0.9
 deep-translator>=1.11.4
-einops>=0.7.0
 
 # Document Parsing
 pypdf>=4.0.0

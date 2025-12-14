@@ -103,10 +103,14 @@ def main():
         "--collect-all", "idna",
         "--collect-all", "charset_normalizer",
         "--collect-all", "tenacity",
-        # AI/ML packages (large but needed)
-        "--collect-all", "torch",
-        "--collect-all", "transformers",
+        # AI/ML API clients (configurable via admin panel)
         "--collect-all", "openai",
+        "--collect-all", "anthropic",
+        # Exclude local ML frameworks (use API-based LLMs instead)
+        "--exclude-module", "torch",
+        "--exclude-module", "transformers",
+        "--exclude-module", "tensorflow",
+        "--exclude-module", "keras",
         # Exclude unused packages
         "--exclude-module", "tkinter",
         "--exclude-module", "matplotlib",
