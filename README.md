@@ -199,5 +199,4 @@ OPENAI_API_KEY=your_key
 Proprietary - Internal use only
 
 ## 👤 Author
-
-**cvanthin** - NVIDIA Corporation
+Chan
