@@ -30,19 +30,32 @@ def main():
         "--workpath", str(SCRIPT_DIR.parent / "build"),
         "--specpath", str(SCRIPT_DIR.parent / "build"),
         # Collect all submodules for all key packages
+        # Web framework
         "--collect-all", "uvicorn",
         "--collect-all", "fastapi",
         "--collect-all", "starlette",
         "--collect-all", "pydantic",
         "--collect-all", "pydantic_settings",
-        "--collect-all", "pandas_ta",
+        # HTTP/WebSocket clients
         "--collect-all", "httpx",
+        "--collect-all", "httpcore",
         "--collect-all", "websockets",
+        "--collect-all", "websocket",
         "--collect-all", "aiohttp",
+        "--collect-all", "requests",
+        "--collect-all", "urllib3",
+        # Data processing
         "--collect-all", "pandas",
+        "--collect-all", "pandas_ta",
         "--collect-all", "numpy",
-        "--collect-all", "yfinance",
-        "--collect-all", "scipy",
+        "--collect-all", "polars",
+        # Async
+        "--collect-all", "anyio",
+        "--collect-all", "sniffio",
+        # Other utilities
+        "--collect-all", "orjson",
+        "--collect-all", "python_dotenv",
+        "--collect-all", "loguru",
         # Exclude large unused packages
         "--exclude-module", "tkinter",
         "--exclude-module", "matplotlib",

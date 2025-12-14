@@ -9,15 +9,23 @@ import sys
 import logging
 
 # Explicit imports for PyInstaller to detect
+# Web framework
 import uvicorn
 import fastapi
 import starlette
 import pydantic
-import pandas
-import numpy
+# HTTP/WebSocket
 import httpx
+import httpcore
 import websockets
 import aiohttp
+import requests
+# Data
+import pandas
+import numpy
+# Async
+import anyio
+import sniffio
 
 # Setup logging
 logging.basicConfig(
