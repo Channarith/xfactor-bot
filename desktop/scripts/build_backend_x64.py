@@ -80,14 +80,16 @@ def main():
         "--collect-all", "dateutil",
         "--collect-all", "certifi",
         "--collect-all", "yaml",
-        # Exclude large unused packages
+        # AI/ML packages (large but needed)
+        "--collect-all", "torch",
+        "--collect-all", "transformers",
+        "--collect-all", "openai",
+        # Exclude unused packages
         "--exclude-module", "tkinter",
         "--exclude-module", "matplotlib",
         "--exclude-module", "PIL",
         "--exclude-module", "cv2",
-        "--exclude-module", "torch",
         "--exclude-module", "tensorflow",
-        "--exclude-module", "transformers",
         "--exclude-module", "keras",
         "--exclude-module", "jax",
         "--exclude-module", "flax",
@@ -95,6 +97,7 @@ def main():
         "--exclude-module", "IPython",
         "--exclude-module", "jupyter",
         "--exclude-module", "notebook",
+        "--exclude-module", "playwright",
         # Clean build
         "--clean",
         "--noconfirm",
