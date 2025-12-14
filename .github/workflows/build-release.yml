@@ -71,7 +71,7 @@ jobs:
 
   build-macos-intel:
     name: Build macOS Intel
-    runs-on: macos-15-large  # Intel runner (macOS 15)
+    runs-on: macos-13  # Intel runner (free tier, deprecated but still works)
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
