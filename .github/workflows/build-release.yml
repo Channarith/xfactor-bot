@@ -360,7 +360,12 @@ jobs:
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2
+          # Remove conflicting package if present
+          sudo apt-get remove -y libappindicator3-dev 2>/dev/null || true
+          # Install dependencies (without appindicator, let webkit pull what it needs)
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev patchelf libfuse2 libgtk-3-dev libssl-dev
+          # Try to install ayatana if available and not conflicting
+          sudo apt-get install -y libayatana-appindicator3-dev 2>/dev/null || true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
