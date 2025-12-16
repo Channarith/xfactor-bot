@@ -84,7 +84,14 @@ jobs:
       - name: Create DMG manually
         run: |
           cd desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos
-          hdiutil create -volname "XFactor Bot" -srcfolder "XFactor Bot.app" -ov -format UDZO "XFactor_Bot_0.9.6_aarch64.dmg"
+          # Wait for filesystem to settle
+          sleep 5
+          # Retry up to 3 times
+          for i in 1 2 3; do
+            hdiutil create -volname "XFactor Bot" -srcfolder "XFactor Bot.app" -ov -format UDZO "XFactor_Bot_0.9.6_aarch64.dmg" && break
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -157,7 +164,14 @@ jobs:
       - name: Create DMG manually
         run: |
           cd desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos
-          hdiutil create -volname "XFactor Bot" -srcfolder "XFactor Bot.app" -ov -format UDZO "XFactor_Bot_0.9.6_x64_legacy.dmg"
+          # Wait for filesystem to settle
+          sleep 5
+          # Retry up to 3 times
+          for i in 1 2 3; do
+            hdiutil create -volname "XFactor Bot" -srcfolder "XFactor Bot.app" -ov -format UDZO "XFactor_Bot_0.9.6_x64_legacy.dmg" && break
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -230,7 +244,14 @@ jobs:
       - name: Create DMG manually
         run: |
           cd desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos
-          hdiutil create -volname "XFactor Bot" -srcfolder "XFactor Bot.app" -ov -format UDZO "XFactor_Bot_0.9.6_x64_modern.dmg"
+          # Wait for filesystem to settle
+          sleep 5
+          # Retry up to 3 times
+          for i in 1 2 3; do
+            hdiutil create -volname "XFactor Bot" -srcfolder "XFactor Bot.app" -ov -format UDZO "XFactor_Bot_0.9.6_x64_modern.dmg" && break
+            echo "Attempt $i failed, retrying in 5s..."
+            sleep 5
+          done
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
