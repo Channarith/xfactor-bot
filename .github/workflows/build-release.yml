@@ -132,12 +132,28 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Check architecture
+        run: |
+          echo "Machine: $(uname -m)"
+          echo "Python arch: $(python -c 'import platform; print(platform.machine())')"
+          # If on ARM, install x86_64 Python via Rosetta
+          if [ "$(uname -m)" = "arm64" ]; then
+            echo "Running on ARM64, will use arch -x86_64 for Intel build"
+          fi
+
       - name: Build Python backend
         env:
           MACOSX_DEPLOYMENT_TARGET: '10.15'
         run: |
           cd desktop/scripts
-          python build_backend.py --target x86_64-apple-darwin
+          # Use arch -x86_64 to force Intel architecture if on ARM
+          if [ "$(uname -m)" = "arm64" ]; then
+            arch -x86_64 python build_backend.py
+          else
+            python build_backend.py
+          fi
+          # Verify binary was created
+          ls -la ../src-tauri/binaries/
 
       - name: Install frontend dependencies
         run: |
@@ -159,6 +175,7 @@ jobs:
           MACOSX_DEPLOYMENT_TARGET: '10.15'
         run: |
           cd desktop
+          # Build for x86_64
           npm run tauri build -- --target x86_64-apple-darwin --bundles app
 
       - name: Create DMG manually
@@ -212,12 +229,24 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Check architecture
+        run: |
+          echo "Machine: $(uname -m)"
+          echo "Python arch: $(python -c 'import platform; print(platform.machine())')"
+
       - name: Build Python backend
         env:
           MACOSX_DEPLOYMENT_TARGET: '14.0'
         run: |
           cd desktop/scripts
-          python build_backend.py --target x86_64-apple-darwin
+          # Use arch -x86_64 to force Intel architecture if on ARM
+          if [ "$(uname -m)" = "arm64" ]; then
+            arch -x86_64 python build_backend.py
+          else
+            python build_backend.py
+          fi
+          # Verify binary was created
+          ls -la ../src-tauri/binaries/
 
       - name: Install frontend dependencies
         run: |
