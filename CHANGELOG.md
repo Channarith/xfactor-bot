@@ -5,7 +5,30 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.5] - 2024-12-14
+## [0.9.6] - 2025-12-16
+
+### Added
+- **Help Modal**: In-app help with Features, Quick Start guide, and Changelog
+  - Version info display in header
+  - Searchable feature documentation
+- **ChromeOS Support**: Linux .deb build works on ChromeOS via Crostini
+
+### Changed
+- **Improved x64 Backend**: Rebuilt x64 backend with all dependencies properly bundled
+- **GitHub Actions**: Fixed Rust toolchain action (`dtolnay/rust-toolchain`)
+- **Manual DMG Creation**: Added fallback DMG creation using `hdiutil` when bundle script fails
+
+### Fixed
+- **Gatekeeper Blocking**: Documentation for fixing macOS security blocks on unsigned apps
+- **Backend Launch on Intel Mac**: Fixed backend binary bundling for x86_64 architecture
+- **Version Sync**: Cargo.toml now matches tauri.conf.json version
+
+### Notes
+- For Intel Macs: Run `sudo xattr -cr "/Applications/XFactor Bot.app"` after install
+- x64 DMG: 391MB (includes full Python runtime)
+- ARM64 DMG: 180MB (includes full Python runtime)
+
+## [0.9.5] - 2025-12-14
 
 ### Added
 - **Hypothesis Testing Framework**: Added `hypothesis>=6.0.0` for property-based testing

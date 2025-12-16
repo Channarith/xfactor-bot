@@ -6,8 +6,8 @@ interface HelpModalProps {
   onClose: () => void;
 }
 
-const VERSION = '0.9.5';
-const RELEASE_DATE = 'December 15, 2025';
+const VERSION = '0.9.6';
+const RELEASE_DATE = 'December 16, 2025';
 
 const features = [
   {
@@ -61,6 +61,17 @@ const quickStart = [
 ];
 
 const changelog = [
+  {
+    version: '0.9.6',
+    date: 'December 16, 2025',
+    changes: [
+      'Rebuilt x64 backend with all dependencies properly bundled',
+      'Fixed Gatekeeper blocking on Intel Macs',
+      'ChromeOS support via Linux .deb package',
+      'Manual DMG creation fallback for reliable builds',
+      'Version sync across all config files'
+    ]
+  },
   {
     version: '0.9.5',
     date: 'December 15, 2025',
