@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v0.9.5)'
+        description: 'Version tag (e.g., v0.9.6)'
         required: false
-        default: 'v0.9.5'
+        default: 'v0.9.6'
 
 permissions:
   contents: write  # Required to create releases
@@ -38,6 +38,8 @@ jobs:
           targets: aarch64-apple-darwin
 
       - name: Install Python dependencies
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '11.0'  # Big Sur compatibility
         run: |
           python -m pip install --upgrade pip
           # Install typing_extensions first (required by sqlalchemy during analysis)
@@ -51,6 +53,8 @@ jobs:
           pip install pyinstaller
 
       - name: Build Python backend
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '11.0'  # Big Sur compatibility
         run: |
           cd desktop/scripts
           python build_backend.py --target aarch64-apple-darwin
@@ -71,6 +75,8 @@ jobs:
           npm ci
 
       - name: Build Tauri app
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '11.0'
         run: |
           cd desktop
           npm run tauri build -- --target aarch64-apple-darwin --bundles app
@@ -78,7 +84,7 @@ jobs:
       - name: Create DMG manually
         run: |
           cd desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos
-          hdiutil create -volname "XFactor Bot" -srcfolder "XFactor Bot.app" -ov -format UDZO "XFactor_Bot_0.9.5_aarch64.dmg"
+          hdiutil create -volname "XFactor Bot" -srcfolder "XFactor Bot.app" -ov -format UDZO "XFactor_Bot_0.9.6_aarch64.dmg"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -109,6 +115,8 @@ jobs:
           targets: x86_64-apple-darwin
 
       - name: Install Python dependencies
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '10.15'  # Catalina compatibility for older Intel Macs
         run: |
           python -m pip install --upgrade pip
           # Install typing_extensions first (required by sqlalchemy during analysis)
@@ -122,6 +130,8 @@ jobs:
           pip install pyinstaller
 
       - name: Build Python backend
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '10.15'  # Catalina compatibility for older Intel Macs
         run: |
           cd desktop/scripts
           python build_backend.py --target x86_64-apple-darwin
@@ -142,6 +152,8 @@ jobs:
           npm ci
 
       - name: Build Tauri app
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '10.15'
         run: |
           cd desktop
           npm run tauri build -- --target x86_64-apple-darwin --bundles app
@@ -149,7 +161,7 @@ jobs:
       - name: Create DMG manually
         run: |
           cd desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos
-          hdiutil create -volname "XFactor Bot" -srcfolder "XFactor Bot.app" -ov -format UDZO "XFactor_Bot_0.9.5_x64.dmg"
+          hdiutil create -volname "XFactor Bot" -srcfolder "XFactor Bot.app" -ov -format UDZO "XFactor_Bot_0.9.6_x64.dmg"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
