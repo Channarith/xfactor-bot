@@ -24,6 +24,8 @@ function App() {
   const heartbeatInterval = useRef<ReturnType<typeof setInterval> | null>(null)
   const healthCheckInterval = useRef<ReturnType<typeof setInterval> | null>(null)
   const cleanupDone = useRef(false)
+  const isConnectedRef = useRef(false) // Ref to avoid dependency loops
+  const connectRef = useRef<() => void>(() => {}) // Stable reference to connect function
   
   // Reconnection config with rate limiting
   const RECONNECT_CONFIG = {
@@ -144,10 +146,18 @@ function App() {
     }
   }, [])
 
+  // Stop health check interval
+  const stopHealthCheck = useCallback(() => {
+    if (healthCheckInterval.current) {
+      clearInterval(healthCheckInterval.current)
+      healthCheckInterval.current = null
+    }
+  }, [])
+
   // Start health check interval when disconnected
   const startHealthCheck = useCallback(() => {
     // Don't start if already running or if we're connected
-    if (healthCheckInterval.current || connected) return
+    if (healthCheckInterval.current || isConnectedRef.current) return
     
     console.log(`Starting backend health check (every ${RECONNECT_CONFIG.healthCheckInterval / 1000}s)`)
     
@@ -155,7 +165,7 @@ function App() {
       if (isUnmounting.current) return
       
       const isHealthy = await checkBackendHealth()
-      if (isHealthy && !connected) {
+      if (isHealthy && !isConnectedRef.current) {
         console.log('Backend health check passed! Triggering reconnect...')
         // Reset attempts for faster reconnection
         reconnectAttempts.current = 0
@@ -166,23 +176,23 @@ function App() {
         }
         // Stop health check (will be restarted if disconnect happens again)
         stopHealthCheck()
-        // Reconnect immediately
-        connect()
+        // Reconnect immediately using the ref
+        connectRef.current()
       }
     }, RECONNECT_CONFIG.healthCheckInterval)
-  }, [connected, checkBackendHealth])
-
-  // Stop health check interval
-  const stopHealthCheck = useCallback(() => {
-    if (healthCheckInterval.current) {
-      clearInterval(healthCheckInterval.current)
-      healthCheckInterval.current = null
-    }
-  }, [])
+  }, [checkBackendHealth, stopHealthCheck])
 
   const connect = useCallback(() => {
     // Don't reconnect if unmounting
     if (isUnmounting.current) return
+    
+    // Prevent duplicate connections - if already connecting or connected, skip
+    if (wsRef.current && 
+        (wsRef.current.readyState === WebSocket.OPEN || 
+         wsRef.current.readyState === WebSocket.CONNECTING)) {
+      console.log('WebSocket already open or connecting, skipping duplicate connect')
+      return
+    }
     
     // Clean up existing connection
     if (wsRef.current) {
@@ -190,10 +200,7 @@ function App() {
       wsRef.current.onerror = null
       wsRef.current.onopen = null
       wsRef.current.onmessage = null
-      if (wsRef.current.readyState === WebSocket.OPEN || 
-          wsRef.current.readyState === WebSocket.CONNECTING) {
-        wsRef.current.close()
-      }
+      wsRef.current.close()
       wsRef.current = null
     }
     
@@ -207,6 +214,7 @@ function App() {
     
     try {
       const wsUrl = `${getWsBaseUrl()}/ws`
+      console.log('Connecting WebSocket to:', wsUrl)
       
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
@@ -221,7 +229,8 @@ function App() {
       
       ws.onopen = () => {
         clearTimeout(connectionTimeout)
-        console.log('WebSocket connected')
+        console.log('WebSocket connected successfully')
+        isConnectedRef.current = true
         setConnected(true)
         setWsState('connected')
         reconnectAttempts.current = 0
@@ -256,6 +265,7 @@ function App() {
         }
         
         console.log(`WebSocket closed: code=${event.code}, reason=${event.reason || 'none'}, clean=${event.wasClean}`)
+        isConnectedRef.current = false
         setConnected(false)
         setWsState('disconnected')
         wsRef.current = null
@@ -276,7 +286,7 @@ function App() {
           console.log(`Reconnecting in ${Math.round(delay/1000)}s (attempt ${reconnectAttempts.current})`)
         }
         
-        reconnectTimeoutRef.current = setTimeout(connect, delay)
+        reconnectTimeoutRef.current = setTimeout(() => connectRef.current(), delay)
       }
       
       ws.onerror = (error) => {
@@ -311,15 +321,23 @@ function App() {
       if (!isUnmounting.current) {
         reconnectAttempts.current++
         const delay = getReconnectDelay()
-        reconnectTimeoutRef.current = setTimeout(connect, delay)
+        reconnectTimeoutRef.current = setTimeout(() => connectRef.current(), delay)
       }
     }
   }, [getReconnectDelay, startHealthCheck, stopHealthCheck])
+  
+  // Keep the connectRef up to date
+  useEffect(() => {
+    connectRef.current = connect
+  }, [connect])
 
+  // Main effect - runs only once on mount
   useEffect(() => {
     isUnmounting.current = false
     cleanupDone.current = false
-    connect()
+    
+    // Initial connection
+    connectRef.current()
     
     // Reconnect on visibility change (tab becomes visible again)
     const handleVisibilityChange = () => {
@@ -327,7 +345,7 @@ function App() {
         console.log('Tab visible, checking WebSocket connection...')
         if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
           reconnectAttempts.current = 0
-          connect()
+          connectRef.current()
         }
       }
     }
@@ -336,11 +354,11 @@ function App() {
     const handleOnline = () => {
       console.log('Network online, reconnecting WebSocket...')
       reconnectAttempts.current = 0
-      connect()
+      connectRef.current()
     }
     
     // Handle browser/tab close - HARD cleanup (kills backend)
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+    const handleBeforeUnload = () => {
       console.log('[App] Browser/tab closing - triggering hard cleanup')
       performHardCleanup('browser/tab close')
     }
@@ -384,7 +402,8 @@ function App() {
       console.log('[App] Component unmounting - soft cleanup only (keeping backend alive)')
       performSoftCleanup()
     }
-  }, [connect, performHardCleanup, performSoftCleanup])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Empty deps - runs only once, uses refs for latest values
 
   return (
     <DemoModeProvider>
