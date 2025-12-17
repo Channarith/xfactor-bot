@@ -20,7 +20,7 @@ from src.bot.agentic_tuner import (
     ScoringWeights,
     PruningConfig,
 )
-from src.bot.bot_manager import bot_manager
+from src.bot.bot_manager import get_bot_manager
 
 
 router = APIRouter(prefix="/api/agentic-tuning", tags=["Agentic Tuning"])
@@ -76,16 +76,17 @@ class StartTuningRequest(BaseModel):
 def _ensure_tuner_initialized():
     """Ensure the agentic tuner is initialized with bot manager."""
     tuner = get_agentic_tuner()
+    bot_mgr = get_bot_manager()
     
     if tuner._get_all_bots is None:
         # Initialize with bot manager callbacks
         async def stop_bot(bot_id: str):
-            return await bot_manager.stop_bot(bot_id)
+            return await bot_mgr.stop_bot(bot_id)
         
         initialize_agentic_tuner(
-            get_all_bots=bot_manager.get_all_bots,
+            get_all_bots=bot_mgr.get_all_bots,
             stop_bot=stop_bot,
-            delete_bot=bot_manager.delete_bot,
+            delete_bot=bot_mgr.delete_bot,
         )
     
     return get_agentic_tuner()

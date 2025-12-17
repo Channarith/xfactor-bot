@@ -36,10 +36,11 @@ async def cleanup_all_resources():
     
     # Stop all bots
     try:
-        from src.bot.bot_manager import bot_manager
-        if bot_manager:
+        from src.bot.bot_manager import get_bot_manager
+        bot_mgr = get_bot_manager()
+        if bot_mgr:
             logger.info("Stopping all trading bots...")
-            await bot_manager.stop_all_bots()
+            await bot_mgr.stop_all_bots()
             logger.info("All bots stopped")
     except Exception as e:
         logger.warning(f"Error stopping bots: {e}")
@@ -84,7 +85,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     # Startup
     # Initialize bot manager
     try:
-        from src.bot.bot_manager import bot_manager
+        from src.bot.bot_manager import get_bot_manager
+        _bot_mgr = get_bot_manager()  # Initialize the singleton
         logger.info("Bot manager initialized")
     except Exception as e:
         logger.warning(f"Bot manager initialization: {e}")

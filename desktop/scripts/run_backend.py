@@ -69,17 +69,18 @@ def cleanup_resources():
     
     # Stop all running bots
     try:
-        from src.bot.bot_manager import bot_manager
-        if bot_manager:
+        from src.bot.bot_manager import get_bot_manager
+        bot_mgr = get_bot_manager()
+        if bot_mgr:
             logger.info("Stopping all bots...")
             # Use sync version if available
-            if hasattr(bot_manager, 'stop_all_bots_sync'):
-                bot_manager.stop_all_bots_sync()
+            if hasattr(bot_mgr, 'stop_all_bots_sync'):
+                bot_mgr.stop_all_bots_sync()
             else:
                 # Force stop without async
-                for bot_id in list(bot_manager.bots.keys()):
+                for bot_id in list(bot_mgr.bots.keys()):
                     try:
-                        bot = bot_manager.bots.get(bot_id)
+                        bot = bot_mgr.bots.get(bot_id)
                         if bot and bot.running:
                             bot.running = False
                             logger.info(f"Stopped bot: {bot_id}")
