@@ -6,7 +6,7 @@ interface HelpModalProps {
   onClose: () => void;
 }
 
-const VERSION = '0.9.6';
+const VERSION = '0.9.7';
 const RELEASE_DATE = 'December 16, 2025';
 
 const features = [
@@ -61,6 +61,18 @@ const quickStart = [
 ];
 
 const changelog = [
+  {
+    version: '0.9.7',
+    date: 'December 16, 2025',
+    changes: [
+      'Offline admin login - works even when backend is down',
+      'Enhanced debug logging for "Failed to fetch bots" errors',
+      'Fixed CSP to allow 127.0.0.1 connections in desktop app',
+      'Improved API URL handling for Tauri desktop',
+      'Added agentic tuning algorithm (ATRWAC) for bot optimization',
+      'Zombie process cleanup scripts for macOS/Linux/Windows'
+    ]
+  },
   {
     version: '0.9.6',
     date: 'December 16, 2025',

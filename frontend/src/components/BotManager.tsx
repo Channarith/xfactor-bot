@@ -7,6 +7,7 @@ import {
   Lock, ShieldAlert, LineChart
 } from 'lucide-react'
 import { BotPerformanceChart } from './BotPerformanceChart'
+import { getApiBaseUrl } from '../config/api'
 
 interface BotSummary {
   id: string
@@ -165,11 +166,52 @@ export function BotManager({ token = '' }: BotManagerProps) {
 
   const fetchBots = async () => {
     try {
-      const response = await fetch('/api/bots/summary')
-      const data = await response.json()
-      setBots(data.bots || [])
+      // Use explicit URL for desktop app compatibility
+      const baseUrl = getApiBaseUrl();
+      const url = baseUrl ? `${baseUrl}/api/bots/summary` : '/api/bots/summary';
+      
+      console.log('[BotManager] === FETCH BOTS DEBUG ===');
+      console.log('[BotManager] Base URL:', baseUrl || '(relative)');
+      console.log('[BotManager] Full URL:', url);
+      console.log('[BotManager] Window location:', window.location.href);
+      console.log('[BotManager] Is Tauri?:', typeof window !== 'undefined' && (window.hasOwnProperty('__TAURI__') || window.hasOwnProperty('__TAURI_INTERNALS__')));
+      
+      const response = await fetch(url);
+      
+      console.log('[BotManager] Response status:', response.status, response.statusText);
+      console.log('[BotManager] Response headers:', Object.fromEntries(response.headers.entries()));
+      
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => 'Could not read response body');
+        console.error('[BotManager] Error response body:', errorBody);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('[BotManager] Fetched', data.bots?.length || 0, 'bots successfully');
+      setBots(data.bots || []);
+      setError(''); // Clear any previous errors
     } catch (e) {
-      setError('Failed to fetch bots')
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+      const errorStack = e instanceof Error ? e.stack : '';
+      
+      console.error('[BotManager] === FETCH BOTS ERROR ===');
+      console.error('[BotManager] Error type:', e?.constructor?.name);
+      console.error('[BotManager] Error message:', errorMessage);
+      console.error('[BotManager] Error stack:', errorStack);
+      console.error('[BotManager] Is network error?:', errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('Failed to fetch'));
+      
+      // Check if backend is reachable at all
+      try {
+        const healthUrl = getApiBaseUrl() ? `${getApiBaseUrl()}/health` : '/health';
+        console.log('[BotManager] Checking backend health at:', healthUrl);
+        const healthResponse = await fetch(healthUrl);
+        console.log('[BotManager] Health check status:', healthResponse.status);
+      } catch (healthError) {
+        console.error('[BotManager] Health check also failed - backend is unreachable');
+      }
+      
+      setError(`Failed to fetch bots: ${errorMessage}`);
     }
   }
 

@@ -7,9 +7,14 @@ declare global {
   }
 }
 
+// Version branding
+export type ProductEdition = 'XFactor-botMax' | 'XFactor-botMin';
+
 interface DemoModeContextType {
   isDemoMode: boolean;
   isUnlocked: boolean;
+  edition: ProductEdition;
+  editionLabel: string;
   unlock: (password: string) => boolean;
   lock: () => void;
 }
@@ -22,7 +27,7 @@ const checkDemoMode = (): boolean => {
   // 1. VITE_DEMO_MODE env var is set to 'true'
   // 2. Or running from NVIDIA GitLab (gitlab-master.nvidia.com)
   // 3. Or running from any GitLab instance
-  const envDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
+  const envDemoMode = (import.meta as any).env?.VITE_DEMO_MODE === 'true';
   
   const hostname = window.location.hostname;
   
@@ -56,6 +61,14 @@ const UNLOCK_PASSWORD = 'xfactor2025';
 export function DemoModeProvider({ children }: { children: ReactNode }) {
   const [isDemoMode] = useState(checkDemoMode);
   const [isUnlocked, setIsUnlocked] = useState(false);
+  
+  // Determine edition based on demo mode
+  // XFactor-botMax: Full features (GitHub, localhost, desktop app)
+  // XFactor-botMin: Restricted features (GitLab deployments)
+  const edition: ProductEdition = isDemoMode ? 'XFactor-botMin' : 'XFactor-botMax';
+  const editionLabel = isDemoMode 
+    ? 'XFactor-botMin (Restricted)' 
+    : 'XFactor-botMax (Full Features)';
 
   // Check for stored unlock state
   useEffect(() => {
@@ -80,7 +93,7 @@ export function DemoModeProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <DemoModeContext.Provider value={{ isDemoMode, isUnlocked, unlock, lock }}>
+    <DemoModeContext.Provider value={{ isDemoMode, isUnlocked, edition, editionLabel, unlock, lock }}>
       {children}
     </DemoModeContext.Provider>
   );

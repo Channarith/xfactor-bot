@@ -11,7 +11,8 @@ import {
   Users,
   Gem,
   Coins,
-  DollarSign
+  DollarSign,
+  Brain
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { PortfolioCard } from './PortfolioCard'
@@ -27,6 +28,7 @@ import { TraderInsights } from './TraderInsights'
 import CommodityPanel from './CommodityPanel'
 import { CryptoPanel } from './CryptoPanel'
 import { FeeTracker } from './FeeTracker'
+import AgenticTuning from './AgenticTuning'
 
 export function Dashboard() {
   // Portfolio data - will be populated when broker is connected
@@ -116,6 +118,15 @@ export function Dashboard() {
             defaultExpanded={true}
           >
             <BotManagerInner />
+          </CollapsiblePanel>
+          
+          <CollapsiblePanel 
+            title="Agentic Tuning" 
+            icon={<Brain className="h-5 w-5" />}
+            badge="ATRWAC"
+            defaultExpanded={false}
+          >
+            <AgenticTuning />
           </CollapsiblePanel>
           
           <CollapsiblePanel 

@@ -1,12 +1,17 @@
 """
 FastAPI application for XFactor Bot Control Panel.
 XFactor Bot - AI-Powered Automated Trading System
+
+Versions:
+- XFactor-botMax: Full features (GitHub, localhost, desktop)
+- XFactor-botMin: Restricted features (GitLab deployments)
 """
 
 import os
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Set
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,19 +26,75 @@ from src.monitoring.metrics import MetricsCollector
 # Global instances (initialized in lifespan)
 metrics = MetricsCollector()
 
+# Track active WebSocket connections for cleanup
+active_websockets: Set[WebSocket] = set()
+
+
+async def cleanup_all_resources():
+    """Clean up all resources on shutdown."""
+    logger.info("Cleaning up all resources...")
+    
+    # Stop all bots
+    try:
+        from src.bot.bot_manager import bot_manager
+        if bot_manager:
+            logger.info("Stopping all trading bots...")
+            await bot_manager.stop_all_bots()
+            logger.info("All bots stopped")
+    except Exception as e:
+        logger.warning(f"Error stopping bots: {e}")
+    
+    # Close all WebSocket connections
+    logger.info(f"Closing {len(active_websockets)} WebSocket connections...")
+    for ws in list(active_websockets):
+        try:
+            await ws.close(code=1001, reason="Server shutting down")
+        except Exception:
+            pass
+    active_websockets.clear()
+    
+    # Close database connections
+    try:
+        from src.config.database import close_db_connections
+        await close_db_connections()
+    except Exception as e:
+        logger.warning(f"Error closing database: {e}")
+    
+    # Close any broker connections
+    try:
+        from src.brokers.ibkr_client import ibkr_client
+        if ibkr_client and ibkr_client.connected:
+            await ibkr_client.disconnect()
+            logger.info("Broker connection closed")
+    except Exception as e:
+        logger.warning(f"Error closing broker: {e}")
+    
+    logger.info("All resources cleaned up")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     """Application lifespan manager."""
+    logger.info("=" * 60)
     logger.info("🚀 Starting XFactor Bot API...")
+    logger.info(f"   Version: XFactor-botMax")
+    logger.info(f"   PID: {os.getpid()}")
+    logger.info("=" * 60)
     
     # Startup
-    # TODO: Initialize connections here
+    # Initialize bot manager
+    try:
+        from src.bot.bot_manager import bot_manager
+        logger.info("Bot manager initialized")
+    except Exception as e:
+        logger.warning(f"Bot manager initialization: {e}")
     
     yield
     
-    # Shutdown
+    # Shutdown - clean up all resources
     logger.info("👋 Shutting down XFactor Bot API...")
+    await cleanup_all_resources()
+    logger.info("XFactor Bot API shutdown complete")
 
 
 def create_app() -> FastAPI:
@@ -66,7 +127,7 @@ def create_app() -> FastAPI:
     )
     
     # Include routers
-    from src.api.routes import config, positions, orders, risk, news, admin, bots, ai, integrations, commodities, crypto, fees, symbols, seasonal, optimizer, performance
+    from src.api.routes import config, positions, orders, risk, news, admin, bots, ai, integrations, commodities, crypto, fees, symbols, seasonal, optimizer, performance, agentic_tuning
     
     app.include_router(config.router, prefix="/api/config", tags=["Config"])
     app.include_router(positions.router, prefix="/api/positions", tags=["Positions"])
@@ -84,6 +145,7 @@ def create_app() -> FastAPI:
     app.include_router(seasonal.router, tags=["Seasonal"])  # Seasonal events calendar
     app.include_router(optimizer.router, tags=["Auto-Optimizer"])  # Bot auto-optimization
     app.include_router(performance.router, tags=["Performance"])  # Performance charts & metrics
+    app.include_router(agentic_tuning.router, tags=["Agentic Tuning"])  # ATRWAC - Bot pruning & optimization
     
     @app.get("/api")
     async def api_root():
@@ -104,7 +166,8 @@ def create_app() -> FastAPI:
     async def websocket_endpoint(websocket: WebSocket):
         """WebSocket endpoint for real-time updates."""
         await websocket.accept()
-        logger.info("WebSocket client connected")
+        active_websockets.add(websocket)
+        logger.info(f"WebSocket client connected (total: {len(active_websockets)})")
         
         try:
             while True:
@@ -117,10 +180,18 @@ def create_app() -> FastAPI:
                     logger.debug(f"Client subscribed to {channel}")
                     await websocket.send_json({"type": "subscribed", "channel": channel})
                 
+                # Handle cleanup request from frontend
+                elif data.get("type") == "cleanup":
+                    logger.info("Cleanup request received from frontend")
+                    await websocket.send_json({"type": "cleanup_ack", "status": "received"})
+                
         except WebSocketDisconnect:
             logger.info("WebSocket client disconnected")
         except Exception as e:
             logger.error(f"WebSocket error: {e}")
+        finally:
+            active_websockets.discard(websocket)
+            logger.info(f"WebSocket removed (remaining: {len(active_websockets)})")
     
     # Serve static frontend files
     frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"

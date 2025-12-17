@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Lock, Unlock, Power, AlertTriangle, Check, X, Eye, EyeOff, Bot, Building2 } from 'lucide-react'
+import { Lock, Unlock, Power, AlertTriangle, Check, X, Eye, EyeOff, Bot, Building2, WifiOff } from 'lucide-react'
 import { BotManager } from './BotManager'
 import { BrokerConfig } from './BrokerConfig'
 import { useAuth } from '../context/AuthContext'
@@ -17,7 +17,7 @@ interface GroupedFeatures {
 }
 
 export function AdminPanel() {
-  const { token, isAuthenticated, login: authLogin, logout: authLogout } = useAuth()
+  const { token, isAuthenticated, isOfflineMode, login: authLogin, logout: authLogout } = useAuth()
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
@@ -53,6 +53,12 @@ export function AdminPanel() {
   }
 
   const fetchFeatures = async (authToken: string) => {
+    // Skip fetching if in offline mode - features won't be available
+    if (authToken.startsWith('offline_')) {
+      console.log('[AdminPanel] Offline mode - skipping features fetch')
+      return
+    }
+    
     try {
       const response = await fetch('/api/admin/features', {
         headers: { Authorization: `Bearer ${authToken}` },
@@ -61,7 +67,11 @@ export function AdminPanel() {
       const data = await response.json()
       setFeatures(data.grouped || {})
     } catch (e) {
-      setError('Failed to load features')
+      console.warn('[AdminPanel] Failed to load features (backend may be down):', e)
+      // Don't show error in offline mode
+      if (!isOfflineMode) {
+        setError('Failed to load features - backend may be unavailable')
+      }
     }
   }
 
@@ -178,6 +188,12 @@ export function AdminPanel() {
           >
             {loading ? 'Logging in...' : 'Login'}
           </button>
+          
+          {/* Offline mode hint */}
+          <p className="text-xs text-muted-foreground text-center mt-2">
+            <WifiOff className="h-3 w-3 inline mr-1" />
+            Works offline - login available even when backend is down
+          </p>
         </div>
       </div>
     )
@@ -189,6 +205,12 @@ export function AdminPanel() {
         <div className="flex items-center gap-2">
           <Unlock className="h-5 w-5 text-profit" />
           <h2 className="text-lg font-semibold">Admin Panel</h2>
+          {isOfflineMode && (
+            <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+              <WifiOff className="h-3 w-3" />
+              Offline Mode
+            </span>
+          )}
         </div>
         <button
           onClick={logout}
@@ -252,6 +274,20 @@ export function AdminPanel() {
       {/* Features Tab */}
       {activeTab === 'features' && (
         <>
+      {/* Offline Mode Warning */}
+      {isOfflineMode && (
+        <div className="mb-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+          <div className="flex items-center gap-2">
+            <WifiOff className="h-4 w-4 text-yellow-400" />
+            <span className="text-sm font-medium text-yellow-400">Offline Mode</span>
+          </div>
+          <p className="text-xs text-yellow-400/80 mt-1">
+            Backend is unavailable. Feature toggles and some controls may not work. 
+            You can still browse the UI and configure settings that will apply when connection is restored.
+          </p>
+        </div>
+      )}
+      
       {/* Emergency Controls */}
       <div className="mb-6 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
         <div className="flex items-center gap-2 mb-2">

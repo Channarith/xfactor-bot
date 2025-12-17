@@ -6,10 +6,13 @@ import { AuthProvider } from './context/AuthContext'
 import { TradingModeProvider } from './context/TradingModeContext'
 import { DemoModeProvider } from './contexts/DemoModeContext'
 import DemoModeBanner from './components/DemoModeBanner'
-import { getWsBaseUrl } from './config/api'
+import { getWsBaseUrl, getApiBaseUrl } from './config/api'
 
 // WebSocket connection states
 type WSState = 'connecting' | 'connected' | 'disconnected' | 'error'
+
+// Check if running in Tauri desktop app
+const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI__
 
 function App() {
   const [connected, setConnected] = useState(false)
@@ -20,6 +23,66 @@ function App() {
   const maxReconnectAttempts = 10
   const isUnmounting = useRef(false)
   const heartbeatInterval = useRef<ReturnType<typeof setInterval> | null>(null)
+  const cleanupDone = useRef(false)
+
+  // Cleanup function for graceful shutdown
+  const performCleanup = useCallback(async () => {
+    if (cleanupDone.current) return
+    cleanupDone.current = true
+    
+    console.log('Performing cleanup before exit...')
+    
+    // Send cleanup signal via WebSocket if connected
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.send(JSON.stringify({ type: 'cleanup' }))
+      } catch (e) {
+        console.warn('Failed to send cleanup signal:', e)
+      }
+    }
+    
+    // Stop all bots via API
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/bots/stop-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      if (response.ok) {
+        console.log('All bots stopped successfully')
+      }
+    } catch (e) {
+      console.warn('Failed to stop bots:', e)
+    }
+    
+    // Close WebSocket cleanly
+    if (wsRef.current) {
+      wsRef.current.close(1000, 'Application closing')
+      wsRef.current = null
+    }
+    
+    // Clear intervals
+    if (heartbeatInterval.current) {
+      clearInterval(heartbeatInterval.current)
+      heartbeatInterval.current = null
+    }
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
+    
+    // If in Tauri, invoke force cleanup
+    if (isTauri) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        await invoke('force_cleanup')
+        console.log('Tauri cleanup completed')
+      } catch (e) {
+        console.warn('Tauri cleanup failed:', e)
+      }
+    }
+    
+    console.log('Cleanup completed')
+  }, [])
 
   // Exponential backoff for reconnection
   const getReconnectDelay = useCallback(() => {
@@ -160,6 +223,7 @@ function App() {
 
   useEffect(() => {
     isUnmounting.current = false
+    cleanupDone.current = false
     connect()
     
     // Reconnect on visibility change (tab becomes visible again)
@@ -180,13 +244,48 @@ function App() {
       connect()
     }
     
+    // Handle browser/tab close
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Synchronous cleanup for browser close
+      performCleanup()
+      // Optional: Show confirmation dialog (most browsers ignore this now)
+      // e.preventDefault()
+      // e.returnValue = ''
+    }
+    
+    // Handle Tauri window close events
+    let unlistenTauriClose: (() => void) | null = null
+    if (isTauri) {
+      import('@tauri-apps/api/event').then(({ listen }) => {
+        // Listen for window close request
+        listen('tauri://close-requested', async () => {
+          console.log('Tauri window close requested')
+          await performCleanup()
+        }).then(unlisten => {
+          unlistenTauriClose = unlisten
+        })
+        
+        // Listen for kill switch from menu
+        listen('kill-switch', async () => {
+          console.log('Kill switch activated!')
+          await performCleanup()
+        })
+      }).catch(console.error)
+    }
+    
     document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener('online', handleOnline)
+    window.addEventListener('beforeunload', handleBeforeUnload)
     
     return () => {
       isUnmounting.current = true
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('online', handleOnline)
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      
+      if (unlistenTauriClose) {
+        unlistenTauriClose()
+      }
       
       if (heartbeatInterval.current) {
         clearInterval(heartbeatInterval.current)
@@ -197,8 +296,11 @@ function App() {
       if (wsRef.current) {
         wsRef.current.close(1000, 'Component unmounting')
       }
+      
+      // Final cleanup on unmount
+      performCleanup()
     }
-  }, [connect])
+  }, [connect, performCleanup])
 
   return (
     <DemoModeProvider>

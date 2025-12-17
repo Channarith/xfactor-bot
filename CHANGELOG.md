@@ -5,6 +5,32 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.7] - 2025-12-16
+
+### Added
+- **Offline Admin Login**: Admin panel now works even when backend is down
+  - Fallback authentication with local password
+  - "Offline Mode" indicator in admin panel header
+  - Login hint showing offline capability
+- **Enhanced Debug Logging**: Detailed console logging for bot fetch errors
+  - Full URL, headers, and response info logged
+  - Health check on error to diagnose connectivity
+  - Stack traces for debugging
+- **Agentic Tuning (ATRWAC)**: Algorithm for optimizing trading bot fleet
+- **Zombie Process Cleanup**: Scripts for macOS/Linux/Windows
+
+### Changed
+- **API URL Handling**: Improved `apiUrl` helper and fetch patching for Tauri desktop
+- **BotManager**: Uses `apiUrl` helper consistently for all API calls
+
+### Fixed
+- **CSP Policy**: Added `127.0.0.1` to Content Security Policy for desktop app
+- **Backend Detection**: Improved search for backend binary in multiple locations
+  - Now searches MacOS dir, Resources, binaries subfolder, app data dir, and exe dir
+  - Tries multiple binary names (with/without architecture suffix)
+- **"Failed to fetch bots" on legacy Mac**: Better error diagnostics
+- **Admin panel accessibility**: Always accessible regardless of backend status
+
 ## [0.9.6] - 2025-12-16
 
 ### Added

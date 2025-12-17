@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "XFactor Bot",
-  "version": "0.9.6",
+  "version": "0.9.7",
   "identifier": "com.xfactor.trading",
   "build": {
     "frontendDist": "../../frontend/dist",
@@ -28,7 +28,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://localhost:* ws://localhost:* https://*.coingecko.com https://*.yahoo.com"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* https://*.coingecko.com https://*.yahoo.com"
     },
     "trayIcon": {
       "iconPath": "icons/icon.png",

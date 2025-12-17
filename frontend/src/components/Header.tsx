@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Pause, Power, Play, Lock, ShieldAlert, HelpCircle } from 'lucide-react'
+import { Pause, Power, Play, Lock, ShieldAlert, HelpCircle, Sparkles, Shield } from 'lucide-react'
 import { TradingModeSelector } from './TradingModeSelector'
 import { useAuth } from '../context/AuthContext'
+import { useDemoMode } from '../contexts/DemoModeContext'
 import HelpModal from './HelpModal'
 
 type WSState = 'connecting' | 'connected' | 'disconnected' | 'error'
@@ -13,6 +14,7 @@ interface HeaderProps {
 
 export function Header({ connected, wsState = 'disconnected' }: HeaderProps) {
   const { isAuthenticated, token } = useAuth()
+  const { edition, isDemoMode, isUnlocked } = useDemoMode()
   const [logoError, setLogoError] = useState(false)
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [showHelpModal, setShowHelpModal] = useState(false)
@@ -85,11 +87,27 @@ export function Header({ connected, wsState = 'disconnected' }: HeaderProps) {
               </div>
             )}
             <div className="flex flex-col">
-              <h1 className="text-lg font-bold xfactor-title tracking-wide">
-                THE XFACTOR BOT
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-bold xfactor-title tracking-wide">
+                  THE XFACTOR BOT
+                </h1>
+                {/* Edition Badge */}
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                  edition === 'XFactor-botMax' 
+                    ? 'bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-400 border border-emerald-500/30'
+                    : isDemoMode && !isUnlocked
+                      ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                      : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                }`}>
+                  {edition === 'XFactor-botMax' ? (
+                    <><Sparkles className="h-3 w-3" /> MAX</>
+                  ) : (
+                    <><Shield className="h-3 w-3" /> MIN</>
+                  )}
+                </span>
+              </div>
               <span className="text-xs text-muted-foreground">
-                AI-Powered Trading System
+                AI-Powered Trading System {edition === 'XFactor-botMax' ? '• Full Features' : '• Restricted Mode'}
               </span>
             </div>
             
