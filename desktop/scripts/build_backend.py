@@ -105,7 +105,6 @@ def main():
         # Collect all submodules for all key packages
         # Web framework
         "--collect-all", "uvicorn",
-        "--collect-all", "uvloop",
         "--collect-all", "fastapi",
         "--collect-all", "starlette",
         "--collect-all", "pydantic",
@@ -208,9 +207,25 @@ def main():
         str(SCRIPT_DIR / "run_backend.py"),
     ]
     
-    # Add console flag for Windows
-    if platform.system() != "Windows":
+    # Platform-specific exclusions
+    if platform.system() == "Windows":
+        # uvloop is Unix-only
+        cmd.extend(["--exclude-module", "uvloop"])
+        # psycopg2-binary has issues on Windows, use psycopg2 or skip
+        cmd.extend(["--exclude-module", "psycopg2"])
+        print("[INFO] Windows build - excluding uvloop, psycopg2")
+    else:
+        # Include uvloop on Unix for better performance
+        cmd.extend(["--collect-all", "uvloop"])
         cmd.insert(3, "--windowed")  # No console on macOS/Linux
+    
+    # Linux-specific
+    if platform.system() == "Linux":
+        # Exclude X11/GUI packages not needed for server
+        cmd.extend(["--exclude-module", "PyQt5"])
+        cmd.extend(["--exclude-module", "PyQt6"])
+        cmd.extend(["--exclude-module", "PySide6"])
+        print("[INFO] Linux build - excluding GUI packages")
     
     print(f"\nRunning: {' '.join(cmd[:10])}...")
     

@@ -71,64 +71,120 @@ fn kill_zombie_backends() {
     
     #[cfg(unix)]
     {
-        // Find and kill any running xfactor-backend processes
-        if let Ok(output) = Command::new("pgrep")
+        // Method 1: Try pgrep (common on most Unix systems)
+        let pgrep_result = Command::new("pgrep")
             .args(["-f", "xfactor-backend"])
-            .output()
-        {
-            let pids = String::from_utf8_lossy(&output.stdout);
-            for pid in pids.lines() {
-                if let Ok(pid_num) = pid.trim().parse::<u32>() {
-                    log::info!("Killing backend process: {}", pid_num);
-                    let _ = Command::new("kill")
-                        .args(["-9", &pid_num.to_string()])
-                        .output();
-                }
-            }
-        }
-        
-        // Also check for uvicorn processes on port 9876
-        if let Ok(output) = Command::new("lsof")
-            .args(["-ti", ":9876"])
-            .output()
-        {
-            let pids = String::from_utf8_lossy(&output.stdout);
-            for pid in pids.lines() {
-                if let Ok(pid_num) = pid.trim().parse::<u32>() {
-                    log::info!("Killing process on port 9876: {}", pid_num);
-                    let _ = Command::new("kill")
-                        .args(["-9", &pid_num.to_string()])
-                        .output();
-                }
-            }
-        }
-    }
-    
-    #[cfg(windows)]
-    {
-        // Windows: kill xfactor-backend.exe processes
-        let _ = Command::new("taskkill")
-            .args(["/F", "/IM", "xfactor-backend.exe"])
             .output();
-        
-        // Kill any python processes on port 9876
-        if let Ok(output) = Command::new("netstat")
-            .args(["-ano"])
-            .output()
-        {
-            let output_str = String::from_utf8_lossy(&output.stdout);
-            for line in output_str.lines() {
-                if line.contains(":9876") && line.contains("LISTENING") {
-                    if let Some(pid) = line.split_whitespace().last() {
-                        log::info!("Killing process on port 9876: {}", pid);
-                        let _ = Command::new("taskkill")
-                            .args(["/F", "/PID", pid])
+            
+        if let Ok(output) = pgrep_result {
+            let pids = String::from_utf8_lossy(&output.stdout);
+            for pid in pids.lines() {
+                if let Ok(pid_num) = pid.trim().parse::<u32>() {
+                    log::info!("Killing backend process (pgrep): {}", pid_num);
+                    let _ = Command::new("kill")
+                        .args(["-9", &pid_num.to_string()])
+                        .output();
+                }
+            }
+        } else {
+            // Method 2: Fallback to ps + grep (works on all Unix)
+            log::info!("pgrep not available, trying ps + grep...");
+            if let Ok(output) = Command::new("sh")
+                .args(["-c", "ps aux | grep xfactor-backend | grep -v grep | awk '{print $2}'"])
+                .output()
+            {
+                let pids = String::from_utf8_lossy(&output.stdout);
+                for pid in pids.lines() {
+                    if let Ok(pid_num) = pid.trim().parse::<u32>() {
+                        log::info!("Killing backend process (ps): {}", pid_num);
+                        let _ = Command::new("kill")
+                            .args(["-9", &pid_num.to_string()])
                             .output();
                     }
                 }
             }
         }
+        
+        // Method 3: Try lsof for port 9876
+        let lsof_result = Command::new("lsof")
+            .args(["-ti", ":9876"])
+            .output();
+            
+        if let Ok(output) = lsof_result {
+            let pids = String::from_utf8_lossy(&output.stdout);
+            for pid in pids.lines() {
+                if let Ok(pid_num) = pid.trim().parse::<u32>() {
+                    log::info!("Killing process on port 9876 (lsof): {}", pid_num);
+                    let _ = Command::new("kill")
+                        .args(["-9", &pid_num.to_string()])
+                        .output();
+                }
+            }
+        } else {
+            // Method 4: Fallback to ss or netstat for port checking (Linux)
+            log::info!("lsof not available, trying ss/netstat...");
+            // Try ss first (modern Linux)
+            if let Ok(output) = Command::new("sh")
+                .args(["-c", "ss -tlnp 2>/dev/null | grep :9876 | grep -oP 'pid=\\K[0-9]+'"])
+                .output()
+            {
+                let pids = String::from_utf8_lossy(&output.stdout);
+                for pid in pids.lines() {
+                    if let Ok(pid_num) = pid.trim().parse::<u32>() {
+                        log::info!("Killing process on port 9876 (ss): {}", pid_num);
+                        let _ = Command::new("kill")
+                            .args(["-9", &pid_num.to_string()])
+                            .output();
+                    }
+                }
+            }
+            // Try fuser as last resort
+            let _ = Command::new("fuser")
+                .args(["-k", "9876/tcp"])
+                .output();
+        }
     }
+    
+    #[cfg(windows)]
+    {
+        // Windows: kill xfactor-backend.exe processes (try multiple names)
+        for name in &["xfactor-backend.exe", "xfactor-backend-x86_64-pc-windows-msvc.exe"] {
+            let result = Command::new("taskkill")
+                .args(["/F", "/IM", name])
+                .output();
+            if result.is_ok() {
+                log::info!("Attempted to kill: {}", name);
+            }
+        }
+        
+        // Kill any processes on port 9876 using netstat
+        if let Ok(output) = Command::new("cmd")
+            .args(["/C", "netstat -ano | findstr :9876"])
+            .output()
+        {
+            let output_str = String::from_utf8_lossy(&output.stdout);
+            for line in output_str.lines() {
+                // Parse: TCP    127.0.0.1:9876    0.0.0.0:0    LISTENING    12345
+                if line.contains("LISTENING") || line.contains("ESTABLISHED") {
+                    if let Some(pid) = line.split_whitespace().last() {
+                        if let Ok(_pid_num) = pid.parse::<u32>() {
+                            log::info!("Killing process on port 9876: {}", pid);
+                            let _ = Command::new("taskkill")
+                                .args(["/F", "/PID", pid])
+                                .output();
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Also try PowerShell for more reliable cleanup
+        let _ = Command::new("powershell")
+            .args(["-Command", "Get-NetTCPConnection -LocalPort 9876 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"])
+            .output();
+    }
+    
+    log::info!("Backend cleanup completed");
 }
 
 /// Graceful shutdown - send SIGTERM first, then SIGKILL after timeout
