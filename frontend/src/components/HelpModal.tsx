@@ -6,7 +6,7 @@ interface HelpModalProps {
   onClose: () => void;
 }
 
-const VERSION = '0.9.8';
+const VERSION = '1.0.3';
 const RELEASE_DATE = 'December 17, 2025';
 
 const features = [
@@ -18,17 +18,17 @@ const features = [
   {
     icon: Zap,
     title: 'Multi-Broker Support',
-    description: 'Connect to IBKR, Alpaca, Schwab, and Tradier. Support for OAuth, API keys, and username/password login.'
+    description: 'Connect to IBKR, Alpaca, Schwab, Tradier, and NinjaTrader 8 for futures. OAuth, API keys, or username/password.'
   },
   {
     icon: LineChart,
-    title: 'Technical Analysis',
-    description: 'RSI, MACD, Bollinger Bands, Moving Averages, ADX, and more with seasonal event awareness.'
+    title: 'Volatility-Adaptive Stops',
+    description: 'ATR-based dynamic stop losses and take profits that automatically adjust to market volatility.'
   },
   {
     icon: Shield,
     title: 'Risk Management',
-    description: 'Real-time VaR, max drawdown protection, daily loss limits, and VIX-based circuit breakers.'
+    description: 'Real-time VaR, max drawdown protection, Martingale sizing options, and VIX-based circuit breakers.'
   },
   {
     icon: Cpu,
@@ -37,18 +37,18 @@ const features = [
   },
   {
     icon: Calendar,
-    title: 'Seasonal Events',
-    description: 'Automatic adjustments for holidays, earnings seasons, Santa Claus Rally, and tax-loss harvesting periods.'
+    title: 'Market Regime Detection',
+    description: 'Automatic trend vs range detection with ADX, Bollinger squeeze, and trading recommendations.'
   },
   {
     icon: Settings,
-    title: 'Auto-Optimizer',
-    description: 'Automatic performance analysis and strategy parameter adjustment with Conservative, Moderate, or Aggressive modes.'
+    title: 'Strategy Templates & Builder',
+    description: '10+ pre-built strategy templates plus visual drag-and-drop strategy builder for custom strategies.'
   },
   {
     icon: Globe,
-    title: 'Global Markets',
-    description: 'Access 40,000+ symbols across 40+ global exchanges including NYSE, NASDAQ, LSE, TSE, HKEX, and more.'
+    title: 'Social Trading & TradingView',
+    description: 'Copy top traders, share strategies, and receive TradingView webhook alerts directly.'
   }
 ];
 
@@ -62,16 +62,55 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '1.0.3',
+    date: 'December 17, 2025',
+    changes: [
+      '🔮 AI-Powered Market Forecasting Engine',
+      '📹 Video Platform Analysis (YouTube, TikTok, Instagram)',
+      '🛡️ Bot Risk Management System (0-100 scoring)',
+      'Track FinTok & YouTube finance influencers',
+      'Viral content alerts across all platforms',
+      'Risk-Adjusted Metrics: Sharpe, Sortino, VaR',
+      'Social Sentiment (Twitter/X, Reddit, StockTwits)',
+      'Speculation Scoring Algorithm',
+      'Catalyst Tracker & AI Hypothesis Generator',
+      '50+ Known Financial Influencer Database'
+    ]
+  },
+  {
+    version: '1.0.2',
+    date: 'December 17, 2025',
+    changes: [
+      '🌍 Comprehensive Forex Trading',
+      '60+ Currency Pairs with pip calculator',
+      'Currency Strength Meter',
+      'Economic Calendar',
+      'MT5 & OANDA Integration'
+    ]
+  },
+  {
+    version: '1.0.1',
+    date: 'December 17, 2025',
+    changes: [
+      '🎉 Quantvue-Inspired Features',
+      'Volatility-Adaptive SL/TP with ATR-based dynamic stops',
+      'TradingView Webhook Integration',
+      'Market Regime Detection',
+      'Martingale Position Sizing',
+      'Strategy Templates Library (10+ strategies)',
+      'NinjaTrader 8 Integration',
+      'Visual Strategy Builder',
+      'Social Trading Platform'
+    ]
+  },
+  {
     version: '0.9.8',
     date: 'December 17, 2025',
     changes: [
       'Platform-specific fixes for Windows and Linux releases',
       'Exclude uvloop on Windows (Unix-only library)',
       'Enhanced zombie process cleanup with fallback commands',
-      'Linux: pgrep → ps+grep, lsof → ss → fuser fallback chain',
-      'Windows: PowerShell cleanup, multiple binary name support',
       'Comprehensive debug logging for connection troubleshooting',
-      'WebSocket close code meanings for easier debugging',
       'Fixed WebSocket connection loops (stable refs, no dependency loops)'
     ]
   },

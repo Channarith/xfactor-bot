@@ -5,6 +5,322 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2025-12-17
+
+### 🔮 AI-Powered Market Forecasting & Speculation Engine
+
+### 🛡️ Bot Risk Management System
+
+#### Risk Scoring
+- **Overall Risk Score (0-100)**: Weighted composite of all risk factors
+- **Risk Levels**: Critical (80+), High (60-80), Elevated (40-60), Moderate (20-40), Low (0-20)
+- **Color-coded indicators**: Visual risk level representation
+
+#### Risk Components (8 factors)
+- **Position Size Risk**: Maximum position as % of portfolio
+- **Concentration Risk**: Single asset exposure
+- **Drawdown Risk**: Current and max drawdown
+- **Volatility Risk**: Daily/annualized volatility
+- **Leverage Risk**: Margin usage
+- **Correlation Risk**: Position correlation
+- **Win Rate Risk**: Trading accuracy
+- **Exposure Risk**: Total capital at risk
+
+#### Risk-Adjusted Metrics
+- **Sharpe Ratio**: Risk-adjusted return
+- **Sortino Ratio**: Downside risk-adjusted return
+- **Calmar Ratio**: Return vs max drawdown
+- **Profit Factor**: Gross profit / gross loss
+- **Value at Risk (VaR)**: 95% and 99% confidence
+- **Expected Shortfall**: CVaR / tail risk
+
+#### Risk Alerts
+- **Real-time alerts**: Triggered when thresholds exceeded
+- **Alert levels**: Critical, High, Elevated
+- **Categories**: Drawdown, Exposure, Concentration, Win Rate, Leverage
+- **Recommendations**: Actionable suggestions per alert
+
+#### New API Endpoints
+- `GET /api/bots/risk/{bot_id}/score` - Get bot risk score
+- `POST /api/bots/risk/{bot_id}/calculate` - Calculate with custom data
+- `GET /api/bots/risk/all` - All bot risk scores
+- `GET /api/bots/risk/high-risk` - High-risk bots only
+- `GET /api/bots/risk/{bot_id}/metrics` - Detailed metrics
+- `GET /api/bots/risk/{bot_id}/components` - Component breakdown
+- `GET /api/bots/risk/alerts` - All active alerts
+- `GET /api/bots/risk/{bot_id}/alerts` - Bot-specific alerts
+- `GET /api/bots/risk/portfolio` - Portfolio-wide risk
+- `GET /api/bots/risk/{bot_id}/widget` - Compact widget data
+- `GET /api/bots/risk/dashboard` - Risk dashboard
+- `GET /api/bots/risk/thresholds` - View thresholds
+- `PUT /api/bots/risk/thresholds` - Update thresholds
+
+#### New Files
+- `src/bot/risk_manager.py` - Risk scoring engine
+- `src/api/routes/bot_risk.py` - Risk API endpoints
+
+### 📹 Video Platform Sentiment Analysis
+
+#### Platforms Supported
+- **YouTube**: Financial channels, stock analysis videos
+- **TikTok**: FinTok, stock tips, trading influencers
+- **Instagram**: Financial influencers, trading reels/posts
+
+#### Features
+- **Trending Content**: Track trending financial videos across platforms
+- **Symbol Mentions**: Find all video content mentioning specific stocks
+- **Influencer Tracking**: Monitor 50+ known financial influencers
+- **Viral Alerts**: Real-time alerts for viral trading content (70+ score)
+- **Engagement Analysis**: Views, likes, comments, shares, saves
+- **Content Categorization**: Stock analysis, trading tips, earnings, crypto, etc.
+- **Hashtag Tracking**: Monitor #stocktok, #fintok, #investing, etc.
+
+#### Known Influencer Database
+- **YouTube**: MeetKevin, Graham Stephan, Andrei Jikh, Tom Nash, Stock Moe
+- **TikTok**: Stock Trader Pro, Trading with Brian, FinTok King
+- **Instagram**: WallStreetBets, TradingView, Investors Club
+
+#### New API Endpoints
+- `GET /api/video/trending` - Trending financial content
+- `GET /api/video/trending/youtube` - YouTube trending
+- `GET /api/video/trending/tiktok` - TikTok trending
+- `GET /api/video/trending/instagram` - Instagram trending
+- `GET /api/video/symbol/{symbol}` - Content mentioning a symbol
+- `GET /api/video/influencers` - Top financial influencers
+- `GET /api/video/influencers/{symbol}` - Influencers mentioning symbol
+- `GET /api/video/viral` - Viral content alerts
+- `GET /api/video/search` - Search video content
+- `GET /api/video/dashboard` - Video platform dashboard
+- `POST /api/video/content` - Add content for analysis
+
+#### New Files
+- `src/forecasting/video_platforms.py` - YouTube/TikTok/Instagram analyzer
+- `src/api/routes/video_sentiment.py` - Video platform API endpoints
+
+---
+
+This release adds a comprehensive speculation and forecasting engine to identify
+stocks with high growth potential using social sentiment, trend detection, and AI.
+
+### Added
+
+#### Social Sentiment Engine
+- **Multi-Platform Analysis**: Twitter/X, Reddit, StockTwits, Discord, Telegram
+- **Symbol Extraction**: Automatic $SYMBOL cashtag detection
+- **Sentiment Classification**: Bullish/Bearish/Neutral with 0-100 scoring
+- **Influencer Detection**: Track mentions from known financial influencers
+- **Trending Symbols**: Real-time trending rankings by social activity
+- **Sentiment Movers**: Track biggest sentiment changes
+
+#### Buzz & Viral Trend Detection
+- **Trend Strength**: Viral (10x), Surging (5x), Rising (2x) normal activity
+- **Trend Stage**: Early, Growing, Peak, Mature, Declining lifecycle
+- **Early Mover Detection**: Find trends before they go viral
+- **Cross-Platform Correlation**: Stocks trending on multiple platforms
+- **Influencer Alerts**: Real-time alerts when influencers mention stocks
+- **Velocity & Acceleration**: Track mention momentum
+
+#### Speculation Scoring Algorithm
+- **Growth Forecast Scores**: 0-100 speculation score per symbol
+- **Component Scores**: Social, Sentiment, Catalyst, Technical, Momentum, Squeeze
+- **Price Targets**: Bullish, Base, Bearish target estimates
+- **Risk Classification**: Very High, High, Moderate, Low
+- **Short Squeeze Detection**: Based on short interest and options flow
+- **Top Speculative Picks**: Ranked list of high-potential opportunities
+
+#### Catalyst Tracker
+- **20+ Catalyst Types**: Earnings, FDA, Product Launch, IPO Lockup, Insider, etc.
+- **Impact Assessment**: Major, Significant, Moderate, Minor
+- **Catalyst Calendar**: Earnings, FDA, Lockup, Insider calendars
+- **Catalyst Density**: Analysis of event concentration
+- **Search Catalysts**: Keyword-based catalyst search
+
+#### AI Hypothesis Generator
+- **Automated Thesis Generation**: AI creates trading hypotheses
+- **Category Classification**: Momentum, Contrarian, Event-Driven, etc.
+- **Thematic Scanning**: Generate hypotheses around market themes
+- **Discovery Scans**: Automated opportunity discovery
+- **Validation Tracking**: Track hypothesis outcomes for learning
+
+### New API Endpoints (40+)
+- `GET /api/forecast/sentiment/{symbol}` - Symbol sentiment analysis
+- `GET /api/forecast/sentiment/trending/symbols` - Trending by social activity
+- `GET /api/forecast/buzz/trending` - Active trend signals
+- `GET /api/forecast/buzz/early-movers` - Early-stage opportunities
+- `GET /api/forecast/buzz/viral` - Viral alerts
+- `GET /api/forecast/buzz/influencer-alerts` - Influencer mentions
+- `GET /api/forecast/speculation/{symbol}` - Growth forecast
+- `GET /api/forecast/speculation/top-picks` - Top speculative picks
+- `GET /api/forecast/speculation/squeeze-candidates` - Squeeze candidates
+- `GET /api/forecast/catalysts/{symbol}` - Symbol catalysts
+- `GET /api/forecast/catalysts/imminent` - Upcoming catalysts
+- `GET /api/forecast/catalysts/earnings` - Earnings calendar
+- `GET /api/forecast/catalysts/fda` - FDA calendar
+- `GET /api/forecast/hypothesis/{symbol}` - Generate hypothesis
+- `GET /api/forecast/hypothesis/theme/{theme}` - Thematic hypotheses
+- `GET /api/forecast/analysis/{symbol}` - Full analysis
+- `GET /api/forecast/dashboard` - Forecasting dashboard
+
+### New Files
+- `src/forecasting/social_sentiment.py` - Social media sentiment engine
+- `src/forecasting/buzz_detector.py` - Viral trend detection
+- `src/forecasting/speculation_scorer.py` - Growth forecasting algorithm
+- `src/forecasting/catalyst_tracker.py` - Event catalyst tracking
+- `src/forecasting/hypothesis_generator.py` - AI hypothesis generation
+- `src/api/routes/forecasting.py` - 40+ forecasting API endpoints
+
+---
+
+## [1.0.2] - 2025-12-17
+
+### 🌍 Comprehensive Forex Trading Module
+
+This release adds complete Forex trading capabilities with all the bells and whistles.
+
+### Added
+
+#### Forex Core Module
+- **60+ Currency Pairs**: Majors, minors, exotics, and commodity-linked pairs
+- **Pip Calculator**: Accurate pip calculations for all pair types (4 and 2 decimal)
+- **Lot Sizer**: Risk-based position sizing (standard, mini, micro, nano lots)
+- **Session Detection**: Tokyo, London, New York, Sydney with overlap detection
+- **Swap Rates**: Overnight rollover rate information
+
+#### Currency Strength Analysis
+- **Real-time Strength Meter**: 0-100 scoring for all major currencies (USD, EUR, GBP, JPY, CHF, AUD, CAD, NZD)
+- **Correlation Matrix**: Pair-to-pair correlation analysis
+- **Best Pair Selector**: Automatically find strongest vs weakest currency pair
+- **Divergence Detection**: Identify momentum changes before they happen
+
+#### Economic Calendar
+- **12+ High-Impact Events**: FOMC, NFP, ECB, BOE, CPI, GDP, PMI
+- **Impact Classification**: High, medium, low impact levels
+- **News Avoidance Check**: `/api/forex/calendar/should-trade/{pair}`
+- **Trade Setup Generator**: Get entry/exit levels for news trading
+
+#### Forex Strategies
+- **Carry Trade**: Profit from interest rate differentials
+- **Session Breakout**: Trade London/NY session opens
+- **News Trading**: Straddle and fade strategies around events
+- **Asian Range Breakout**: Trade Asian session range at London open
+- **Currency Correlation**: Trade based on strength analysis
+
+#### Forex Broker Integrations
+- **MetaTrader 5**: Full integration (Windows, pip install MetaTrader5)
+  - Real-time quotes and charts
+  - Order execution with SL/TP
+  - Position management
+  - Expert Advisor compatibility
+- **OANDA**: REST API v20 integration
+  - Practice and Live accounts
+  - Market and limit orders
+  - Streaming prices
+  - Historical data
+
+### New API Endpoints
+- `GET /api/forex/pairs` - List all currency pairs
+- `POST /api/forex/calculate-pips` - Calculate pips and P&L
+- `POST /api/forex/calculate-lot-size` - Risk-based lot sizing
+- `GET /api/forex/sessions` - Current trading sessions
+- `GET /api/forex/currency-strength` - Currency strength analysis
+- `GET /api/forex/calendar` - Economic calendar
+- `GET /api/forex/calendar/should-trade/{pair}` - News avoidance check
+- `GET /api/forex/strategies` - Available Forex strategies
+- `GET /api/forex/strategies/carry-trade/best-pairs` - Best carry trades
+- `GET /api/forex/brokers` - Supported Forex brokers
+
+### New Files
+- `src/forex/core.py` - Pairs, pips, lots, sessions
+- `src/forex/currency_strength.py` - Currency strength meter
+- `src/forex/economic_calendar.py` - Economic events
+- `src/forex/strategies.py` - 5 Forex-specific strategies
+- `src/forex/brokers/metatrader.py` - MT5 integration
+- `src/forex/brokers/oanda.py` - OANDA integration
+- `src/api/routes/forex.py` - Forex API routes
+
+---
+
+## [1.0.1] - 2025-12-17
+
+### 🎉 Major Release: Quantvue-Inspired Features
+
+This release adds 8 new major features inspired by Quantvue's automated trading platform,
+bringing XFactor Bot to feature parity and beyond.
+
+### Added
+
+#### Priority 1 - High Value Features
+- **Volatility-Adaptive SL/TP**: ATR-based dynamic stop losses and take profits
+  - Automatically adjusts stops based on current market volatility
+  - Supports low/normal/high/extreme volatility classifications
+  - Configurable ATR multipliers and risk limits
+  - Trailing stops that adapt to volatility
+  
+- **TradingView Webhook Integration**: Receive alerts from TradingView
+  - POST endpoint: `/api/webhook/tradingview`
+  - Supports JSON and simple text formats (TICKER,ACTION,PRICE,QTY)
+  - Alert history and status tracking
+  - Configurable webhook secret for security
+  
+- **Market Regime Detection**: Automatic trend vs range classification
+  - ADX-based trend strength detection
+  - Bollinger Band squeeze detection for ranges
+  - Momentum regime classification
+  - Trading recommendations based on regime
+
+#### Priority 2 - Nice to Have Features
+- **Martingale Position Sizing**: Multiple Martingale strategies
+  - Classic (2x after loss)
+  - Anti-Martingale (2x after win)
+  - Fibonacci sequence sizing
+  - D'Alembert (fixed increment)
+  - Built-in risk controls and drawdown kill switch
+  
+- **Strategy Templates Library**: Pre-configured trading strategies
+  - 10+ templates across categories (trend, mean-reversion, breakout, scalping)
+  - Detailed entry/exit rules and indicator settings
+  - Risk level and timeframe classifications
+  - Search and filter capabilities
+  
+- **NinjaTrader Integration**: Connect to NinjaTrader 8
+  - ATI (Automated Trading Interface) connection
+  - Order placement with bracket orders
+  - Position and account sync
+  - Support for futures and forex
+
+#### Priority 3 - Future Features (Backend Ready)
+- **Visual Strategy Builder**: Drag-and-drop strategy creation
+  - Node-based strategy definition
+  - Trigger, condition, and action nodes
+  - Flow control (if/else, wait)
+  - Strategy save/load functionality
+  
+- **Social Trading Platform**: Share and copy strategies
+  - Strategy marketplace with leaderboard
+  - Performance tracking and ratings
+  - Copy trading modes (mirror, scaled, signals)
+  - Strategy reviews and search
+
+### New API Endpoints
+- `GET /api/strategies/templates` - List strategy templates
+- `POST /api/strategies/adaptive-stops/calculate` - Calculate adaptive SL/TP
+- `POST /api/strategies/regime/detect` - Detect market regime
+- `GET /api/strategies/martingale/types` - List Martingale strategies
+- `GET /api/strategies/visual-builder/node-templates` - Visual builder nodes
+- `GET /api/strategies/social/leaderboard` - Top performing strategies
+- `POST /api/webhook/tradingview` - TradingView alerts
+
+### New Files
+- `src/strategies/volatility_adaptive.py` - Volatility-adaptive stops
+- `src/strategies/market_regime.py` - Market regime detection
+- `src/strategies/martingale.py` - Martingale position sizing
+- `src/strategies/templates.py` - Strategy templates library
+- `src/strategies/visual_builder.py` - Visual strategy builder
+- `src/social/trading.py` - Social trading platform
+- `src/brokers/ninjatrader.py` - NinjaTrader integration
+- `src/api/routes/tradingview.py` - TradingView webhook routes
+- `src/api/routes/strategies.py` - Strategy API routes
+
 ## [0.9.8] - 2025-12-17
 
 ### Added

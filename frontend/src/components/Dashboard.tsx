@@ -12,7 +12,11 @@ import {
   Gem,
   Coins,
   DollarSign,
-  Brain
+  Brain,
+  Sparkles,
+  Video,
+  AlertTriangle,
+  CandlestickChart
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { PortfolioCard } from './PortfolioCard'
@@ -29,6 +33,10 @@ import CommodityPanel from './CommodityPanel'
 import { CryptoPanel } from './CryptoPanel'
 import { FeeTracker } from './FeeTracker'
 import AgenticTuning from './AgenticTuning'
+import ForecastingPanel from './ForecastingPanel'
+import VideoPlatformsPanel from './VideoPlatformsPanel'
+import BotRiskPanel from './BotRiskPanel'
+import ForexPanel from './ForexPanel'
 
 export function Dashboard() {
   // Portfolio data - will be populated when broker is connected
@@ -88,6 +96,16 @@ export function Dashboard() {
           trend="neutral"
         />
       </div>
+
+      {/* AI Market Forecasting - NEW v1.0.3 */}
+      <CollapsiblePanel 
+        title="🔮 AI Market Forecasting" 
+        icon={<Sparkles className="h-5 w-5" />}
+        badge="NEW"
+        defaultExpanded={true}
+      >
+        <ForecastingPanel />
+      </CollapsiblePanel>
 
       {/* News & Sentiment Feed - TOP PRIORITY */}
       <CollapsiblePanel 
@@ -184,6 +202,36 @@ export function Dashboard() {
         </div>
       </div>
       
+      {/* Video Platforms Intelligence - NEW v1.0.3 */}
+      <CollapsiblePanel 
+        title="📹 Video Platforms Intelligence" 
+        icon={<Video className="h-5 w-5" />}
+        badge="NEW"
+        defaultExpanded={false}
+      >
+        <VideoPlatformsPanel />
+      </CollapsiblePanel>
+
+      {/* Bot Risk Management - NEW v1.0.3 */}
+      <CollapsiblePanel 
+        title="🛡️ Bot Risk Management" 
+        icon={<AlertTriangle className="h-5 w-5" />}
+        badge="risk"
+        defaultExpanded={false}
+      >
+        <BotRiskPanel />
+      </CollapsiblePanel>
+
+      {/* Forex Trading - NEW v1.0.2 */}
+      <CollapsiblePanel 
+        title="💱 Forex Trading" 
+        icon={<CandlestickChart className="h-5 w-5" />}
+        badge="forex"
+        defaultExpanded={false}
+      >
+        <ForexPanel />
+      </CollapsiblePanel>
+
       {/* Cryptocurrency Trading */}
       <CollapsiblePanel 
         title="₿ Cryptocurrency Trading" 

@@ -106,7 +106,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="XFactor Bot API",
         description="AI-Powered Automated Trading System - Control Panel API",
-        version="0.1.0",
+        version="1.0.3",
         lifespan=lifespan,
     )
     
@@ -129,7 +129,7 @@ def create_app() -> FastAPI:
     )
     
     # Include routers
-    from src.api.routes import config, positions, orders, risk, news, admin, bots, ai, integrations, commodities, crypto, fees, symbols, seasonal, optimizer, performance, agentic_tuning
+    from src.api.routes import config, positions, orders, risk, news, admin, bots, ai, integrations, commodities, crypto, fees, symbols, seasonal, optimizer, performance, agentic_tuning, tradingview, strategies, forex, forecasting, bot_risk, video_sentiment
     
     app.include_router(config.router, prefix="/api/config", tags=["Config"])
     app.include_router(positions.router, prefix="/api/positions", tags=["Positions"])
@@ -148,6 +148,12 @@ def create_app() -> FastAPI:
     app.include_router(optimizer.router, tags=["Auto-Optimizer"])  # Bot auto-optimization
     app.include_router(performance.router, tags=["Performance"])  # Performance charts & metrics
     app.include_router(agentic_tuning.router, tags=["Agentic Tuning"])  # ATRWAC - Bot pruning & optimization
+    app.include_router(tradingview.router, tags=["TradingView"])  # TradingView webhook integration
+    app.include_router(strategies.router, tags=["Strategies"])  # Strategy templates, visual builder, social trading
+    app.include_router(forex.router, tags=["Forex"])  # Comprehensive Forex trading
+    app.include_router(forecasting.router, tags=["Forecasting"])  # AI-powered market forecasting & speculation
+    app.include_router(bot_risk.router, tags=["Bot Risk Management"])  # Risk scoring and alerts for bots
+    app.include_router(video_sentiment.router, tags=["Video Platforms"])  # YouTube, TikTok, Instagram analysis
     
     @app.get("/api")
     async def api_root():
