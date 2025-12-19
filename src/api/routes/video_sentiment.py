@@ -467,3 +467,47 @@ async def add_video_content_batch(contents: List[VideoContentInput]):
         "results": results,
     }
 
+
+# =============================================================================
+# Populate Sample Data
+# =============================================================================
+
+@router.post("/populate")
+async def populate_sample_data():
+    """
+    Populate the video analyzer with sample/demo data.
+    Useful for testing and demonstration purposes.
+    """
+    from src.forecasting.video_platforms import populate_sample_video_data
+    
+    counts = populate_sample_video_data()
+    
+    return {
+        "success": True,
+        "message": "Sample video data populated successfully",
+        "content_added": counts,
+        "total": sum(counts.values()),
+    }
+
+
+@router.get("/status")
+async def get_video_data_status():
+    """Get the current status of video data in the analyzer."""
+    from src.forecasting.video_platforms import get_video_analyzer
+    
+    analyzer = get_video_analyzer()
+    summary = analyzer.get_platform_summary()
+    
+    # get_platform_summary returns {"youtube": {...}, "tiktok": {...}, ...}
+    total_content = sum(p.get("total_content", 0) for p in summary.values())
+    
+    return {
+        "has_data": total_content > 0,
+        "total_content": total_content,
+        "by_platform": {
+            platform: data.get("total_content", 0) 
+            for platform, data in summary.items()
+        },
+        "last_updated": datetime.now(timezone.utc).isoformat() if total_content > 0 else None,
+    }
+

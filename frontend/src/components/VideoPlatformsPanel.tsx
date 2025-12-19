@@ -37,12 +37,48 @@ const VideoPlatformsPanel: React.FC = () => {
   const [influencers, setInfluencers] = useState<Influencer[]>([]);
   const [viral, setViral] = useState<VideoContent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [populating, setPopulating] = useState(false);
+  const [hasData, setHasData] = useState(false);
   const [searchSymbol, setSearchSymbol] = useState('');
   const [symbolContent, setSymbolContent] = useState<any>(null);
 
   useEffect(() => {
+    checkDataStatus();
+  }, []);
+
+  useEffect(() => {
     fetchPlatformData();
   }, [activeTab]);
+
+  const checkDataStatus = async () => {
+    try {
+      const res = await fetch(apiUrl('/api/video/status'));
+      if (res.ok) {
+        const data = await res.json();
+        setHasData(data.has_data);
+      }
+    } catch (error) {
+      console.error('Error checking video data status:', error);
+    }
+  };
+
+  const populateSampleData = async () => {
+    setPopulating(true);
+    try {
+      const res = await fetch(apiUrl('/api/video/populate'), { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        console.log('Sample data populated:', data);
+        setHasData(true);
+        await fetchPlatformData();
+      } else {
+        console.error('Failed to populate sample data');
+      }
+    } catch (error) {
+      console.error('Error populating sample data:', error);
+    }
+    setPopulating(false);
+  };
 
   const fetchPlatformData = async () => {
     setLoading(true);
@@ -105,12 +141,23 @@ const VideoPlatformsPanel: React.FC = () => {
         <h2 className="text-xl font-bold text-white flex items-center gap-2">
           📹 Video Platforms
         </h2>
-        <button
-          onClick={fetchPlatformData}
-          className="px-3 py-1.5 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors text-sm"
-        >
-          Refresh
-        </button>
+        <div className="flex gap-2">
+          {!hasData && (
+            <button
+              onClick={populateSampleData}
+              disabled={populating}
+              className="px-3 py-1.5 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-colors text-sm disabled:opacity-50"
+            >
+              {populating ? 'Loading...' : '📥 Load Sample Data'}
+            </button>
+          )}
+          <button
+            onClick={fetchPlatformData}
+            className="px-3 py-1.5 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors text-sm"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Platform Tabs */}
@@ -201,7 +248,18 @@ const VideoPlatformsPanel: React.FC = () => {
                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
               </div>
             ) : trending.length === 0 ? (
-              <p className="text-slate-400 text-center py-4 text-sm">No trending content available</p>
+              <div className="text-center py-8">
+                <p className="text-slate-400 text-sm mb-3">No trending content available</p>
+                {!hasData && (
+                  <button
+                    onClick={populateSampleData}
+                    disabled={populating}
+                    className="px-4 py-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-colors text-sm disabled:opacity-50"
+                  >
+                    {populating ? 'Loading...' : '📥 Load Sample Data'}
+                  </button>
+                )}
+              </div>
             ) : (
               trending.map((video) => (
                 <div key={video.id} className="p-3 bg-slate-700/30 rounded-lg hover:bg-slate-700/50 transition-colors">

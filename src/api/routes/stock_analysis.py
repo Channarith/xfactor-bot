@@ -137,6 +137,7 @@ class StockAnalysisResponse(BaseModel):
     # Technical indicators
     sma_20: List[FundamentalDataPoint]
     sma_50: List[FundamentalDataPoint]
+    sma_100: List[FundamentalDataPoint]
     sma_200: List[FundamentalDataPoint]
     ema_12: List[FundamentalDataPoint]
     ema_26: List[FundamentalDataPoint]
@@ -441,6 +442,7 @@ async def analyze_stock(
         # Calculate technical indicators
         sma_20_values = calculate_sma(closes, 20)
         sma_50_values = calculate_sma(closes, 50)
+        sma_100_values = calculate_sma(closes, 100)
         sma_200_values = calculate_sma(closes, 200)
         ema_12_values = calculate_ema(closes, 12)
         ema_26_values = calculate_ema(closes, 26)
@@ -576,30 +578,37 @@ async def analyze_stock(
                     value=round(market_cap, 2)
                 ))
         
-        # Get quarterly earnings for EPS and P/E calculation
+        # Get quarterly EPS from income statement (quarterly_earnings is deprecated)
         eps_history = []
         quarterly_eps_map = {}  # date -> TTM EPS
         try:
-            quarterly_earnings = ticker.quarterly_earnings
-            if quarterly_earnings is not None and not quarterly_earnings.empty:
-                # Build list of quarterly EPS sorted by date
-                quarterly_eps_list = []
-                for date, row in quarterly_earnings.iterrows():
-                    date_str = date.strftime('%Y-%m-%d') if hasattr(date, 'strftime') else str(date)
-                    eps = row.get('Earnings', 0)
-                    if eps and not np.isnan(eps):
-                        quarterly_eps_list.append((date_str, float(eps)))
-                        eps_history.append(FundamentalDataPoint(
-                            date=date_str,
-                            value=round(float(eps), 2)
-                        ))
+            quarterly_income = ticker.quarterly_income_stmt
+            if quarterly_income is not None and not quarterly_income.empty:
+                # Look for Diluted EPS or Basic EPS
+                eps_row_name = None
+                for row_name in ['Diluted EPS', 'Basic EPS']:
+                    if row_name in quarterly_income.index:
+                        eps_row_name = row_name
+                        break
                 
-                # Calculate TTM (Trailing Twelve Month) EPS for each quarter
-                quarterly_eps_list.sort(key=lambda x: x[0])
-                for i in range(3, len(quarterly_eps_list)):
-                    # Sum of last 4 quarters
-                    ttm_eps = sum([quarterly_eps_list[j][1] for j in range(i-3, i+1)])
-                    quarterly_eps_map[quarterly_eps_list[i][0]] = ttm_eps
+                if eps_row_name:
+                    eps_row = quarterly_income.loc[eps_row_name]
+                    quarterly_eps_list = []
+                    for date, eps in eps_row.items():
+                        if eps is not None and not np.isnan(eps):
+                            date_str = date.strftime('%Y-%m-%d') if hasattr(date, 'strftime') else str(date)
+                            quarterly_eps_list.append((date_str, float(eps)))
+                            eps_history.append(FundamentalDataPoint(
+                                date=date_str,
+                                value=round(float(eps), 2)
+                            ))
+                    
+                    # Calculate TTM (Trailing Twelve Month) EPS for each quarter
+                    quarterly_eps_list.sort(key=lambda x: x[0])
+                    for i in range(3, len(quarterly_eps_list)):
+                        # Sum of last 4 quarters
+                        ttm_eps = sum([quarterly_eps_list[j][1] for j in range(i-3, i+1)])
+                        quarterly_eps_map[quarterly_eps_list[i][0]] = ttm_eps
         except Exception as e:
             logger.debug(f"Could not fetch quarterly earnings: {e}")
         
@@ -688,6 +697,7 @@ async def analyze_stock(
             employee_count_history=employee_count_history,
             sma_20=to_data_points(dates, sma_20_values),
             sma_50=to_data_points(dates, sma_50_values),
+            sma_100=to_data_points(dates, sma_100_values),
             sma_200=to_data_points(dates, sma_200_values),
             ema_12=to_data_points(dates, ema_12_values),
             ema_26=to_data_points(dates, ema_26_values),

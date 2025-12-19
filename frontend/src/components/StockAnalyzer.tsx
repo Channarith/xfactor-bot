@@ -75,6 +75,7 @@ interface StockAnalysisData {
   employee_count_history: FundamentalDataPoint[];
   sma_20: FundamentalDataPoint[];
   sma_50: FundamentalDataPoint[];
+  sma_100: FundamentalDataPoint[];
   sma_200: FundamentalDataPoint[];
   ema_12: FundamentalDataPoint[];
   ema_26: FundamentalDataPoint[];
@@ -132,6 +133,7 @@ const StockAnalyzer: React.FC = () => {
     // Technical overlays (same price scale)
     { id: 'sma_20', label: 'SMA 20', color: '#3b82f6', enabled: true, category: 'technical', icon: <Activity className="w-3 h-3" /> },
     { id: 'sma_50', label: 'SMA 50', color: '#8b5cf6', enabled: true, category: 'technical', icon: <Activity className="w-3 h-3" /> },
+    { id: 'sma_100', label: 'SMA 100', color: '#14b8a6', enabled: false, category: 'technical', icon: <Activity className="w-3 h-3" /> },
     { id: 'sma_200', label: 'SMA 200', color: '#f59e0b', enabled: false, category: 'technical', icon: <Activity className="w-3 h-3" /> },
     { id: 'ema_12', label: 'EMA 12', color: '#10b981', enabled: false, category: 'technical', icon: <Activity className="w-3 h-3" /> },
     { id: 'ema_26', label: 'EMA 26', color: '#ef4444', enabled: false, category: 'technical', icon: <Activity className="w-3 h-3" /> },
@@ -311,6 +313,7 @@ const StockAnalyzer: React.FC = () => {
     const overlayDataMap: Record<string, FundamentalDataPoint[]> = {
       sma_20: analysisData.sma_20,
       sma_50: analysisData.sma_50,
+      sma_100: analysisData.sma_100,
       sma_200: analysisData.sma_200,
       ema_12: analysisData.ema_12,
       ema_26: analysisData.ema_26,

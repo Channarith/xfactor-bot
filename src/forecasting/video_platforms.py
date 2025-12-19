@@ -692,3 +692,240 @@ def get_video_analyzer() -> VideoPlatformAnalyzer:
         _video_analyzer = VideoPlatformAnalyzer()
     return _video_analyzer
 
+
+def populate_sample_video_data() -> Dict[str, int]:
+    """
+    Populate the video analyzer with realistic sample data.
+    Returns count of content added per platform.
+    """
+    import random
+    
+    analyzer = get_video_analyzer()
+    
+    # Sample data for popular stock symbols
+    symbols_data = {
+        "NVDA": {"name": "NVIDIA", "sector": "Tech", "trend": "bullish"},
+        "AAPL": {"name": "Apple", "sector": "Tech", "trend": "neutral"},
+        "TSLA": {"name": "Tesla", "sector": "Auto", "trend": "volatile"},
+        "MSFT": {"name": "Microsoft", "sector": "Tech", "trend": "bullish"},
+        "AMD": {"name": "AMD", "sector": "Tech", "trend": "bullish"},
+        "META": {"name": "Meta", "sector": "Tech", "trend": "bullish"},
+        "GOOGL": {"name": "Google", "sector": "Tech", "trend": "neutral"},
+        "AMZN": {"name": "Amazon", "sector": "Tech", "trend": "bullish"},
+        "GME": {"name": "GameStop", "sector": "Retail", "trend": "volatile"},
+        "AMC": {"name": "AMC", "sector": "Entertainment", "trend": "volatile"},
+        "PLTR": {"name": "Palantir", "sector": "Tech", "trend": "bullish"},
+        "COIN": {"name": "Coinbase", "sector": "Crypto", "trend": "volatile"},
+        "SPY": {"name": "S&P 500 ETF", "sector": "ETF", "trend": "bullish"},
+        "QQQ": {"name": "Nasdaq ETF", "sector": "ETF", "trend": "bullish"},
+    }
+    
+    # YouTube video templates
+    youtube_templates = [
+        ("{symbol} Stock Analysis: Why It's Going to {direction}!",
+         "In-depth technical and fundamental analysis of ${symbol}. Looking at key support and resistance levels, earnings trends, and institutional buying."),
+        ("Is {symbol} a Buy Right Now? {name} Stock Deep Dive",
+         "Full analysis of {name} ({symbol}) stock. We examine the financials, growth potential, and risks."),
+        ("{symbol} Price Prediction 2025 - MUST WATCH Before Buying!",
+         "My {symbol} price target for 2025 and beyond. Technical analysis, catalysts, and key levels to watch."),
+        ("Why I'm {action} {symbol} Stock Today",
+         "Here's my updated thesis on {name} stock and why I made this move in my portfolio."),
+        ("{name} Earnings Review - What You Need to Know",
+         "Breaking down {symbol} latest earnings report. Revenue, EPS, guidance, and what it means for investors."),
+        ("{symbol} vs {alt_symbol}: Which Stock Should You Buy?",
+         "Comparing these two {sector} stocks to help you make the best investment decision."),
+        ("The TRUTH About {symbol} Stock Nobody's Talking About",
+         "Important insights about {name} that mainstream media isn't covering. Due diligence you need to see."),
+        ("{symbol} Technical Analysis: Key Levels for This Week",
+         "Weekly chart analysis for ${symbol}. Support, resistance, and potential trade setups."),
+    ]
+    
+    # TikTok video templates
+    tiktok_templates = [
+        ("POV: You bought ${symbol} at the dip 📈🚀",
+         "This is what happens when you trust the process #stocks #{symbol} #investing"),
+        ("${symbol} to the moon? 🌙 Here's why #trading",
+         "Quick analysis on why {name} could explode #{symbol} #stocktok #fintok"),
+        ("Day trading ${symbol} live! 💰",
+         "Watch me trade {symbol} in real time #daytrading #stockmarket #trader"),
+        ("${symbol} is about to {direction}... 👀",
+         "You heard it here first #{symbol} #{sector}stocks #investing #alpha"),
+        ("How to trade ${symbol} like a pro 📊",
+         "Simple strategy that works #{symbol} #tradingstrategy #fintok"),
+        ("I made $X trading ${symbol} today!",
+         "Here's exactly how #{symbol} #daytrader #stocktok #gains"),
+        ("Why everyone is talking about ${symbol} 🔥",
+         "The hype is real #{name} #{symbol} #trending #stocks"),
+    ]
+    
+    # Instagram templates
+    instagram_templates = [
+        ("📊 {symbol} Stock Watchlist Alert",
+         "Adding ${symbol} to my watchlist. Key level: $XXX. What's your take? #stocks #investing #{symbol}"),
+        ("🎯 {symbol} Trade Setup",
+         "Looking at {name} for a potential swing trade. Risk/reward looks good. #{symbol} #trading #stockmarket"),
+        ("💡 {name} Stock DD",
+         "Here's why I'm watching ${symbol} closely this week. Swipe for details → #{symbol} #duediligence #stocks"),
+        ("📈 Portfolio Update: {symbol}",
+         "Just added more {symbol} to my position. Long term conviction play. #{symbol} #investing #portfolio"),
+        ("⚠️ {symbol} Analysis",
+         "Important levels to watch for {name} stock. Don't miss this move! #{symbol} #technicalanalysis"),
+    ]
+    
+    # Influencer names
+    youtube_channels = [
+        ("Stock Moe", "StockMoe", 450000),
+        ("Financial Education", "FinancialEducation", 1200000),
+        ("Meet Kevin", "MeetKevin", 1800000),
+        ("Graham Stephan", "GrahamStephan", 4500000),
+        ("Andrei Jikh", "AndreiJikh", 2100000),
+        ("Tom Nash", "TomNash", 380000),
+        ("Everything Money", "EverythingMoney", 520000),
+        ("Ticker Symbol You", "TickerSymbolYou", 290000),
+    ]
+    
+    tiktok_creators = [
+        ("StockGuru", "stockguru", 890000),
+        ("TraderTom", "tradertom", 650000),
+        ("FinanceWithSharan", "financewithsharan", 1200000),
+        ("TashInvests", "tashinvests", 780000),
+        ("StockDads", "stockdads", 450000),
+    ]
+    
+    instagram_creators = [
+        ("InvestWithJohn", "investwithjohn", 520000),
+        ("StockPicksPro", "stockpickspro", 340000),
+        ("WealthBuilders", "wealthbuilders", 890000),
+        ("TradingMentor", "tradingmentor", 670000),
+    ]
+    
+    counts = {"youtube": 0, "tiktok": 0, "instagram": 0}
+    now = datetime.now(timezone.utc)
+    
+    # Generate YouTube content
+    for symbol, data in symbols_data.items():
+        for template in random.sample(youtube_templates, min(3, len(youtube_templates))):
+            channel = random.choice(youtube_channels)
+            alt_symbol = random.choice([s for s in symbols_data.keys() if s != symbol])
+            direction = "UP" if random.random() > 0.3 else "DOWN"
+            action = "BUYING" if direction == "UP" else "SELLING"
+            
+            title = template[0].format(
+                symbol=symbol, name=data["name"], sector=data["sector"],
+                direction=direction, action=action, alt_symbol=alt_symbol
+            )
+            description = template[1].format(
+                symbol=symbol, name=data["name"], sector=data["sector"]
+            )
+            
+            hours_ago = random.randint(1, 72)
+            views = random.randint(5000, 500000)
+            likes = int(views * random.uniform(0.02, 0.08))
+            comments = int(views * random.uniform(0.001, 0.01))
+            
+            video_id = f"yt_{symbol.lower()}_{random.randint(1000, 9999)}"
+            content = VideoContent(
+                id=video_id,
+                platform=VideoPlatform.YOUTUBE,
+                content_type=ContentType.VIDEO,
+                creator_id=channel[1],
+                creator_name=channel[0],
+                creator_handle=channel[1],
+                creator_followers=channel[2],
+                title=title,
+                description=description,
+                url=f"https://youtube.com/watch?v={video_id}",
+                published_at=now - timedelta(hours=hours_ago),
+                views=views,
+                likes=likes,
+                comments=comments,
+                shares=int(views * random.uniform(0.001, 0.005)),
+                symbols_mentioned=[symbol],
+                hashtags=[f"#{symbol}", "#stocks", "#investing", f"#{data['sector'].lower()}"],
+                duration_seconds=random.randint(300, 1800),
+                thumbnail_url=f"https://img.youtube.com/vi/{random.randint(10000, 99999)}/maxresdefault.jpg",
+            )
+            analyzer.add_content(content)
+            counts["youtube"] += 1
+    
+    # Generate TikTok content
+    for symbol, data in symbols_data.items():
+        for template in random.sample(tiktok_templates, min(2, len(tiktok_templates))):
+            creator = random.choice(tiktok_creators)
+            direction = "moon 🚀" if random.random() > 0.4 else "dip 📉"
+            
+            title = template[0].format(
+                symbol=symbol, name=data["name"], direction=direction, sector=data["sector"]
+            )
+            description = template[1].format(
+                symbol=symbol, name=data["name"], sector=data["sector"]
+            )
+            
+            hours_ago = random.randint(1, 48)
+            views = random.randint(10000, 2000000)
+            likes = int(views * random.uniform(0.05, 0.15))
+            comments = int(views * random.uniform(0.005, 0.02))
+            
+            video_id = f"tt_{symbol.lower()}_{random.randint(1000, 9999)}"
+            content = VideoContent(
+                id=video_id,
+                platform=VideoPlatform.TIKTOK,
+                content_type=ContentType.SHORT,
+                creator_id=creator[1],
+                creator_name=creator[0],
+                creator_handle=creator[1],
+                creator_followers=creator[2],
+                title=title,
+                description=description,
+                url=f"https://tiktok.com/@{creator[1]}/video/{video_id}",
+                published_at=now - timedelta(hours=hours_ago),
+                views=views,
+                likes=likes,
+                comments=comments,
+                shares=int(views * random.uniform(0.01, 0.05)),
+                symbols_mentioned=[symbol],
+                hashtags=[f"#{symbol}", "#stocktok", "#fintok", "#trading"],
+                duration_seconds=random.randint(15, 180),
+            )
+            analyzer.add_content(content)
+            counts["tiktok"] += 1
+    
+    # Generate Instagram content
+    for symbol, data in symbols_data.items():
+        for template in random.sample(instagram_templates, min(2, len(instagram_templates))):
+            creator = random.choice(instagram_creators)
+            
+            title = template[0].format(symbol=symbol, name=data["name"])
+            description = template[1].format(symbol=symbol, name=data["name"])
+            
+            hours_ago = random.randint(1, 72)
+            views = random.randint(1000, 100000)
+            likes = int(views * random.uniform(0.03, 0.12))
+            comments = int(views * random.uniform(0.002, 0.01))
+            
+            post_id = f"ig_{symbol.lower()}_{random.randint(1000, 9999)}"
+            content = VideoContent(
+                id=post_id,
+                platform=VideoPlatform.INSTAGRAM,
+                content_type=ContentType.REEL,
+                creator_id=creator[1],
+                creator_name=creator[0],
+                creator_handle=creator[1],
+                creator_followers=creator[2],
+                title=title,
+                description=description,
+                url=f"https://instagram.com/p/{post_id}",
+                published_at=now - timedelta(hours=hours_ago),
+                views=views,
+                likes=likes,
+                comments=comments,
+                shares=int(views * random.uniform(0.005, 0.02)),
+                symbols_mentioned=[symbol],
+                hashtags=[f"#{symbol}", "#investing", "#stocks", "#finance"],
+            )
+            analyzer.add_content(content)
+            counts["instagram"] += 1
+    
+    logger.info(f"Populated video data: {counts}")
+    return counts
+
