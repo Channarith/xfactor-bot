@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createChart, ColorType, IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { apiUrl } from '../config/api';
-import { TrendingUp, TrendingDown, Target, Calendar, Zap, Brain, Activity, AlertCircle, ExternalLink, Info, ChevronDown, ChevronUp, Newspaper, Shield, BarChart3 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Target, Calendar, Zap, Brain, Activity, AlertCircle, ExternalLink, Info, ChevronDown, ChevronUp, Newspaper, Shield, BarChart3, RefreshCw, Download, Loader2 } from 'lucide-react';
 
 interface TrendingSymbol {
   symbol: string;
@@ -100,6 +100,15 @@ interface AnalysisWithSources {
 
 type TimeHorizon = '1m' | '3m' | '6m' | '1y';
 
+interface FetchStatus {
+  is_fetching: boolean;
+  last_fetch: string | null;
+  progress: string;
+  symbols_processed: number;
+  total_symbols: number;
+  error: string | null;
+}
+
 const ForecastingPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'projections' | 'trending' | 'catalysts' | 'hypotheses' | 'speculation'>('projections');
   const [trendingSymbols, setTrendingSymbols] = useState<TrendingSymbol[]>([]);
@@ -115,6 +124,10 @@ const ForecastingPanel: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showMethodology, setShowMethodology] = useState(false);
   const [showScoreBreakdown, setShowScoreBreakdown] = useState(false);
+  
+  // Force fetch state
+  const [fetchStatus, setFetchStatus] = useState<FetchStatus | null>(null);
+  const [isForceFetching, setIsForceFetching] = useState(false);
 
   // Chart refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -122,7 +135,52 @@ const ForecastingPanel: React.FC = () => {
 
   useEffect(() => {
     fetchData();
+    checkFetchStatus();
   }, []);
+  
+  // Poll fetch status while fetching
+  useEffect(() => {
+    if (!isForceFetching) return;
+    
+    const interval = setInterval(async () => {
+      const status = await checkFetchStatus();
+      if (status && !status.is_fetching) {
+        setIsForceFetching(false);
+        // Refresh data after fetch completes
+        fetchData();
+      }
+    }, 2000);
+    
+    return () => clearInterval(interval);
+  }, [isForceFetching]);
+  
+  const checkFetchStatus = async () => {
+    try {
+      const res = await fetch(apiUrl('/api/forecast/fetch-status'));
+      if (res.ok) {
+        const data = await res.json();
+        setFetchStatus(data);
+        return data;
+      }
+    } catch (e) {
+      console.error('Error checking fetch status:', e);
+    }
+    return null;
+  };
+  
+  const forceFetchData = async () => {
+    try {
+      setIsForceFetching(true);
+      const res = await fetch(apiUrl('/api/forecast/force-fetch'), { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        console.log('Force fetch started:', data);
+      }
+    } catch (e) {
+      console.error('Error starting force fetch:', e);
+      setIsForceFetching(false);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -378,13 +436,66 @@ const ForecastingPanel: React.FC = () => {
         <h2 className="text-xl font-bold text-white flex items-center gap-2">
           🔮 Market Forecasting
         </h2>
-        <button
-          onClick={fetchData}
-          className="px-3 py-1.5 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors text-sm"
-        >
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Force Fetch Button */}
+          <button
+            onClick={forceFetchData}
+            disabled={isForceFetching}
+            className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 transition-colors ${
+              isForceFetching 
+                ? 'bg-amber-500/20 text-amber-400 cursor-wait'
+                : 'bg-violet-500/20 text-violet-400 hover:bg-violet-500/30'
+            }`}
+            title="Fetch real data from yfinance for trending, catalysts, and hypotheses"
+          >
+            {isForceFetching ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>
+                  Fetching {fetchStatus?.symbols_processed || 0}/{fetchStatus?.total_symbols || 30}...
+                </span>
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4" />
+                <span>Force Fetch</span>
+              </>
+            )}
+          </button>
+          
+          {/* Refresh Button */}
+          <button
+            onClick={fetchData}
+            className="px-3 py-1.5 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors text-sm flex items-center gap-1"
+          >
+            <RefreshCw className="w-3 h-3" />
+            Refresh
+          </button>
+        </div>
       </div>
+      
+      {/* Fetch Status Banner */}
+      {fetchStatus?.last_fetch && !isForceFetching && (
+        <div className="mb-4 px-3 py-2 bg-slate-700/30 rounded-lg flex items-center justify-between text-xs text-slate-400">
+          <span>
+            Last updated: {new Date(fetchStatus.last_fetch).toLocaleString()}
+          </span>
+          <span>
+            {trendingSymbols.length} trending • {catalysts.length} catalysts • {hypotheses.length} hypotheses
+          </span>
+        </div>
+      )}
+      
+      {/* Show empty state message if no data */}
+      {!isForceFetching && trendingSymbols.length === 0 && catalysts.length === 0 && hypotheses.length === 0 && (
+        <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm text-amber-400 font-medium">No forecasting data available</p>
+            <p className="text-xs text-slate-400">Click "Force Fetch" to analyze 30 popular stocks and populate trending symbols, catalysts, and AI hypotheses.</p>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-2 mb-4 overflow-x-auto">

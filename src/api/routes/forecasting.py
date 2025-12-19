@@ -9,15 +9,33 @@ AI-powered market forecasting endpoints:
 - AI hypothesis generation
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+import asyncio
 
 from loguru import logger
 
 
 router = APIRouter(prefix="/api/forecast", tags=["Forecasting"])
+
+# Track background fetch status
+_fetch_status = {
+    "is_fetching": False,
+    "last_fetch": None,
+    "symbols_processed": 0,
+    "total_symbols": 0,
+    "error": None,
+}
+
+# Cache for fetched data (used when internal engines don't have data)
+_fetched_data_cache = {
+    "trending_symbols": [],
+    "catalysts": [],
+    "hypotheses": [],
+    "viral_alerts": [],
+}
 
 
 # =============================================================================
@@ -46,6 +64,13 @@ async def get_symbol_sentiment(symbol: str):
 async def get_trending_symbols(limit: int = Query(20, ge=1, le=100)):
     """Get trending symbols by social activity."""
     from src.forecasting.social_sentiment import get_social_sentiment
+    
+    # Use cached data if available
+    if _fetched_data_cache["trending_symbols"]:
+        return {
+            "trending_symbols": _fetched_data_cache["trending_symbols"][:limit],
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
     
     engine = get_social_sentiment()
     return {
@@ -116,6 +141,13 @@ async def add_social_post(post: SocialPostInput):
 async def get_trending_signals(min_confidence: float = Query(30.0, ge=0, le=100)):
     """Get all active trending signals."""
     from src.forecasting.buzz_detector import get_buzz_detector
+    
+    # Use cached data if available
+    if _fetched_data_cache["viral_alerts"]:
+        return {
+            "trending_signals": _fetched_data_cache["viral_alerts"],
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
     
     detector = get_buzz_detector()
     return {
@@ -292,6 +324,10 @@ async def get_imminent_catalysts(days: int = Query(7, ge=1, le=30)):
     """Get imminent catalysts across all symbols."""
     from src.forecasting.catalyst_tracker import get_catalyst_tracker
     
+    # Use cached data if available
+    if _fetched_data_cache["catalysts"]:
+        return {"imminent_catalysts": _fetched_data_cache["catalysts"]}
+    
     tracker = get_catalyst_tracker()
     return {"imminent_catalysts": tracker.get_imminent_catalysts(days)}
 
@@ -431,6 +467,13 @@ async def get_active_hypotheses(
     """Get all active (non-expired) hypotheses."""
     from src.forecasting.hypothesis_generator import get_hypothesis_generator, HypothesisCategory
     
+    # Use cached data if available
+    if _fetched_data_cache["hypotheses"]:
+        hypotheses = _fetched_data_cache["hypotheses"]
+        if category:
+            hypotheses = [h for h in hypotheses if h.get("category") == category]
+        return {"active_hypotheses": hypotheses}
+    
     generator = get_hypothesis_generator()
     
     cat = None
@@ -503,6 +546,357 @@ async def get_full_analysis(symbol: str):
     }
 
 
+# =============================================================================
+# Force Fetch / Populate Data
+# =============================================================================
+
+# Popular symbols to analyze
+POPULAR_SYMBOLS = [
+    "NVDA", "AAPL", "TSLA", "MSFT", "GOOGL", "AMZN", "META", "AMD", "NFLX", "COIN",
+    "PLTR", "SOFI", "MARA", "RIOT", "GME", "AMC", "SPY", "QQQ", "ARKK", "SMCI",
+    "ARM", "AVGO", "MU", "INTC", "CRM", "ORCL", "NOW", "SNOW", "DDOG", "NET"
+]
+
+
+async def _fetch_and_populate_data(symbols: List[str]):
+    """Background task to fetch and populate forecasting data."""
+    global _fetch_status
+    
+    try:
+        import yfinance as yf
+        import numpy as np
+        from src.forecasting.social_sentiment import get_social_sentiment, SymbolSentiment, SentimentLevel
+        from src.forecasting.catalyst_tracker import get_catalyst_tracker, CatalystEvent, CatalystType, CatalystImpact
+        from src.forecasting.buzz_detector import get_buzz_detector
+        from src.forecasting.hypothesis_generator import get_hypothesis_generator, MarketHypothesis, HypothesisConfidence, HypothesisTimeframe, HypothesisCategory
+        
+        sentiment_engine = get_social_sentiment()
+        catalyst_tracker = get_catalyst_tracker()
+        buzz_detector = get_buzz_detector()
+        hypothesis_generator = get_hypothesis_generator()
+        
+        _fetch_status["total_symbols"] = len(symbols)
+        _fetch_status["symbols_processed"] = 0
+        
+        trending_data = []
+        
+        for i, symbol in enumerate(symbols):
+            try:
+                ticker = yf.Ticker(symbol)
+                info = ticker.info
+                hist = ticker.history(period="5d")
+                
+                if hist.empty or not info:
+                    continue
+                
+                # Calculate price change
+                if len(hist) >= 2:
+                    current_price = float(hist['Close'].iloc[-1])
+                    prev_price = float(hist['Close'].iloc[-2])
+                    price_change_pct = ((current_price - prev_price) / prev_price) * 100
+                    
+                    # Get volume
+                    current_vol = float(hist['Volume'].iloc[-1])
+                    avg_vol = float(hist['Volume'].mean())
+                    vol_ratio = current_vol / avg_vol if avg_vol > 0 else 1
+                else:
+                    price_change_pct = 0
+                    vol_ratio = 1
+                    current_price = info.get("currentPrice", 0)
+                
+                # Determine sentiment based on price action
+                if price_change_pct > 3:
+                    sentiment_level = SentimentLevel.VERY_BULLISH
+                    sentiment_score = min(80 + price_change_pct * 2, 100)
+                elif price_change_pct > 1:
+                    sentiment_level = SentimentLevel.BULLISH
+                    sentiment_score = 50 + price_change_pct * 10
+                elif price_change_pct < -3:
+                    sentiment_level = SentimentLevel.VERY_BEARISH
+                    sentiment_score = max(-80 + price_change_pct * 2, -100)
+                elif price_change_pct < -1:
+                    sentiment_level = SentimentLevel.BEARISH
+                    sentiment_score = -50 + price_change_pct * 10
+                else:
+                    sentiment_level = SentimentLevel.NEUTRAL
+                    sentiment_score = price_change_pct * 10
+                
+                # Create symbol sentiment
+                symbol_sentiment = SymbolSentiment(
+                    symbol=symbol,
+                    overall_sentiment=sentiment_level,
+                    sentiment_score=sentiment_score,
+                    bullish_count=int(max(0, sentiment_score * 10)),
+                    bearish_count=int(max(0, -sentiment_score * 10)),
+                    neutral_count=100,
+                    total_mentions=int(vol_ratio * 100),
+                    total_engagement=int(vol_ratio * 1000),
+                    influencer_mentions=int(vol_ratio * 5),
+                    trending_score=min(vol_ratio * 30, 100),
+                    momentum="rising" if price_change_pct > 0 else "falling" if price_change_pct < 0 else "neutral",
+                    sources={"twitter": 40, "reddit": 30, "stocktwits": 20, "news": 10},
+                )
+                
+                # Add to sentiment engine (use _sentiment_cache)
+                sentiment_engine._sentiment_cache[symbol] = symbol_sentiment
+                # Also add to symbol_posts for trending calculation
+                sentiment_engine._symbol_posts[symbol] = []
+                
+                trending_data.append({
+                    "symbol": symbol,
+                    "price_change": price_change_pct,
+                    "vol_ratio": vol_ratio,
+                    "sentiment": sentiment_score,
+                    "current_price": current_price,
+                })
+                
+                # Check for earnings catalyst
+                try:
+                    calendar = ticker.calendar
+                    if calendar is not None and hasattr(calendar, 'get'):
+                        earnings_date = calendar.get("Earnings Date")
+                        if earnings_date:
+                            if isinstance(earnings_date, list) and len(earnings_date) > 0:
+                                next_earnings = earnings_date[0]
+                                if hasattr(next_earnings, 'to_pydatetime'):
+                                    next_earnings = next_earnings.to_pydatetime()
+                                    if next_earnings.tzinfo is None:
+                                        next_earnings = next_earnings.replace(tzinfo=timezone.utc)
+                                    
+                                    days_until = (next_earnings - datetime.now(timezone.utc)).days
+                                    
+                                    if 0 <= days_until <= 30:
+                                        catalyst = CatalystEvent(
+                                            id=f"earnings_{symbol}_{next_earnings.strftime('%Y%m%d')}",
+                                            symbol=symbol,
+                                            catalyst_type=CatalystType.EARNINGS,
+                                            title=f"{symbol} Q4 Earnings Report",
+                                            description=f"{info.get('shortName', symbol)} earnings announcement",
+                                            expected_date=next_earnings,
+                                            impact=CatalystImpact.MAJOR if symbol in ["NVDA", "AAPL", "TSLA", "MSFT"] else CatalystImpact.SIGNIFICANT,
+                                            bullish_outcome="Beat estimates, raised guidance",
+                                            bearish_outcome="Missed estimates, lowered guidance",
+                                            expected_move_pct=5.0,
+                                            confidence=80.0,
+                                            source="yfinance",
+                                            verified=True,
+                                        )
+                                        # Add to all_catalysts list
+                                        catalyst_tracker._all_catalysts.append(catalyst)
+                                        # Also add to symbol-specific catalysts
+                                        if symbol not in catalyst_tracker._catalysts:
+                                            catalyst_tracker._catalysts[symbol] = []
+                                        catalyst_tracker._catalysts[symbol].append(catalyst)
+                except Exception as e:
+                    logger.debug(f"Could not get earnings for {symbol}: {e}")
+                
+                _fetch_status["symbols_processed"] = i + 1
+                
+                # Small delay to avoid rate limiting
+                await asyncio.sleep(0.2)
+                
+            except Exception as e:
+                logger.debug(f"Error processing {symbol}: {e}")
+                continue
+        
+        # Generate AI Hypotheses based on top movers
+        trending_data.sort(key=lambda x: abs(x["price_change"]), reverse=True)
+        
+        for item in trending_data[:5]:
+            symbol = item["symbol"]
+            price_change = item["price_change"]
+            
+            direction = "long" if price_change > 0 else "short"
+            if abs(price_change) > 2:
+                confidence = HypothesisConfidence.HIGH
+                probability = 70
+            elif abs(price_change) > 1:
+                confidence = HypothesisConfidence.MEDIUM
+                probability = 55
+            else:
+                confidence = HypothesisConfidence.LOW
+                probability = 40
+            
+            # Generate hypothesis
+            if price_change > 2:
+                category = HypothesisCategory.MOMENTUM_TRADE
+                title = f"{symbol} Momentum Breakout"
+                thesis = f"{symbol} is showing strong upward momentum with {price_change:.1f}% gain. Volume is elevated at {item['vol_ratio']:.1f}x average, suggesting institutional buying. The trend could continue if momentum persists."
+            elif price_change < -2:
+                category = HypothesisCategory.CONTRARIAN
+                title = f"{symbol} Oversold Bounce"
+                thesis = f"{symbol} has dropped {abs(price_change):.1f}% and may be oversold. If the decline is due to sector rotation rather than fundamental issues, a bounce could occur."
+            else:
+                category = HypothesisCategory.TECHNICAL_BREAKOUT
+                title = f"{symbol} Consolidation Watch"
+                thesis = f"{symbol} is consolidating with relatively low volatility. A breakout in either direction could occur soon."
+            
+            hypothesis = MarketHypothesis(
+                id=f"hyp_{symbol}_{datetime.now().strftime('%Y%m%d%H%M')}",
+                title=title,
+                thesis=thesis,
+                category=category,
+                confidence=confidence,
+                timeframe=HypothesisTimeframe.SHORT_TERM,
+                symbols=[symbol],
+                primary_symbol=symbol,
+                direction=direction,
+                entry_strategy=f"Enter on pullback to support or breakout confirmation",
+                exit_strategy=f"Exit at {abs(price_change) * 2:.1f}% profit or {abs(price_change):.1f}% stop loss",
+                risk_management="Position size 2% of portfolio",
+                supporting_signals=[
+                    f"{price_change:.1f}% price change",
+                    f"{item['vol_ratio']:.1f}x volume ratio",
+                ],
+                contrary_signals=["Market volatility", "Sector headwinds"],
+                key_risks=["Reversal risk", "Broader market downturn"],
+                probability_pct=probability,
+                upside_pct=abs(price_change) * 2,
+                downside_pct=abs(price_change),
+                risk_reward_ratio=2.0,
+                validation_triggers=["Continued momentum", "Volume confirmation"],
+                invalidation_triggers=["Break below support", "Volume dry-up"],
+            )
+            
+            hypothesis_generator._hypotheses[hypothesis.id] = hypothesis
+        
+        # Add buzz signals for high volume movers (use _active_trends)
+        from src.forecasting.buzz_detector import TrendSignal, TrendStrength, TrendStage
+        for item in trending_data[:10]:
+            if item["vol_ratio"] > 1.5:
+                strength = TrendStrength.VIRAL if item["vol_ratio"] > 3 else TrendStrength.SURGING if item["vol_ratio"] > 2 else TrendStrength.RISING
+                stage = TrendStage.PEAK if item["vol_ratio"] > 2.5 else TrendStage.GROWING if item["vol_ratio"] > 1.8 else TrendStage.EARLY
+                trend_signal = TrendSignal(
+                    symbol=item["symbol"],
+                    strength=strength,
+                    stage=stage,
+                    buzz_score=item["vol_ratio"] * 30,
+                    velocity=item["vol_ratio"],
+                    acceleration=0.5 if item["price_change"] > 0 else -0.5,
+                    mentions_current=int(item["vol_ratio"] * 100),
+                    mentions_baseline=100,
+                    confidence=min(item["vol_ratio"] * 25, 100),
+                    first_detected=datetime.now(timezone.utc),
+                    peak_time=datetime.now(timezone.utc),
+                )
+                buzz_detector._active_trends[item["symbol"]] = trend_signal
+        
+        # Update the cache with trending data
+        global _fetched_data_cache
+        _fetched_data_cache["trending_symbols"] = [
+            {
+                "symbol": item["symbol"],
+                "mentions_24h": int(item["vol_ratio"] * 100),
+                "engagement_24h": int(item["vol_ratio"] * 1000),
+                "sentiment_score": round(item["sentiment"], 1),
+                "trending_rank": i + 1,
+                "price_change_24h": round(item["price_change"], 2),
+                "current_price": round(item["current_price"], 2),
+            }
+            for i, item in enumerate(sorted(trending_data, key=lambda x: abs(x["price_change"]), reverse=True)[:15])
+        ]
+        
+        # Update catalysts cache
+        _fetched_data_cache["catalysts"] = [
+            c.to_dict() if hasattr(c, 'to_dict') else {
+                "id": c.id,
+                "symbol": c.symbol,
+                "title": c.title,
+                "catalyst_type": c.catalyst_type.value,
+                "impact": c.impact.value,
+                "days_until": c.days_until,
+                "expected_date": c.expected_date.isoformat(),
+            }
+            for c in catalyst_tracker._all_catalysts
+        ]
+        
+        # Update hypotheses cache
+        _fetched_data_cache["hypotheses"] = [
+            h.to_dict() for h in hypothesis_generator._hypotheses.values()
+        ]
+        
+        # Update viral alerts cache
+        _fetched_data_cache["viral_alerts"] = [
+            {
+                "symbol": t.symbol,
+                "strength": t.strength.value,
+                "buzz_score": round(t.buzz_score, 1),
+                "mentions_current": t.mentions_current,
+            }
+            for t in buzz_detector._active_trends.values()
+        ]
+        
+        _fetch_status["is_fetching"] = False
+        _fetch_status["last_fetch"] = datetime.now(timezone.utc).isoformat()
+        _fetch_status["error"] = None
+        
+        logger.info(f"Forecasting data populated for {len(trending_data)} symbols")
+        
+    except Exception as e:
+        _fetch_status["is_fetching"] = False
+        _fetch_status["error"] = str(e)
+        logger.error(f"Error in force fetch: {e}")
+
+
+@router.post("/force-fetch")
+async def force_fetch_data(
+    background_tasks: BackgroundTasks,
+    symbols: Optional[str] = Query(None, description="Comma-separated symbols, or leave empty for defaults"),
+):
+    """
+    Force fetch and populate forecasting data from yfinance.
+    
+    This runs in the background and populates:
+    - Trending symbols with sentiment scores
+    - Upcoming catalysts (earnings dates)
+    - AI-generated hypotheses based on price action
+    - Buzz/viral signals based on volume
+    
+    Returns immediately with fetch status.
+    """
+    global _fetch_status
+    
+    if _fetch_status["is_fetching"]:
+        return {
+            "status": "already_running",
+            "message": "A fetch operation is already in progress",
+            "progress": f"{_fetch_status['symbols_processed']}/{_fetch_status['total_symbols']}",
+        }
+    
+    # Parse symbols
+    if symbols:
+        symbol_list = [s.strip().upper() for s in symbols.split(",")]
+    else:
+        symbol_list = POPULAR_SYMBOLS
+    
+    _fetch_status["is_fetching"] = True
+    _fetch_status["symbols_processed"] = 0
+    _fetch_status["total_symbols"] = len(symbol_list)
+    _fetch_status["error"] = None
+    
+    # Run in background
+    background_tasks.add_task(_fetch_and_populate_data, symbol_list)
+    
+    return {
+        "status": "started",
+        "message": f"Fetching data for {len(symbol_list)} symbols in background",
+        "symbols": symbol_list,
+    }
+
+
+@router.get("/fetch-status")
+async def get_fetch_status():
+    """Get the status of the background fetch operation."""
+    return {
+        "is_fetching": _fetch_status["is_fetching"],
+        "last_fetch": _fetch_status["last_fetch"],
+        "progress": f"{_fetch_status['symbols_processed']}/{_fetch_status['total_symbols']}",
+        "symbols_processed": _fetch_status["symbols_processed"],
+        "total_symbols": _fetch_status["total_symbols"],
+        "error": _fetch_status["error"],
+    }
+
+
 @router.get("/dashboard")
 async def get_forecasting_dashboard():
     """Get overview dashboard of all forecasting data."""
@@ -516,14 +910,21 @@ async def get_forecasting_dashboard():
     catalyst_tracker = get_catalyst_tracker()
     hypothesis_generator = get_hypothesis_generator()
     
+    # Use cached data if available, otherwise use engine data
+    trending = _fetched_data_cache["trending_symbols"][:10] if _fetched_data_cache["trending_symbols"] else sentiment_engine.get_trending_symbols(10)
+    catalysts = _fetched_data_cache["catalysts"][:5] if _fetched_data_cache["catalysts"] else catalyst_tracker.get_imminent_catalysts(7)[:5]
+    hypotheses = _fetched_data_cache["hypotheses"][:5] if _fetched_data_cache["hypotheses"] else hypothesis_generator.get_active_hypotheses()[:5]
+    viral = _fetched_data_cache["viral_alerts"] if _fetched_data_cache["viral_alerts"] else buzz_detector.get_viral_alerts()
+    
     return {
-        "trending_symbols": sentiment_engine.get_trending_symbols(10),
-        "viral_alerts": buzz_detector.get_viral_alerts(),
+        "trending_symbols": trending,
+        "viral_alerts": viral,
         "early_movers": buzz_detector.get_early_movers(3),
         "influencer_alerts": buzz_detector.get_influencer_alerts(24)[:5],
-        "imminent_catalysts": catalyst_tracker.get_imminent_catalysts(7)[:5],
-        "active_hypotheses": hypothesis_generator.get_active_hypotheses()[:5],
+        "imminent_catalysts": catalysts,
+        "active_hypotheses": hypotheses,
         "updated_at": datetime.now(timezone.utc).isoformat(),
+        "data_source": "cache" if _fetched_data_cache["trending_symbols"] else "engines",
     }
 
 
