@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createChart, ColorType, IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { apiUrl } from '../config/api';
-import { TrendingUp, TrendingDown, Target, Calendar, Zap, Brain, Activity, AlertCircle } from 'lucide-react';
+import { TrendingUp, TrendingDown, Target, Calendar, Zap, Brain, Activity, AlertCircle, ExternalLink, Info, ChevronDown, ChevronUp, Newspaper, Shield, BarChart3 } from 'lucide-react';
 
 interface TrendingSymbol {
   symbol: string;
@@ -57,6 +57,47 @@ interface ProjectionData {
   volatility: number;
 }
 
+interface NewsReference {
+  title: string;
+  url: string;
+  source: string;
+  published: string;
+  relevance: string;
+  sentiment_impact: string;
+}
+
+interface ScoreBreakdown {
+  component: string;
+  value: number;
+  weight: number;
+  contribution: number;
+  explanation: string;
+  sources: string[];
+}
+
+interface AnalysisWithSources {
+  symbol: string;
+  current_price: number;
+  speculation_score: number;
+  sentiment_score: number;
+  probability_pct: number;
+  trend_direction: string;
+  score_breakdown: ScoreBreakdown[];
+  news_articles: NewsReference[];
+  bullish_factors: string[];
+  bearish_factors: string[];
+  methodology: Record<string, string>;
+  data_sources: { name: string; type: string; reliability: string }[];
+  reliability: {
+    overall: string;
+    news_coverage: number;
+    data_freshness: string;
+    confidence_factors: Record<string, boolean>;
+    disclaimer: string;
+  };
+  updated_at: string;
+}
+
 type TimeHorizon = '1m' | '3m' | '6m' | '1y';
 
 const ForecastingPanel: React.FC = () => {
@@ -69,8 +110,11 @@ const ForecastingPanel: React.FC = () => {
   const [projectionLoading, setProjectionLoading] = useState(false);
   const [searchSymbol, setSearchSymbol] = useState('');
   const [projectionData, setProjectionData] = useState<ProjectionData | null>(null);
+  const [analysisData, setAnalysisData] = useState<AnalysisWithSources | null>(null);
   const [selectedHorizon, setSelectedHorizon] = useState<TimeHorizon>('6m');
   const [error, setError] = useState<string | null>(null);
+  const [showMethodology, setShowMethodology] = useState(false);
+  const [showScoreBreakdown, setShowScoreBreakdown] = useState(false);
 
   // Chart refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -117,15 +161,26 @@ const ForecastingPanel: React.FC = () => {
     
     setProjectionLoading(true);
     setError(null);
+    setAnalysisData(null);
     
     try {
-      const res = await fetch(apiUrl(`/api/forecast/projections/${symbol.toUpperCase()}?history_period=1y`));
-      if (res.ok) {
-        const data = await res.json();
+      // Fetch both projections and analysis with sources in parallel
+      const [projRes, analysisRes] = await Promise.all([
+        fetch(apiUrl(`/api/forecast/projections/${symbol.toUpperCase()}?history_period=1y`)),
+        fetch(apiUrl(`/api/forecast/analysis-with-sources/${symbol.toUpperCase()}`)),
+      ]);
+      
+      if (projRes.ok) {
+        const data = await projRes.json();
         setProjectionData(data);
       } else {
-        const errData = await res.json();
+        const errData = await projRes.json();
         setError(errData.detail || 'Failed to fetch projections');
+      }
+      
+      if (analysisRes.ok) {
+        const data = await analysisRes.json();
+        setAnalysisData(data);
       }
     } catch (error) {
       setError('Network error. Please try again.');
@@ -551,6 +606,227 @@ const ForecastingPanel: React.FC = () => {
                       </div>
                     </div>
                   </div>
+                )}
+
+                {/* Analysis with Sources */}
+                {analysisData && (
+                  <>
+                    {/* Bullish/Bearish Factors */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Bullish Factors */}
+                      <div className="p-4 bg-green-500/5 rounded-lg border border-green-500/20">
+                        <div className="flex items-center gap-2 mb-3">
+                          <TrendingUp className="w-4 h-4 text-green-400" />
+                          <span className="text-sm font-medium text-green-400">Bullish Factors</span>
+                        </div>
+                        {analysisData.bullish_factors.length > 0 ? (
+                          <ul className="space-y-2">
+                            {analysisData.bullish_factors.map((factor, i) => (
+                              <li key={i} className="text-sm text-slate-300">{factor}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-sm text-slate-500">No strong bullish signals detected</p>
+                        )}
+                      </div>
+                      
+                      {/* Bearish Factors */}
+                      <div className="p-4 bg-red-500/5 rounded-lg border border-red-500/20">
+                        <div className="flex items-center gap-2 mb-3">
+                          <TrendingDown className="w-4 h-4 text-red-400" />
+                          <span className="text-sm font-medium text-red-400">Bearish Factors</span>
+                        </div>
+                        {analysisData.bearish_factors.length > 0 ? (
+                          <ul className="space-y-2">
+                            {analysisData.bearish_factors.map((factor, i) => (
+                              <li key={i} className="text-sm text-slate-300">{factor}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-sm text-slate-500">No strong bearish signals detected</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* News References */}
+                    {analysisData.news_articles.length > 0 && (
+                      <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Newspaper className="w-4 h-4 text-blue-400" />
+                          <span className="text-sm font-medium text-white">News & References</span>
+                          <span className="text-xs text-slate-500">({analysisData.news_articles.length} articles)</span>
+                        </div>
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                          {analysisData.news_articles.map((article, i) => (
+                            <a
+                              key={i}
+                              href={article.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block p-3 bg-slate-900/50 rounded-lg hover:bg-slate-900 transition-colors group"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1">
+                                  <p className="text-sm text-white group-hover:text-blue-400 transition-colors line-clamp-2">
+                                    {article.title}
+                                  </p>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-xs text-slate-500">{article.source}</span>
+                                    <span className="text-xs text-slate-600">•</span>
+                                    <span className="text-xs text-slate-500">
+                                      {new Date(article.published).toLocaleDateString()}
+                                    </span>
+                                    <span className={`px-1.5 py-0.5 text-xs rounded ${
+                                      article.sentiment_impact === 'bullish' 
+                                        ? 'bg-green-500/20 text-green-400'
+                                        : article.sentiment_impact === 'bearish'
+                                        ? 'bg-red-500/20 text-red-400'
+                                        : 'bg-slate-500/20 text-slate-400'
+                                    }`}>
+                                      {article.sentiment_impact}
+                                    </span>
+                                  </div>
+                                </div>
+                                <ExternalLink className="w-4 h-4 text-slate-500 group-hover:text-blue-400 flex-shrink-0" />
+                              </div>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Score Breakdown (Collapsible) */}
+                    <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                      <button
+                        onClick={() => setShowScoreBreakdown(!showScoreBreakdown)}
+                        className="w-full flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-2">
+                          <BarChart3 className="w-4 h-4 text-violet-400" />
+                          <span className="text-sm font-medium text-white">Score Breakdown</span>
+                          <span className="text-xs text-slate-500">How is this calculated?</span>
+                        </div>
+                        {showScoreBreakdown ? (
+                          <ChevronUp className="w-4 h-4 text-slate-400" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-slate-400" />
+                        )}
+                      </button>
+                      
+                      {showScoreBreakdown && (
+                        <div className="mt-4 space-y-3">
+                          {analysisData.score_breakdown.map((score, i) => (
+                            <div key={i} className="p-3 bg-slate-900/50 rounded-lg">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium text-white">{score.component}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm text-slate-400">
+                                    {score.value.toFixed(0)}/100
+                                  </span>
+                                  <span className="text-xs text-slate-500">
+                                    (×{score.weight.toFixed(2)})
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden mb-2">
+                                <div
+                                  className="h-full bg-gradient-to-r from-violet-500 to-blue-500 rounded-full"
+                                  style={{ width: `${score.value}%` }}
+                                />
+                              </div>
+                              <p className="text-xs text-slate-400 mb-2">{score.explanation}</p>
+                              <div className="flex flex-wrap gap-1">
+                                {score.sources.map((src, j) => (
+                                  <span key={j} className="px-1.5 py-0.5 bg-slate-700/50 text-xs text-slate-500 rounded">
+                                    {src}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Methodology (Collapsible) */}
+                    <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                      <button
+                        onClick={() => setShowMethodology(!showMethodology)}
+                        className="w-full flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Info className="w-4 h-4 text-cyan-400" />
+                          <span className="text-sm font-medium text-white">Methodology & Sources</span>
+                        </div>
+                        {showMethodology ? (
+                          <ChevronUp className="w-4 h-4 text-slate-400" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-slate-400" />
+                        )}
+                      </button>
+                      
+                      {showMethodology && (
+                        <div className="mt-4 space-y-4">
+                          {/* Methodology */}
+                          <div className="space-y-2">
+                            {Object.entries(analysisData.methodology).map(([key, value]) => (
+                              <div key={key} className="p-2 bg-slate-900/50 rounded">
+                                <span className="text-xs font-medium text-violet-400 uppercase">{key.replace('_', ' ')}</span>
+                                <p className="text-xs text-slate-400 mt-1">{value}</p>
+                              </div>
+                            ))}
+                          </div>
+                          
+                          {/* Data Sources */}
+                          <div>
+                            <span className="text-xs font-medium text-slate-500 uppercase">Data Sources</span>
+                            <div className="mt-2 grid grid-cols-2 gap-2">
+                              {analysisData.data_sources.map((source, i) => (
+                                <div key={i} className="p-2 bg-slate-900/50 rounded flex items-center justify-between">
+                                  <div>
+                                    <span className="text-xs text-white">{source.name}</span>
+                                    <span className="text-xs text-slate-500 ml-1">({source.type})</span>
+                                  </div>
+                                  <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                    source.reliability === 'High' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+                                  }`}>
+                                    {source.reliability}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          
+                          {/* Reliability */}
+                          <div className="p-3 bg-slate-900/50 rounded-lg">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Shield className="w-4 h-4 text-slate-400" />
+                              <span className="text-xs font-medium text-white">Reliability Assessment</span>
+                              <span className={`px-1.5 py-0.5 text-xs rounded ${
+                                analysisData.reliability.overall === 'high' 
+                                  ? 'bg-green-500/20 text-green-400'
+                                  : analysisData.reliability.overall === 'medium'
+                                  ? 'bg-yellow-500/20 text-yellow-400'
+                                  : 'bg-red-500/20 text-red-400'
+                              }`}>
+                                {analysisData.reliability.overall.toUpperCase()}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap gap-2 mb-2">
+                              {Object.entries(analysisData.reliability.confidence_factors).map(([key, value]) => (
+                                <span key={key} className={`px-2 py-1 text-xs rounded ${
+                                  value ? 'bg-green-500/10 text-green-400' : 'bg-slate-700 text-slate-500'
+                                }`}>
+                                  {value ? '✓' : '✗'} {key.replace(/_/g, ' ')}
+                                </span>
+                              ))}
+                            </div>
+                            <p className="text-xs text-slate-500 italic">{analysisData.reliability.disclaimer}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
                 )}
               </>
             )}

@@ -528,6 +528,291 @@ async def get_forecasting_dashboard():
 
 
 # =============================================================================
+# Analysis with News References & Sources
+# =============================================================================
+
+class NewsReference(BaseModel):
+    """A news article reference."""
+    title: str
+    url: str
+    source: str
+    published: str
+    relevance: str  # "high", "medium", "low"
+    sentiment_impact: Optional[str] = None  # "bullish", "bearish", "neutral"
+
+
+class ScoreBreakdown(BaseModel):
+    """Breakdown of how a score was calculated."""
+    component: str
+    value: float
+    weight: float
+    contribution: float
+    explanation: str
+    sources: List[str] = []
+
+
+class AnalysisWithReferences(BaseModel):
+    """Comprehensive analysis with references and explanations."""
+    symbol: str
+    current_price: float
+    
+    # Overall scores
+    speculation_score: float
+    sentiment_score: float
+    probability_pct: float
+    trend_direction: str
+    
+    # Score breakdowns with explanations
+    score_breakdown: List[ScoreBreakdown]
+    
+    # News references
+    news_articles: List[NewsReference]
+    
+    # Key factors
+    bullish_factors: List[str]
+    bearish_factors: List[str]
+    
+    # Methodology explanation
+    methodology: Dict[str, str]
+    
+    # Data sources used
+    data_sources: List[Dict[str, str]]
+    
+    # Reliability assessment
+    reliability: Dict[str, Any]
+    
+    updated_at: str
+
+
+@router.get("/analysis-with-sources/{symbol}")
+async def get_analysis_with_sources(symbol: str):
+    """
+    Get comprehensive analysis with news references and source explanations.
+    
+    Returns:
+    - Score breakdowns with how each component is calculated
+    - News articles that influenced the analysis
+    - Bullish/bearish factors with sources
+    - Methodology explanations
+    - Reliability assessment
+    """
+    try:
+        import yfinance as yf
+        import numpy as np
+        from src.forecasting.social_sentiment import get_social_sentiment
+        from src.forecasting.speculation_scorer import get_speculation_scorer
+        from src.forecasting.catalyst_tracker import get_catalyst_tracker
+        from src.forecasting.hypothesis_generator import get_hypothesis_generator
+        
+        symbol = symbol.upper()
+        
+        # Fetch stock data
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        
+        if not info or not info.get("symbol"):
+            raise HTTPException(status_code=404, detail=f"Symbol '{symbol}' not found")
+        
+        current_price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+        
+        # Fetch news from yfinance
+        news_articles = []
+        try:
+            yf_news = ticker.news
+            if yf_news:
+                for article in yf_news[:10]:
+                    # Determine sentiment impact based on keywords
+                    title = article.get("title", "").lower()
+                    sentiment_impact = "neutral"
+                    if any(w in title for w in ["surge", "rally", "beat", "profit", "growth", "upgrade", "buy"]):
+                        sentiment_impact = "bullish"
+                    elif any(w in title for w in ["fall", "drop", "miss", "loss", "decline", "downgrade", "sell"]):
+                        sentiment_impact = "bearish"
+                    
+                    news_articles.append(NewsReference(
+                        title=article.get("title", ""),
+                        url=article.get("link", ""),
+                        source=article.get("publisher", "Unknown"),
+                        published=datetime.fromtimestamp(article.get("providerPublishTime", 0)).isoformat(),
+                        relevance="high" if symbol in article.get("title", "").upper() else "medium",
+                        sentiment_impact=sentiment_impact,
+                    ))
+        except Exception as e:
+            logger.debug(f"Could not fetch news: {e}")
+        
+        # Get analysis components
+        sentiment_engine = get_social_sentiment()
+        speculation_scorer = get_speculation_scorer()
+        catalyst_tracker = get_catalyst_tracker()
+        hypothesis_generator = get_hypothesis_generator()
+        
+        sentiment = sentiment_engine.get_sentiment(symbol)
+        catalysts = catalyst_tracker.get_catalysts(symbol, 30)
+        
+        # Generate forecast
+        forecast = speculation_scorer.generate_forecast(
+            symbol=symbol,
+            social_data=sentiment.to_dict() if sentiment else {},
+            catalyst_data=[{"event": c["title"], "days_until": c["days_until"], "impact": c["impact"]} for c in catalysts],
+        )
+        
+        # Generate hypothesis
+        hypothesis = await hypothesis_generator.generate_hypothesis(
+            symbol,
+            {
+                "sentiment_score": sentiment.sentiment_score if sentiment else 50,
+                "mentions_24h": sentiment.total_mentions if sentiment else 0,
+                "catalysts": catalysts,
+            }
+        )
+        
+        # Build score breakdown with explanations
+        score_breakdown = [
+            ScoreBreakdown(
+                component="Social Buzz",
+                value=forecast.social_score,
+                weight=0.20,
+                contribution=forecast.social_score * 0.20,
+                explanation="Measures social media activity and engagement. Higher scores indicate more discussion and interest from retail investors.",
+                sources=["Twitter/X mentions", "Reddit r/wallstreetbets", "StockTwits", "Discord communities"],
+            ),
+            ScoreBreakdown(
+                component="Sentiment Momentum",
+                value=forecast.sentiment_score,
+                weight=0.15,
+                contribution=forecast.sentiment_score * 0.15,
+                explanation="Analyzes the tone of discussions. Positive sentiment suggests bullish outlook, negative suggests bearish.",
+                sources=["NLP analysis of social posts", "News article sentiment", "Analyst report tone"],
+            ),
+            ScoreBreakdown(
+                component="Catalyst Score",
+                value=forecast.catalyst_score,
+                weight=0.25,
+                contribution=forecast.catalyst_score * 0.25,
+                explanation="Evaluates upcoming events that could move the stock price, such as earnings, FDA approvals, or product launches.",
+                sources=["Earnings calendar", "SEC filings", "Company announcements", "Industry events"],
+            ),
+            ScoreBreakdown(
+                component="Technical Setup",
+                value=forecast.technical_score,
+                weight=0.15,
+                contribution=forecast.technical_score * 0.15,
+                explanation="Analyzes chart patterns and technical indicators for potential breakouts or breakdowns.",
+                sources=["Moving averages", "RSI", "MACD", "Volume analysis", "Support/resistance levels"],
+            ),
+            ScoreBreakdown(
+                component="Momentum Score",
+                value=forecast.momentum_score,
+                weight=0.15,
+                contribution=forecast.momentum_score * 0.15,
+                explanation="Measures price trend strength and sector performance relative to the market.",
+                sources=["Price action analysis", "Relative strength vs S&P 500", "Sector ETF performance"],
+            ),
+            ScoreBreakdown(
+                component="Squeeze Potential",
+                value=forecast.squeeze_score,
+                weight=0.10,
+                contribution=forecast.squeeze_score * 0.10,
+                explanation="Evaluates short squeeze potential based on short interest and borrowing costs.",
+                sources=["Short interest data", "Days to cover", "Cost to borrow", "Options market activity"],
+            ),
+        ]
+        
+        # Identify bullish and bearish factors
+        bullish_factors = []
+        bearish_factors = []
+        
+        # From news
+        for article in news_articles:
+            if article.sentiment_impact == "bullish":
+                bullish_factors.append(f"📰 {article.title} ({article.source})")
+            elif article.sentiment_impact == "bearish":
+                bearish_factors.append(f"📰 {article.title} ({article.source})")
+        
+        # From catalysts
+        for catalyst in catalysts[:3]:
+            if catalyst.get("impact") in ["major", "significant"]:
+                bullish_factors.append(f"🎯 Upcoming: {catalyst.get('title')} in {catalyst.get('days_until')} days")
+        
+        # From technicals
+        if forecast.technical_score > 70:
+            bullish_factors.append("📈 Strong technical setup - potential breakout pattern")
+        elif forecast.technical_score < 30:
+            bearish_factors.append("📉 Weak technical setup - potential breakdown pattern")
+        
+        if forecast.momentum_score > 70:
+            bullish_factors.append("🚀 Strong momentum - outperforming the market")
+        elif forecast.momentum_score < 30:
+            bearish_factors.append("🐢 Weak momentum - underperforming the market")
+        
+        if forecast.squeeze_score > 60:
+            bullish_factors.append("🔥 High short squeeze potential")
+        
+        # Determine trend direction
+        if sentiment and sentiment.sentiment_score > 20:
+            trend_direction = "bullish"
+        elif sentiment and sentiment.sentiment_score < -20:
+            trend_direction = "bearish"
+        else:
+            trend_direction = "neutral"
+        
+        # Methodology explanation
+        methodology = {
+            "speculation_score": "Weighted average of 6 components: Social Buzz (20%), Sentiment (15%), Catalysts (25%), Technical (15%), Momentum (15%), Squeeze (10%). Range: 0-100.",
+            "sentiment_score": "Natural Language Processing analysis of social media posts and news articles. Range: -100 (very bearish) to +100 (very bullish).",
+            "probability": "AI-generated estimate based on historical pattern matching and factor analysis. This is speculative and not financial advice.",
+            "confidence_levels": "High (>70%), Medium (40-70%), Low (<40%) based on data quality and signal agreement.",
+        }
+        
+        # Data sources
+        data_sources = [
+            {"name": "Yahoo Finance", "type": "Price & News", "reliability": "High"},
+            {"name": "yfinance API", "type": "Historical Data", "reliability": "High"},
+            {"name": "Social Sentiment Engine", "type": "Social Analysis", "reliability": "Medium"},
+            {"name": "Catalyst Tracker", "type": "Events", "reliability": "High"},
+            {"name": "Technical Indicators", "type": "Chart Analysis", "reliability": "High"},
+        ]
+        
+        # Reliability assessment
+        news_count = len(news_articles)
+        reliability = {
+            "overall": "high" if news_count >= 5 else "medium" if news_count >= 2 else "low",
+            "news_coverage": news_count,
+            "data_freshness": "Real-time" if news_count > 0 else "Limited",
+            "confidence_factors": {
+                "has_recent_news": news_count > 0,
+                "has_analyst_coverage": info.get("numberOfAnalystOpinions", 0) > 0,
+                "has_social_data": sentiment is not None,
+                "has_upcoming_catalysts": len(catalysts) > 0,
+            },
+            "disclaimer": "This analysis is for informational purposes only and should not be considered financial advice. Past performance does not guarantee future results.",
+        }
+        
+        return AnalysisWithReferences(
+            symbol=symbol,
+            current_price=round(float(current_price), 2),
+            speculation_score=round(forecast.speculation_score, 1),
+            sentiment_score=round(sentiment.sentiment_score if sentiment else 50, 1),
+            probability_pct=round(hypothesis.probability_pct, 1),
+            trend_direction=trend_direction,
+            score_breakdown=score_breakdown,
+            news_articles=news_articles,
+            bullish_factors=bullish_factors[:5],
+            bearish_factors=bearish_factors[:5],
+            methodology=methodology,
+            data_sources=data_sources,
+            reliability=reliability,
+            updated_at=datetime.now(timezone.utc).isoformat(),
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating analysis with sources for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate analysis: {str(e)}")
+
+
+# =============================================================================
 # Price Projections / Extrapolation Forecasting
 # =============================================================================
 
