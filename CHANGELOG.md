@@ -5,6 +5,114 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.7] - 2025-12-19
+
+### 🔮 AI Market Forecasting - Fully Operational
+
+#### Route Ordering Fix
+- **Fixed API Route Bug**: Static routes (`/hypothesis/active`, `/catalysts/imminent`) now properly prioritized before dynamic routes (`/hypothesis/{symbol}`, `/catalysts/{symbol}`)
+- **All 4 Tabs Working**: Trending, Catalysts, AI Hypotheses, and Viral tabs now populate correctly
+
+#### Auto-Fetch on Startup
+- **Automatic Data Population**: Forecasting data now auto-fetches when server starts
+- **No Manual Refresh Needed**: Data available immediately without clicking Force Fetch
+- **30 Popular Symbols**: NVDA, AAPL, TSLA, MSFT, GOOGL, AMZN, META, AMD, and 22 more
+
+#### Enhanced Data Generation
+- **Lower Thresholds**: More inclusive data generation for comprehensive coverage
+- **Synthetic Catalysts**: Generated when no earnings data available from yfinance
+- **8+ AI Hypotheses**: Generated per fetch cycle based on top movers
+- **15+ Viral Signals**: Buzz/trending signals for market movers
+
+#### Technical Improvements
+- **FastAPI Route Priority**: Static paths before parameterized paths
+- **Background Task Fixes**: Proper async handling for force-fetch
+- **Cache Synchronization**: Reliable data caching for all forecasting endpoints
+
+---
+
+## [1.0.6] - 2025-12-19
+
+### 📊 AI Pattern Predictions
+
+#### Pattern Detection
+- **Trend Continuation/Reversal**: Confidence scores for trend analysis
+- **Volatility Squeeze Breakout**: Detecting compression before expansion
+- **Mean Reversion Signals**: Overbought/Oversold detection
+- **Support/Resistance Testing**: Key level alerts
+- **Analyst Divergence**: When price diverges from analyst consensus
+- **Momentum Divergence**: Price vs momentum indicator divergence
+
+### 📈 Visual Diagrams in Glossary
+
+#### SVG Charts Added
+- **Indicators**: RSI, MACD, Bollinger Bands, SMA/EMA diagrams
+- **Patterns**: Head & Shoulders, Double Top/Bottom visualizations
+- **Risk Management**: Stop Loss, Risk/Reward, Drawdown illustrations
+- **Fibonacci**: Retracement level visualization
+- **Trend Analysis**: Support/Resistance and Trend line diagrams
+
+### 🔢 Score Breakdown with Formulas
+- **Full Calculation Display**: Mathematical formulas for each score component
+- **Weighted Breakdown**: Live calculation showing contribution percentages
+- **Speculation Score**: Complete transparency on how scores are derived
+
+### 📰 Fixed News Sources
+- **yfinance API Update**: Adapted to new nested API structure
+- **Proper Attribution**: Yahoo Finance, Reuters, etc. correctly displayed
+- **No More "Unknown"**: All news articles show proper source
+
+### ⛔ Strategy Disable Enforcement
+- **Create Bot Protection**: Disabled strategies unselectable in form
+- **Visual Indicators**: Grayed out with ⛔ icon and strikethrough
+- **API Endpoint**: `GET /api/admin/strategies/status` for status check
+
+### 🔢 Bot Numbering
+- **Sequential Numbers**: All 40 bots numbered in Bot Manager list
+
+### 🔗 Clickable External References
+- **Influencer Links**: Names link to YouTube/TikTok/Instagram profiles
+- **News Articles**: Click to open source website
+- **Whale Alerts**: Links to blockchain explorers
+- **Earnings/Signals**: Links to EarningsWhispers, Finviz, etc.
+
+---
+
+## [1.0.5] - 2025-12-19
+
+### 💱 Forex Trading Bots
+
+#### New Currency Trading Bots (3)
+- **Major Forex Pairs**: EUR/USD, GBP/USD, USD/JPY, USD/CHF
+- **Asia-Pacific FX**: AUD/USD, NZD/USD, USD/SGD, USD/HKD
+- **Euro Crosses**: EUR/GBP, EUR/JPY, EUR/CHF, EUR/AUD
+
+#### InstrumentType Extension
+- **FOREX Added**: New instrument type for forex pairs
+- **40 Total Bots**: Stocks, Options, Futures, Crypto, Commodities, Forex
+
+### 📚 Comprehensive Trading Glossary
+- **290+ Terms**: Searchable trading terminology
+- **Categories**: Indicators, Patterns, Strategies, Risk Management, etc.
+- **Visual Diagrams**: SVG illustrations for key concepts
+- **XFactor Tips**: How each term applies to the platform
+
+### 🔄 Dynamic Version Display
+- **package.json Source**: Version injected at build time via Vite
+- **No Hardcoding**: Single source of truth for version
+
+### 🧠 Agentic Tuning (ATRWAC)
+- **AI Auto-Tuning**: Anthropic, OpenAI, or Ollama integration
+- **Strategy Optimization**: Automatic parameter adjustment
+- **Real-time Feedback**: Performance-based tuning
+
+### 📹 Video Platforms Intelligence
+- **50+ Influencers**: YouTube, TikTok, Instagram tracking
+- **Clickable Profiles**: Direct links to influencer pages
+- **Viral Alerts**: Real-time trending content detection
+
+---
+
 ## [1.0.4] - 2025-12-18
 
 ### 🔮 Market Forecasting - Price Projection Charts
