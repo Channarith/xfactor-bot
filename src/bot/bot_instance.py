@@ -31,6 +31,7 @@ class InstrumentType(str, Enum):
     FUTURES = "futures"
     CRYPTO = "crypto"
     COMMODITY = "commodity"  # Precious metals, energy, agriculture
+    FOREX = "forex"  # Currency pairs
 
 
 # Commodity symbols and their ETF proxies

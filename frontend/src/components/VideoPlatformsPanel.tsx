@@ -29,6 +29,7 @@ interface Influencer {
   handle: string;
   followers: number;
   focus: string[];
+  url?: string;
 }
 
 const VideoPlatformsPanel: React.FC = () => {
@@ -262,11 +263,17 @@ const VideoPlatformsPanel: React.FC = () => {
               </div>
             ) : (
               trending.map((video) => (
-                <div key={video.id} className="p-3 bg-slate-700/30 rounded-lg hover:bg-slate-700/50 transition-colors">
+                <a 
+                  key={video.id} 
+                  href={video.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block p-3 bg-slate-700/30 rounded-lg hover:bg-slate-700/50 transition-colors cursor-pointer group"
+                >
                   <div className="flex items-start gap-3">
                     <span className="text-xl">{getPlatformIcon(video.platform)}</span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-white font-medium truncate">{video.title}</p>
+                      <p className="text-sm text-white font-medium truncate group-hover:text-blue-400 transition-colors">{video.title}</p>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-xs text-slate-400">{video.creator?.name}</span>
                         {video.creator?.verified && <span className="text-xs text-blue-400">✓</span>}
@@ -288,8 +295,13 @@ const VideoPlatformsPanel: React.FC = () => {
                         </div>
                       )}
                     </div>
+                    <span className="text-slate-500 group-hover:text-blue-400 transition-colors shrink-0">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </span>
                   </div>
-                </div>
+                </a>
               ))
             )}
           </div>
@@ -305,25 +317,38 @@ const VideoPlatformsPanel: React.FC = () => {
               <p className="text-slate-400 text-center py-4 text-sm">No influencers data</p>
             ) : (
               influencers.map((influencer, i) => (
-                <div key={influencer.handle} className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg hover:bg-slate-700/50 transition-colors">
+                <a 
+                  key={influencer.handle} 
+                  href={influencer.url || `https://www.google.com/search?q=${encodeURIComponent(influencer.name)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg hover:bg-slate-700/50 transition-colors cursor-pointer group"
+                >
                   <div className="flex items-center gap-3">
                     <span className="text-slate-400 text-sm w-6">#{i + 1}</span>
                     <div>
-                      <p className="text-white font-medium">{influencer.name}</p>
+                      <p className="text-white font-medium group-hover:text-blue-400 transition-colors">{influencer.name}</p>
                       <p className="text-xs text-slate-400">@{influencer.handle}</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-blue-400">{formatNumber(influencer.followers)}</p>
-                    <div className="flex gap-1 mt-1">
-                      {influencer.focus?.slice(0, 2).map((f) => (
-                        <span key={f} className="px-1.5 py-0.5 text-xs bg-slate-600/50 text-slate-300 rounded">
-                          {f}
-                        </span>
-                      ))}
+                  <div className="text-right flex items-center gap-3">
+                    <div>
+                      <p className="text-sm font-bold text-blue-400">{formatNumber(influencer.followers)}</p>
+                      <div className="flex gap-1 mt-1">
+                        {influencer.focus?.slice(0, 2).map((f) => (
+                          <span key={f} className="px-1.5 py-0.5 text-xs bg-slate-600/50 text-slate-300 rounded">
+                            {f}
+                          </span>
+                        ))}
+                      </div>
                     </div>
+                    <span className="text-slate-500 group-hover:text-blue-400 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </span>
                   </div>
-                </div>
+                </a>
               ))
             )}
           </div>
@@ -338,14 +363,27 @@ const VideoPlatformsPanel: React.FC = () => {
           </h3>
           <div className="flex gap-3 overflow-x-auto pb-2">
             {viral.slice(0, 5).map((v) => (
-              <div key={v.id} className="flex-shrink-0 p-3 bg-gradient-to-r from-red-500/20 to-orange-500/20 rounded-lg border border-red-500/30 min-w-[200px]">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xl">{getPlatformIcon(v.platform)}</span>
-                  <span className="text-lg font-bold text-white">🔥 {v.analysis?.viral_score?.toFixed(0)}</span>
+              <a 
+                key={v.id} 
+                href={v.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-shrink-0 p-3 bg-gradient-to-r from-red-500/20 to-orange-500/20 rounded-lg border border-red-500/30 min-w-[200px] hover:from-red-500/30 hover:to-orange-500/30 transition-colors cursor-pointer group"
+              >
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">{getPlatformIcon(v.platform)}</span>
+                    <span className="text-lg font-bold text-white">🔥 {v.analysis?.viral_score?.toFixed(0)}</span>
+                  </div>
+                  <span className="text-slate-500 group-hover:text-white transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </span>
                 </div>
-                <p className="text-sm text-white truncate">{v.title}</p>
+                <p className="text-sm text-white truncate group-hover:text-blue-400 transition-colors">{v.title}</p>
                 <p className="text-xs text-slate-400 mt-1">{v.creator?.name}</p>
-              </div>
+              </a>
             ))}
           </div>
         </div>

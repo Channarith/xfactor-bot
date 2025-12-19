@@ -152,6 +152,7 @@ class FinancialInfluencer:
     handle: str
     followers: int
     verified: bool = False
+    url: str = ""  # Profile URL
     
     # Influence metrics
     avg_views: int = 0
@@ -169,6 +170,16 @@ class FinancialInfluencer:
     symbols_mentioned: Dict[str, int] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
+        # Generate URL if not set
+        url = self.url
+        if not url:
+            if self.platform == VideoPlatform.YOUTUBE:
+                url = f"https://www.youtube.com/@{self.handle}"
+            elif self.platform == VideoPlatform.TIKTOK:
+                url = f"https://www.tiktok.com/@{self.handle}"
+            elif self.platform == VideoPlatform.INSTAGRAM:
+                url = f"https://www.instagram.com/{self.handle}"
+        
         return {
             "id": self.id,
             "platform": self.platform.value,
@@ -176,6 +187,7 @@ class FinancialInfluencer:
             "handle": self.handle,
             "followers": self.followers,
             "verified": self.verified,
+            "url": url,
             "metrics": {
                 "avg_views": self.avg_views,
                 "avg_engagement_rate": round(self.avg_engagement_rate, 4),
@@ -235,27 +247,27 @@ class VideoPlatformAnalyzer:
     # Known financial influencers
     KNOWN_INFLUENCERS = {
         "youtube": [
-            {"handle": "MeetKevin", "name": "Meet Kevin", "followers": 2000000, "focus": ["stocks", "real estate"]},
-            {"handle": "GrahamStephan", "name": "Graham Stephan", "followers": 4500000, "focus": ["investing", "real estate"]},
-            {"handle": "AndreJikh", "name": "Andrei Jikh", "followers": 2200000, "focus": ["investing", "crypto"]},
-            {"handle": "TomNash", "name": "Tom Nash", "followers": 500000, "focus": ["stocks", "tech"]},
-            {"handle": "StockMoe", "name": "Stock Moe", "followers": 400000, "focus": ["growth stocks"]},
-            {"handle": "JosephCarlson", "name": "Joseph Carlson", "followers": 300000, "focus": ["dividend investing"]},
-            {"handle": "MarkMoss", "name": "Mark Moss", "followers": 500000, "focus": ["crypto", "macro"]},
-            {"handle": "Tickertape", "name": "Ticker Tape", "followers": 200000, "focus": ["stocks", "analysis"]},
+            {"handle": "MeetKevin", "name": "Meet Kevin", "followers": 2000000, "focus": ["stocks", "real estate"], "url": "https://www.youtube.com/@MeetKevin"},
+            {"handle": "GrahamStephan", "name": "Graham Stephan", "followers": 4500000, "focus": ["investing", "real estate"], "url": "https://www.youtube.com/@GrahamStephan"},
+            {"handle": "AndreJikh", "name": "Andrei Jikh", "followers": 2200000, "focus": ["investing", "crypto"], "url": "https://www.youtube.com/@AndreiJikh"},
+            {"handle": "TomNash", "name": "Tom Nash", "followers": 500000, "focus": ["stocks", "tech"], "url": "https://www.youtube.com/@TomNash"},
+            {"handle": "StockMoe", "name": "Stock Moe", "followers": 400000, "focus": ["growth stocks"], "url": "https://www.youtube.com/@StockMoe"},
+            {"handle": "JosephCarlson", "name": "Joseph Carlson", "followers": 300000, "focus": ["dividend investing"], "url": "https://www.youtube.com/@TheJosephCarlsonShow"},
+            {"handle": "MarkMoss", "name": "Mark Moss", "followers": 500000, "focus": ["crypto", "macro"], "url": "https://www.youtube.com/@MarkMoss"},
+            {"handle": "Tickertape", "name": "Ticker Tape", "followers": 200000, "focus": ["stocks", "analysis"], "url": "https://www.youtube.com/@TickerSymbolYou"},
         ],
         "tiktok": [
-            {"handle": "stocktraderpro", "name": "Stock Trader Pro", "followers": 1500000, "focus": ["day trading"]},
-            {"handle": "tradingwithbrian", "name": "Trading with Brian", "followers": 800000, "focus": ["options"]},
-            {"handle": "investwithqai", "name": "Invest with Qai", "followers": 600000, "focus": ["stocks"]},
-            {"handle": "stockswithtom", "name": "Stocks with Tom", "followers": 500000, "focus": ["swing trading"]},
-            {"handle": "fintokking", "name": "FinTok King", "followers": 400000, "focus": ["meme stocks"]},
+            {"handle": "stocktraderpro", "name": "Stock Trader Pro", "followers": 1500000, "focus": ["day trading"], "url": "https://www.tiktok.com/@stocktraderpro"},
+            {"handle": "tradingwithbrian", "name": "Trading with Brian", "followers": 800000, "focus": ["options"], "url": "https://www.tiktok.com/@tradingwithbrian"},
+            {"handle": "investwithqai", "name": "Invest with Qai", "followers": 600000, "focus": ["stocks"], "url": "https://www.tiktok.com/@investwithqai"},
+            {"handle": "stockswithtom", "name": "Stocks with Tom", "followers": 500000, "focus": ["swing trading"], "url": "https://www.tiktok.com/@stockswithtom"},
+            {"handle": "fintokking", "name": "FinTok King", "followers": 400000, "focus": ["meme stocks"], "url": "https://www.tiktok.com/@fintokking"},
         ],
         "instagram": [
-            {"handle": "wallstreetbets", "name": "WSB", "followers": 2000000, "focus": ["meme stocks", "options"]},
-            {"handle": "stockmarket", "name": "Stock Market", "followers": 1500000, "focus": ["stocks"]},
-            {"handle": "tradingview", "name": "TradingView", "followers": 1200000, "focus": ["charts", "analysis"]},
-            {"handle": "investorsclub", "name": "Investors Club", "followers": 800000, "focus": ["investing"]},
+            {"handle": "wallstreetbets", "name": "WSB", "followers": 2000000, "focus": ["meme stocks", "options"], "url": "https://www.instagram.com/wallstreetbets"},
+            {"handle": "stockmarket", "name": "Stock Market", "followers": 1500000, "focus": ["stocks"], "url": "https://www.instagram.com/stockmarket"},
+            {"handle": "tradingview", "name": "TradingView", "followers": 1200000, "focus": ["charts", "analysis"], "url": "https://www.instagram.com/tradingview"},
+            {"handle": "investorsclub", "name": "Investors Club", "followers": 800000, "focus": ["investing"], "url": "https://www.instagram.com/investorsclub"},
         ],
     }
     

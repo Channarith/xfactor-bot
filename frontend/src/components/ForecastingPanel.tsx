@@ -72,6 +72,7 @@ interface ScoreBreakdown {
   weight: number;
   contribution: number;
   explanation: string;
+  formula?: string;
   sources: string[];
 }
 
@@ -96,6 +97,17 @@ interface AnalysisWithSources {
     disclaimer: string;
   };
   updated_at: string;
+}
+
+interface AIPatternPrediction {
+  pattern: string;
+  type: 'bullish' | 'bearish' | 'neutral';
+  confidence: number;
+  timeframe: string;
+  target_price?: number;
+  stop_loss?: number;
+  description: string;
+  trigger: string;
 }
 
 type TimeHorizon = '1m' | '3m' | '6m' | '1y';
@@ -428,7 +440,142 @@ const ForecastingPanel: React.FC = () => {
     return colors[confidence] || colors.low;
   };
 
+  // Generate AI pattern predictions based on price data
+  const generatePatternPredictions = useCallback((): AIPatternPrediction[] => {
+    if (!projectionData) return [];
+    
+    const predictions: AIPatternPrediction[] = [];
+    const { current_price, trend_direction, trend_strength, volatility, analyst_targets } = projectionData;
+    const targetData = getTargetData();
+    
+    // Calculate price momentum from historical data
+    const historical = projectionData.historical;
+    const recentPrices = historical.slice(-20);
+    const oldPrices = historical.slice(-40, -20);
+    const recentAvg = recentPrices.reduce((a, b) => a + b.value, 0) / recentPrices.length;
+    const oldAvg = oldPrices.length > 0 ? oldPrices.reduce((a, b) => a + b.value, 0) / oldPrices.length : recentAvg;
+    const momentum = ((recentAvg - oldAvg) / oldAvg) * 100;
+    
+    // Pattern 1: Trend Continuation or Reversal
+    if (trend_strength > 60) {
+      predictions.push({
+        pattern: trend_direction === 'bullish' ? 'Strong Uptrend Continuation' : 'Strong Downtrend Continuation',
+        type: trend_direction === 'bullish' ? 'bullish' : 'bearish',
+        confidence: Math.min(85, 50 + trend_strength * 0.5),
+        timeframe: '2-4 weeks',
+        target_price: trend_direction === 'bullish' ? targetData?.mid : targetData?.low,
+        description: `Strong ${trend_direction} trend detected with ${trend_strength.toFixed(0)}% strength. Momentum indicators confirm continuation.`,
+        trigger: trend_direction === 'bullish' 
+          ? `Price holds above $${(current_price * 0.97).toFixed(2)} support`
+          : `Price stays below $${(current_price * 1.03).toFixed(2)} resistance`,
+      });
+    }
+    
+    // Pattern 2: Breakout Detection
+    if (volatility < 25 && trend_strength > 40) {
+      const breakoutDirection = trend_direction === 'bullish' ? 'bullish' : 'bearish';
+      predictions.push({
+        pattern: 'Volatility Squeeze Breakout',
+        type: breakoutDirection,
+        confidence: Math.min(75, 55 + (25 - volatility)),
+        timeframe: '1-2 weeks',
+        target_price: breakoutDirection === 'bullish' ? current_price * 1.08 : current_price * 0.92,
+        stop_loss: breakoutDirection === 'bullish' ? current_price * 0.96 : current_price * 1.04,
+        description: `Low volatility (${volatility.toFixed(1)}%) suggests accumulation phase. Breakout expected soon.`,
+        trigger: breakoutDirection === 'bullish'
+          ? `Break above $${(current_price * 1.02).toFixed(2)} with volume`
+          : `Break below $${(current_price * 0.98).toFixed(2)} with volume`,
+      });
+    }
+    
+    // Pattern 3: Mean Reversion
+    if (Math.abs(momentum) > 8) {
+      const isOverextended = momentum > 8;
+      predictions.push({
+        pattern: isOverextended ? 'Overbought Pullback' : 'Oversold Bounce',
+        type: isOverextended ? 'bearish' : 'bullish',
+        confidence: Math.min(70, 45 + Math.abs(momentum) * 2),
+        timeframe: '3-7 days',
+        target_price: isOverextended ? current_price * 0.95 : current_price * 1.05,
+        description: `Price has moved ${Math.abs(momentum).toFixed(1)}% from 20-day mean. ${isOverextended ? 'Pullback' : 'Bounce'} likely.`,
+        trigger: isOverextended
+          ? `RSI divergence or bearish candlestick pattern`
+          : `RSI bounce from oversold or bullish reversal candle`,
+      });
+    }
+    
+    // Pattern 4: Support/Resistance Test
+    if (targetData) {
+      const nearSupport = current_price < targetData.mid * 0.98;
+      const nearResistance = current_price > targetData.mid * 1.02;
+      
+      if (nearSupport || nearResistance) {
+        predictions.push({
+          pattern: nearSupport ? 'Support Level Test' : 'Resistance Level Test',
+          type: nearSupport ? 'bullish' : 'neutral',
+          confidence: 65,
+          timeframe: '1-2 weeks',
+          target_price: nearSupport ? targetData.mid : targetData.high,
+          stop_loss: nearSupport ? targetData.low * 0.98 : targetData.mid,
+          description: nearSupport 
+            ? `Testing key support near $${targetData.low.toFixed(2)}. Bounce opportunity if held.`
+            : `Approaching resistance near $${targetData.high.toFixed(2)}. Watch for breakout or rejection.`,
+          trigger: nearSupport
+            ? `Bullish candle pattern at support with increasing volume`
+            : `Break above $${targetData.high.toFixed(2)} or rejection candle`,
+        });
+      }
+    }
+    
+    // Pattern 5: Analyst Divergence
+    if (analyst_targets.mean > 0) {
+      const analystUpside = ((analyst_targets.mean - current_price) / current_price) * 100;
+      if (Math.abs(analystUpside) > 15) {
+        predictions.push({
+          pattern: analystUpside > 15 ? 'Analyst Upgrade Potential' : 'Analyst Downgrade Risk',
+          type: analystUpside > 15 ? 'bullish' : 'bearish',
+          confidence: Math.min(70, 50 + Math.abs(analystUpside) * 0.5),
+          timeframe: '1-3 months',
+          target_price: analyst_targets.mean,
+          description: analystUpside > 15
+            ? `${analyst_targets.num_analysts} analysts see ${analystUpside.toFixed(0)}% upside. Consensus: ${analyst_targets.recommendation.replace('_', ' ')}`
+            : `Price ${Math.abs(analystUpside).toFixed(0)}% above analyst mean target. Downside risk.`,
+          trigger: analystUpside > 15
+            ? `Positive earnings or product announcement`
+            : `Earnings miss or guidance cut`,
+        });
+      }
+    }
+    
+    // Pattern 6: Momentum Divergence
+    if (trend_direction === 'bullish' && momentum < 0) {
+      predictions.push({
+        pattern: 'Bearish Momentum Divergence',
+        type: 'bearish',
+        confidence: 60,
+        timeframe: '1-3 weeks',
+        target_price: targetData?.low,
+        description: 'Price in uptrend but momentum weakening. Potential trend reversal forming.',
+        trigger: 'Break below recent swing low or MACD cross',
+      });
+    } else if (trend_direction === 'bearish' && momentum > 0) {
+      predictions.push({
+        pattern: 'Bullish Momentum Divergence',
+        type: 'bullish',
+        confidence: 60,
+        timeframe: '1-3 weeks',
+        target_price: targetData?.mid,
+        description: 'Price in downtrend but momentum improving. Potential bottom forming.',
+        trigger: 'Break above recent swing high or MACD cross',
+      });
+    }
+    
+    // Sort by confidence
+    return predictions.sort((a, b) => b.confidence - a.confidence).slice(0, 4);
+  }, [projectionData, selectedHorizon]);
+
   const targetData = getTargetData();
+  const patternPredictions = generatePatternPredictions();
 
   return (
     <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-6">
@@ -683,6 +830,81 @@ const ForecastingPanel: React.FC = () => {
                   </div>
                 )}
 
+                {/* AI Pattern Predictions */}
+                {patternPredictions.length > 0 && (
+                  <div className="p-4 bg-gradient-to-br from-violet-500/10 to-blue-500/10 rounded-lg border border-violet-500/30">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Brain className="w-5 h-5 text-violet-400" />
+                      <span className="text-sm font-bold text-white">AI Pattern Predictions</span>
+                      <span className="text-xs text-slate-500">Detected patterns & signals</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {patternPredictions.map((pred, i) => (
+                        <div 
+                          key={i} 
+                          className={`p-3 rounded-lg border ${
+                            pred.type === 'bullish' 
+                              ? 'bg-green-500/5 border-green-500/30' 
+                              : pred.type === 'bearish'
+                              ? 'bg-red-500/5 border-red-500/30'
+                              : 'bg-slate-700/30 border-slate-600/30'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              {pred.type === 'bullish' ? (
+                                <TrendingUp className="w-4 h-4 text-green-400" />
+                              ) : pred.type === 'bearish' ? (
+                                <TrendingDown className="w-4 h-4 text-red-400" />
+                              ) : (
+                                <Activity className="w-4 h-4 text-slate-400" />
+                              )}
+                              <span className={`text-sm font-medium ${
+                                pred.type === 'bullish' ? 'text-green-400' :
+                                pred.type === 'bearish' ? 'text-red-400' : 'text-slate-300'
+                              }`}>
+                                {pred.pattern}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className={`h-2 w-16 bg-slate-700 rounded-full overflow-hidden`}>
+                                <div 
+                                  className={`h-full rounded-full ${
+                                    pred.confidence >= 70 ? 'bg-green-500' :
+                                    pred.confidence >= 50 ? 'bg-yellow-500' : 'bg-orange-500'
+                                  }`}
+                                  style={{ width: `${pred.confidence}%` }}
+                                />
+                              </div>
+                              <span className="text-xs text-slate-400 w-10 text-right">{pred.confidence.toFixed(0)}%</span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-slate-400 mb-2">{pred.description}</p>
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className="px-2 py-0.5 bg-slate-800/50 rounded text-slate-500">
+                              ⏱ {pred.timeframe}
+                            </span>
+                            {pred.target_price && (
+                              <span className="px-2 py-0.5 bg-green-500/10 rounded text-green-400">
+                                🎯 ${pred.target_price.toFixed(2)}
+                              </span>
+                            )}
+                            {pred.stop_loss && (
+                              <span className="px-2 py-0.5 bg-red-500/10 rounded text-red-400">
+                                🛑 ${pred.stop_loss.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-2 pt-2 border-t border-slate-700/50">
+                            <span className="text-xs text-slate-500">Trigger: </span>
+                            <span className="text-xs text-slate-400">{pred.trigger}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Analyst Targets */}
                 {projectionData.analyst_targets.mean > 0 && (
                   <div className="p-4 bg-amber-500/10 rounded-lg border border-amber-500/30">
@@ -826,6 +1048,20 @@ const ForecastingPanel: React.FC = () => {
                       
                       {showScoreBreakdown && (
                         <div className="mt-4 space-y-3">
+                          {/* Overall Formula */}
+                          <div className="p-3 bg-violet-500/10 rounded-lg border border-violet-500/30 mb-4">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-xs font-medium text-violet-400 uppercase">Final Score Formula</span>
+                            </div>
+                            <code className="text-xs text-cyan-400 font-mono block">
+                              Speculation_Score = (Social × 0.20) + (Sentiment × 0.15) + (Catalyst × 0.25) + (Technical × 0.15) + (Momentum × 0.15) + (Squeeze × 0.10)
+                            </code>
+                            <p className="text-xs text-slate-500 mt-2">
+                              = ({analysisData.score_breakdown[0]?.value.toFixed(0)} × 0.20) + ({analysisData.score_breakdown[1]?.value.toFixed(0)} × 0.15) + ({analysisData.score_breakdown[2]?.value.toFixed(0)} × 0.25) + ({analysisData.score_breakdown[3]?.value.toFixed(0)} × 0.15) + ({analysisData.score_breakdown[4]?.value.toFixed(0)} × 0.15) + ({analysisData.score_breakdown[5]?.value.toFixed(0)} × 0.10)
+                              = <span className="text-white font-bold">{analysisData.speculation_score.toFixed(1)}</span>
+                            </p>
+                          </div>
+                          
                           {analysisData.score_breakdown.map((score, i) => (
                             <div key={i} className="p-3 bg-slate-900/50 rounded-lg">
                               <div className="flex items-center justify-between mb-2">
@@ -837,6 +1073,9 @@ const ForecastingPanel: React.FC = () => {
                                   <span className="text-xs text-slate-500">
                                     (×{score.weight.toFixed(2)})
                                   </span>
+                                  <span className="text-xs text-green-400">
+                                    = {score.contribution.toFixed(1)}
+                                  </span>
                                 </div>
                               </div>
                               <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden mb-2">
@@ -846,6 +1085,15 @@ const ForecastingPanel: React.FC = () => {
                                 />
                               </div>
                               <p className="text-xs text-slate-400 mb-2">{score.explanation}</p>
+                              
+                              {/* Formula */}
+                              {score.formula && (
+                                <div className="p-2 bg-slate-800/50 rounded border border-slate-700/50 mb-2">
+                                  <span className="text-xs text-slate-500">Formula: </span>
+                                  <code className="text-xs text-cyan-400 font-mono">{score.formula}</code>
+                                </div>
+                              )}
+                              
                               <div className="flex flex-wrap gap-1">
                                 {score.sources.map((src, j) => (
                                   <span key={j} className="px-1.5 py-0.5 bg-slate-700/50 text-xs text-slate-500 rounded">

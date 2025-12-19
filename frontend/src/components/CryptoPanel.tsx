@@ -28,6 +28,8 @@ interface WhaleAlert {
   amount: number
   usd_value: number
   type: string
+  tx_hash?: string
+  url?: string
 }
 
 const categories = [
@@ -221,16 +223,39 @@ export function CryptoPanel() {
       {/* Whale Alerts Mini */}
       {whaleAlerts.length > 0 && (
         <div className="mt-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
-          <div className="flex items-center gap-2 text-sm font-medium text-yellow-400 mb-2">
-            <AlertTriangle className="h-4 w-4" /> Recent Whale Activity
+          <div className="flex items-center justify-between text-sm font-medium text-yellow-400 mb-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" /> Recent Whale Activity
+            </div>
+            <a 
+              href="https://whale-alert.io" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-xs text-muted-foreground hover:text-yellow-400 transition-colors"
+            >
+              View All →
+            </a>
           </div>
           <div className="space-y-1 text-xs">
-            {whaleAlerts.slice(0, 3).map((alert, i) => (
-              <div key={i} className="flex justify-between">
-                <span className="text-muted-foreground">{alert.type?.replace('_', ' ') || 'transfer'}</span>
-                <span>{(alert.amount ?? 0).toFixed(2)} {alert.symbol} (${((alert.usd_value ?? 0) / 1e6).toFixed(1)}M)</span>
-              </div>
-            ))}
+            {whaleAlerts.slice(0, 3).map((alert, i) => {
+              const explorerUrl = alert.url 
+                ? alert.url 
+                : alert.tx_hash 
+                  ? `https://whale-alert.io/transaction/${alert.symbol.toLowerCase()}/${alert.tx_hash}`
+                  : `https://whale-alert.io`;
+              return (
+                <a 
+                  key={i} 
+                  href={explorerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex justify-between hover:bg-yellow-500/10 p-1 rounded transition-colors cursor-pointer group"
+                >
+                  <span className="text-muted-foreground group-hover:text-yellow-400 transition-colors">{alert.type?.replace('_', ' ') || 'transfer'}</span>
+                  <span className="group-hover:text-yellow-400 transition-colors">{(alert.amount ?? 0).toFixed(2)} {alert.symbol} (${((alert.usd_value ?? 0) / 1e6).toFixed(1)}M)</span>
+                </a>
+              );
+            })}
           </div>
         </div>
       )}

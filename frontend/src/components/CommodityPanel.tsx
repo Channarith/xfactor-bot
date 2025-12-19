@@ -273,25 +273,38 @@ export default function CommodityPanel() {
         {showNews && (
           <div className="space-y-2">
             {news.slice(0, 5).map((article, i) => (
-              <div key={i} className="bg-card/30 rounded-lg p-3">
+              <a 
+                key={i} 
+                href={article.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block bg-card/30 rounded-lg p-3 hover:bg-card/50 transition-colors cursor-pointer group"
+              >
                 <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="font-medium text-sm">{article.title}</div>
+                  <div className="flex-1">
+                    <div className="font-medium text-sm group-hover:text-blue-400 transition-colors">{article.title}</div>
                     <div className="text-xs text-muted-foreground mt-1">
                       {article.source} • {new Date(article.published).toLocaleString()}
                     </div>
                   </div>
-                  <div className={`px-2 py-0.5 rounded text-xs ${
-                    article.sentiment > 0.3 
-                      ? 'bg-green-500/20 text-green-400' 
-                      : article.sentiment < -0.3 
-                        ? 'bg-red-500/20 text-red-400' 
-                        : 'bg-gray-500/20 text-gray-400'
-                  }`}>
-                    {article.sentiment > 0.3 ? 'Bullish' : article.sentiment < -0.3 ? 'Bearish' : 'Neutral'}
+                  <div className="flex items-center gap-2">
+                    <div className={`px-2 py-0.5 rounded text-xs ${
+                      article.sentiment > 0.3 
+                        ? 'bg-green-500/20 text-green-400' 
+                        : article.sentiment < -0.3 
+                          ? 'bg-red-500/20 text-red-400' 
+                          : 'bg-gray-500/20 text-gray-400'
+                    }`}>
+                      {article.sentiment > 0.3 ? 'Bullish' : article.sentiment < -0.3 ? 'Bearish' : 'Neutral'}
+                    </div>
+                    <span className="text-muted-foreground group-hover:text-blue-400 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </span>
                   </div>
                 </div>
-              </div>
+              </a>
             ))}
           </div>
         )}

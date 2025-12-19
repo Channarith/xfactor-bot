@@ -91,6 +91,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     except Exception as e:
         logger.warning(f"Bot manager initialization: {e}")
     
+    # Auto-fetch forecasting data on startup (in background)
+    try:
+        import asyncio
+        from src.api.routes import forecasting as fc_routes
+        logger.info("Starting background forecasting data fetch...")
+        asyncio.create_task(fc_routes._fetch_and_populate_data(fc_routes.POPULAR_SYMBOLS))
+    except Exception as e:
+        logger.warning(f"Auto-fetch initialization: {e}")
+    
     yield
     
     # Shutdown - clean up all resources
@@ -106,7 +115,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="XFactor Bot API",
         description="AI-Powered Automated Trading System - Control Panel API",
-        version="1.0.4",
+        version="1.0.7",
         lifespan=lifespan,
     )
     

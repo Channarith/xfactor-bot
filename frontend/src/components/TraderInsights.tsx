@@ -526,7 +526,13 @@ export function TraderInsights() {
       {activeTab === 'insiders' && (
         <div className="space-y-2">
           {(displayedData as InsiderTrade[]).map((trade) => (
-            <div key={trade.id} className="p-3 rounded-lg bg-secondary/30 border border-border hover:border-xfactor-teal/50">
+            <a 
+              key={trade.id} 
+              href={`http://openinsider.com/search?q=${encodeURIComponent(trade.ticker)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block p-3 rounded-lg bg-secondary/30 border border-border hover:border-xfactor-teal/50 cursor-pointer group"
+            >
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <div className={`p-2 rounded-lg ${trade.tradeType === 'Buy' ? 'bg-profit/20' : 'bg-loss/20'}`}>
@@ -534,7 +540,7 @@ export function TraderInsights() {
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold">{trade.ticker}</span>
+                      <span className="font-bold group-hover:text-xfactor-teal transition-colors">{trade.ticker}</span>
                       <span className={`text-xs px-2 py-0.5 rounded ${trade.tradeType === 'Buy' ? 'bg-profit/20 text-profit' : 'bg-loss/20 text-loss'}`}>
                         {trade.tradeType}
                       </span>
@@ -542,16 +548,19 @@ export function TraderInsights() {
                     <div className="text-xs text-muted-foreground">{trade.company}</div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="font-semibold">{formatValue(trade.value)}</div>
-                  <div className="text-xs text-muted-foreground">{trade.shares.toLocaleString()} shares</div>
+                <div className="text-right flex items-center gap-2">
+                  <div>
+                    <div className="font-semibold">{formatValue(trade.value)}</div>
+                    <div className="text-xs text-muted-foreground">{trade.shares.toLocaleString()} shares</div>
+                  </div>
+                  <ExternalLink className="h-3.5 w-3.5 text-muted-foreground group-hover:text-xfactor-teal transition-colors" />
                 </div>
               </div>
               <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                 <span><User className="h-3 w-3 inline mr-1" />{trade.insider} ({trade.title})</span>
                 <span>Filed: {trade.filingDate}</span>
               </div>
-            </div>
+            </a>
           ))}
           {displayedData.length === 0 && <div className="text-center py-8 text-muted-foreground">No results found</div>}
           {data.length > 0 && <Pagination />}
@@ -561,8 +570,22 @@ export function TraderInsights() {
       {/* Top Traders Tab */}
       {activeTab === 'traders' && (
         <div className="space-y-2">
-          {(displayedData as TopTrader[]).map((trader) => (
-            <div key={trader.id} className="p-3 rounded-lg bg-secondary/30 border border-border hover:border-xfactor-teal/50">
+          {(displayedData as TopTrader[]).map((trader) => {
+            const platformUrl = trader.platform === 'Twitter' 
+              ? `https://twitter.com/${trader.handle.replace('@', '')}` 
+              : trader.platform === 'Reddit'
+              ? `https://reddit.com/user/${trader.handle.replace('u/', '')}`
+              : trader.platform === 'StockTwits'
+              ? `https://stocktwits.com/${trader.handle.replace('@', '')}`
+              : `https://www.google.com/search?q=${encodeURIComponent(trader.name + ' trader')}`;
+            return (
+            <a 
+              key={trader.id} 
+              href={platformUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block p-3 rounded-lg bg-secondary/30 border border-border hover:border-xfactor-teal/50 cursor-pointer group"
+            >
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-xfactor-teal/20 flex items-center justify-center">
@@ -570,14 +593,17 @@ export function TraderInsights() {
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold">{trader.name}</span>
+                      <span className="font-semibold group-hover:text-xfactor-teal transition-colors">{trader.name}</span>
                       {trader.verified && <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />}
                     </div>
                     <div className="text-xs text-muted-foreground">{trader.handle} • {trader.followers}</div>
                   </div>
                 </div>
-                <div className={`text-sm font-bold ${trader.winRate >= 70 ? 'text-profit' : 'text-yellow-500'}`}>
-                  {trader.winRate}% Win
+                <div className="flex items-center gap-2">
+                  <div className={`text-sm font-bold ${trader.winRate >= 70 ? 'text-profit' : 'text-yellow-500'}`}>
+                    {trader.winRate}% Win
+                  </div>
+                  <ExternalLink className="h-3.5 w-3.5 text-muted-foreground group-hover:text-xfactor-teal transition-colors" />
                 </div>
               </div>
               {trader.recentCalls.length > 0 && (
@@ -592,8 +618,8 @@ export function TraderInsights() {
                   ))}
                 </div>
               )}
-            </div>
-          ))}
+            </a>
+          )})}
           {displayedData.length === 0 && <div className="text-center py-8 text-muted-foreground">No results found</div>}
           {data.length > 0 && <Pagination />}
         </div>
@@ -603,27 +629,36 @@ export function TraderInsights() {
       {activeTab === 'finviz' && (
         <div className="space-y-2">
           {(displayedData as FinvizSignal[]).map((signal) => (
-            <div key={signal.id} className="p-3 rounded-lg bg-secondary/30 border border-border hover:border-xfactor-teal/50">
+            <a 
+              key={signal.id} 
+              href={`https://finviz.com/quote.ashx?t=${signal.ticker}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block p-3 rounded-lg bg-secondary/30 border border-border hover:border-xfactor-teal/50 cursor-pointer group"
+            >
               <div className="flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold">{signal.ticker}</span>
+                    <span className="font-bold group-hover:text-xfactor-teal transition-colors">{signal.ticker}</span>
                     <span className={`text-xs px-2 py-0.5 rounded ${signal.change >= 10 ? 'bg-profit/30 text-profit' : 'bg-profit/20 text-profit'}`}>
                       +{signal.change.toFixed(1)}%
                     </span>
                   </div>
                   <div className="text-xs text-muted-foreground">{signal.sector}</div>
                 </div>
-                <div className="text-right">
-                  <div className="font-semibold">${signal.price}</div>
-                  <div className="text-xs text-muted-foreground">Vol: {signal.volume}</div>
+                <div className="text-right flex items-center gap-2">
+                  <div>
+                    <div className="font-semibold">${signal.price}</div>
+                    <div className="text-xs text-muted-foreground">Vol: {signal.volume}</div>
+                  </div>
+                  <ExternalLink className="h-3.5 w-3.5 text-muted-foreground group-hover:text-xfactor-teal transition-colors" />
                 </div>
               </div>
               <div className="mt-2 flex gap-2">
                 <span className="text-xs px-2 py-0.5 rounded bg-xfactor-teal/20 text-xfactor-teal">{signal.signal}</span>
                 {signal.pattern && <span className="text-xs px-2 py-0.5 rounded bg-xfactor-money/20 text-xfactor-money">{signal.pattern}</span>}
               </div>
-            </div>
+            </a>
           ))}
           {displayedData.length === 0 && <div className="text-center py-8 text-muted-foreground">No results found</div>}
           {data.length > 0 && <Pagination />}
@@ -634,11 +669,17 @@ export function TraderInsights() {
       {activeTab === 'movingavg' && (
         <div className="space-y-2">
           {(displayedData as MovingAverageSignal[]).map((ma) => (
-            <div key={ma.id} className="p-3 rounded-lg bg-secondary/30 border border-border hover:border-xfactor-teal/50">
+            <a 
+              key={ma.id} 
+              href={`https://www.tradingview.com/symbols/${ma.ticker}/`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block p-3 rounded-lg bg-secondary/30 border border-border hover:border-xfactor-teal/50 cursor-pointer group"
+            >
               <div className="flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold">{ma.ticker}</span>
+                    <span className="font-bold group-hover:text-xfactor-teal transition-colors">{ma.ticker}</span>
                     <span className={`text-xs px-2 py-0.5 rounded ${
                       ma.signal.includes('Golden') || ma.signal.includes('Above') ? 'bg-profit/20 text-profit' : 
                       ma.signal.includes('Death') || ma.signal.includes('Below') ? 'bg-loss/20 text-loss' : 'bg-yellow-500/20 text-yellow-500'
@@ -650,12 +691,15 @@ export function TraderInsights() {
                     SMA20: ${ma.sma20.toFixed(0)} | SMA50: ${ma.sma50.toFixed(0)} | SMA200: ${ma.sma200.toFixed(0)}
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="font-semibold">${ma.price.toFixed(2)}</div>
-                  <div className="text-xs text-muted-foreground">Strength: {ma.strength}%</div>
+                <div className="text-right flex items-center gap-2">
+                  <div>
+                    <div className="font-semibold">${ma.price.toFixed(2)}</div>
+                    <div className="text-xs text-muted-foreground">Strength: {ma.strength}%</div>
+                  </div>
+                  <ExternalLink className="h-3.5 w-3.5 text-muted-foreground group-hover:text-xfactor-teal transition-colors" />
                 </div>
               </div>
-            </div>
+            </a>
           ))}
           {displayedData.length === 0 && <div className="text-center py-8 text-muted-foreground">No results found</div>}
           {data.length > 0 && <Pagination />}
@@ -666,20 +710,29 @@ export function TraderInsights() {
       {activeTab === 'earnings' && (
         <div className="space-y-2">
           {(displayedData as EarningsReport[]).map((er) => (
-            <div key={er.id} className="p-3 rounded-lg bg-secondary/30 border border-border hover:border-xfactor-teal/50">
+            <a 
+              key={er.id} 
+              href={`https://www.earningswhispers.com/stocks/${er.ticker}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block p-3 rounded-lg bg-secondary/30 border border-border hover:border-xfactor-teal/50 cursor-pointer group"
+            >
               <div className="flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold">{er.ticker}</span>
+                    <span className="font-bold group-hover:text-xfactor-teal transition-colors">{er.ticker}</span>
                     <span className="text-xs px-2 py-0.5 rounded bg-xfactor-teal/20 text-xfactor-teal">
                       {er.reportDate} {er.reportTime}
                     </span>
                   </div>
                   <div className="text-xs text-muted-foreground">{er.company}</div>
                 </div>
-                <div className="text-right">
-                  <div className="font-semibold">EPS Est: ${er.epsEstimate.toFixed(2)}</div>
-                  <div className="text-xs text-muted-foreground">Rev: {er.revenueEstimate}</div>
+                <div className="text-right flex items-center gap-2">
+                  <div>
+                    <div className="font-semibold">EPS Est: ${er.epsEstimate.toFixed(2)}</div>
+                    <div className="text-xs text-muted-foreground">Rev: {er.revenueEstimate}</div>
+                  </div>
+                  <ExternalLink className="h-3.5 w-3.5 text-muted-foreground group-hover:text-xfactor-teal transition-colors" />
                 </div>
               </div>
               <div className="mt-2 flex gap-3 text-xs">
@@ -688,7 +741,7 @@ export function TraderInsights() {
                 </span>
                 <span className="text-muted-foreground">Options IV: {er.optionsIV}%</span>
               </div>
-            </div>
+            </a>
           ))}
           {displayedData.length === 0 && <div className="text-center py-8 text-muted-foreground">No results found</div>}
           {data.length > 0 && <Pagination />}
@@ -699,11 +752,17 @@ export function TraderInsights() {
       {activeTab === 'press' && (
         <div className="space-y-2">
           {(displayedData as PressRelease[]).map((pr) => (
-            <div key={pr.id} className="p-3 rounded-lg bg-secondary/30 border border-border hover:border-xfactor-teal/50">
+            <a 
+              key={pr.id} 
+              href={`https://www.google.com/search?q=${encodeURIComponent(pr.ticker + ' ' + pr.title + ' press release')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block p-3 rounded-lg bg-secondary/30 border border-border hover:border-xfactor-teal/50 cursor-pointer group"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold">{pr.ticker}</span>
+                    <span className="font-bold group-hover:text-xfactor-teal transition-colors">{pr.ticker}</span>
                     <span className={`text-xs px-2 py-0.5 rounded ${
                       pr.category === 'FDA' ? 'bg-blue-500/20 text-blue-400' :
                       pr.category === 'M&A' ? 'bg-purple-500/20 text-purple-400' :
@@ -716,11 +775,12 @@ export function TraderInsights() {
                       {pr.sentiment > 0 ? '+' : ''}{pr.sentiment.toFixed(2)}
                     </span>
                   </div>
-                  <div className="text-sm mt-1">{pr.title}</div>
+                  <div className="text-sm mt-1 group-hover:text-xfactor-teal transition-colors">{pr.title}</div>
                   <div className="text-xs text-muted-foreground mt-1">{pr.source} • {new Date(pr.timestamp).toLocaleString()}</div>
                 </div>
+                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground group-hover:text-xfactor-teal transition-colors shrink-0" />
               </div>
-            </div>
+            </a>
           ))}
           {displayedData.length === 0 && <div className="text-center py-8 text-muted-foreground">No results found</div>}
           {data.length > 0 && <Pagination />}
@@ -738,11 +798,17 @@ export function TraderInsights() {
             </a>
           </div>
           {(displayedData as AInvestSignal[]).map((ai) => (
-            <div key={ai.id} className="p-3 rounded-lg bg-secondary/30 border border-border hover:border-xfactor-teal/50">
+            <a 
+              key={ai.id} 
+              href={`https://ainvest.com/stock/${ai.ticker}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block p-3 rounded-lg bg-secondary/30 border border-border hover:border-xfactor-teal/50 cursor-pointer group"
+            >
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold">{ai.ticker}</span>
+                    <span className="font-bold group-hover:text-xfactor-teal transition-colors">{ai.ticker}</span>
                     <span className={`text-xs px-2 py-0.5 rounded font-medium ${
                       ai.recommendation === 'Strong Buy' ? 'bg-profit/30 text-profit' :
                       ai.recommendation === 'Buy' ? 'bg-profit/20 text-profit' :
@@ -755,11 +821,14 @@ export function TraderInsights() {
                   </div>
                   <div className="text-xs text-muted-foreground">{ai.company}</div>
                 </div>
-                <div className="text-right">
-                  <div className="font-semibold">${ai.currentPrice} → ${ai.targetPrice}</div>
-                  <div className={`text-xs ${ai.upside > 0 ? 'text-profit' : 'text-loss'}`}>
-                    {ai.upside > 0 ? '+' : ''}{ai.upside.toFixed(1)}% upside
+                <div className="text-right flex items-center gap-2">
+                  <div>
+                    <div className="font-semibold">${ai.currentPrice} → ${ai.targetPrice}</div>
+                    <div className={`text-xs ${ai.upside > 0 ? 'text-profit' : 'text-loss'}`}>
+                      {ai.upside > 0 ? '+' : ''}{ai.upside.toFixed(1)}% upside
+                    </div>
                   </div>
+                  <ExternalLink className="h-3.5 w-3.5 text-muted-foreground group-hover:text-xfactor-teal transition-colors" />
                 </div>
               </div>
               <div className="mt-2 flex flex-wrap gap-1">
@@ -770,7 +839,7 @@ export function TraderInsights() {
                   {ai.confidence}% confidence
                 </span>
               </div>
-            </div>
+            </a>
           ))}
           {displayedData.length === 0 && <div className="text-center py-8 text-muted-foreground">No results found</div>}
           {data.length > 0 && <Pagination />}

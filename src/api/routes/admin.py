@@ -138,6 +138,48 @@ async def verify_session(admin: AdminUser = Depends(get_admin_user)):
 
 
 # =========================================================================
+# Public Strategy Status (no auth required)
+# =========================================================================
+
+@router.get("/strategies/status")
+async def get_strategy_status():
+    """
+    Get enabled/disabled status of all strategies.
+    This endpoint is PUBLIC (no auth) so the UI can check strategy availability.
+    """
+    strategy_flags = {
+        key: value 
+        for key, value in _feature_flags.items() 
+        if key.startswith("strategy_")
+    }
+    
+    # Map to a more usable format for the frontend
+    strategies = [
+        {"id": "Technical", "enabled": strategy_flags.get("strategy_technical", True)},
+        {"id": "Momentum", "enabled": strategy_flags.get("strategy_momentum", True)},
+        {"id": "MeanReversion", "enabled": strategy_flags.get("strategy_mean_reversion", True)},
+        {"id": "NewsSentiment", "enabled": strategy_flags.get("strategy_news_sentiment", True)},
+        {"id": "Breakout", "enabled": strategy_flags.get("strategy_technical", True)},  # Part of technical
+        {"id": "TrendFollowing", "enabled": strategy_flags.get("strategy_momentum", True)},  # Part of momentum
+        {"id": "Scalping", "enabled": strategy_flags.get("strategy_technical", True)},
+        {"id": "SwingTrading", "enabled": strategy_flags.get("strategy_momentum", True)},
+        {"id": "VWAP", "enabled": strategy_flags.get("strategy_technical", True)},
+        {"id": "RSI", "enabled": strategy_flags.get("strategy_technical", True)},
+        {"id": "MACD", "enabled": strategy_flags.get("strategy_technical", True)},
+        {"id": "BollingerBands", "enabled": strategy_flags.get("strategy_technical", True)},
+        {"id": "MovingAverageCrossover", "enabled": strategy_flags.get("strategy_technical", True)},
+        {"id": "InsiderFollowing", "enabled": strategy_flags.get("strategy_news_sentiment", True)},
+        {"id": "SocialSentiment", "enabled": strategy_flags.get("strategy_news_sentiment", True)},
+        {"id": "AIAnalysis", "enabled": True},  # AI always available
+    ]
+    
+    return {
+        "strategies": strategies,
+        "flags": strategy_flags,
+    }
+
+
+# =========================================================================
 # Feature Management
 # =========================================================================
 

@@ -969,6 +969,55 @@ def _create_default_bots(manager: BotManager) -> None:
             max_positions=3,
             enable_news_trading=True,
         ),
+        # =====================================================================
+        # FOREX TRADING BOTS - Currency Pairs
+        # =====================================================================
+        BotConfig(
+            name="💱 Major Forex Pairs",
+            description="Trade major currency pairs - EUR/USD, GBP/USD, USD/JPY",
+            instrument_type=InstrumentType.FOREX,
+            symbols=["EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF"],
+            strategies=["Technical", "MeanReversion", "Momentum"],
+            strategy_weights={
+                "Technical": 0.7,
+                "MeanReversion": 0.6,
+                "Momentum": 0.5,
+            },
+            max_position_size=50000,
+            max_positions=4,
+            trade_frequency_seconds=60,
+            enable_news_trading=True,
+        ),
+        BotConfig(
+            name="🌏 Asia-Pacific FX",
+            description="Trade Asian currency pairs - AUD/USD, NZD/USD, USD/SGD",
+            instrument_type=InstrumentType.FOREX,
+            symbols=["AUD/USD", "NZD/USD", "USD/SGD", "USD/HKD"],
+            strategies=["Technical", "Momentum", "NewsSentiment"],
+            strategy_weights={
+                "Technical": 0.6,
+                "Momentum": 0.7,
+                "NewsSentiment": 0.5,
+            },
+            max_position_size=30000,
+            max_positions=4,
+            trade_frequency_seconds=120,
+            enable_news_trading=True,
+        ),
+        BotConfig(
+            name="🇪🇺 Euro Crosses",
+            description="Trade EUR cross pairs - EUR/GBP, EUR/JPY, EUR/CHF",
+            instrument_type=InstrumentType.FOREX,
+            symbols=["EUR/GBP", "EUR/JPY", "EUR/CHF", "EUR/AUD"],
+            strategies=["Technical", "MeanReversion"],
+            strategy_weights={
+                "Technical": 0.7,
+                "MeanReversion": 0.6,
+            },
+            max_position_size=35000,
+            max_positions=4,
+            trade_frequency_seconds=180,
+        ),
     ]
     
     for config in default_bots:

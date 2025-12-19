@@ -75,7 +75,33 @@ export function BotManager({ token = '' }: BotManagerProps) {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [showFilters, setShowFilters] = useState(false)
   
-  // All available strategies
+  // Strategy enabled status from backend
+  const [strategyStatus, setStrategyStatus] = useState<Record<string, boolean>>({})
+  
+  // Fetch strategy status on mount
+  useEffect(() => {
+    const fetchStrategyStatus = async () => {
+      try {
+        const response = await fetch('/api/admin/strategies/status')
+        if (response.ok) {
+          const data = await response.json()
+          const statusMap: Record<string, boolean> = {}
+          data.strategies.forEach((s: { id: string; enabled: boolean }) => {
+            statusMap[s.id] = s.enabled
+          })
+          setStrategyStatus(statusMap)
+          
+          // Remove any disabled strategies from current selection
+          setNewBotStrategies(prev => prev.filter(name => statusMap[name] !== false))
+        }
+      } catch (e) {
+        console.error('Failed to fetch strategy status:', e)
+      }
+    }
+    fetchStrategyStatus()
+  }, [])
+  
+  // All available strategies with enabled status check
   const ALL_STRATEGIES = [
     { name: 'Technical', category: 'Technical Analysis', description: 'RSI, MACD, chart patterns' },
     { name: 'Momentum', category: 'Momentum', description: 'Price and volume momentum' },
@@ -94,6 +120,14 @@ export function BotManager({ token = '' }: BotManagerProps) {
     { name: 'SocialSentiment', category: 'Sentiment', description: 'Social media buzz' },
     { name: 'AIAnalysis', category: 'AI/ML', description: 'AI pattern recognition' },
   ]
+  
+  // Check if a strategy is enabled
+  const isStrategyEnabled = (strategyName: string): boolean => {
+    // If no status loaded yet, assume enabled
+    if (Object.keys(strategyStatus).length === 0) return true
+    // Default to true if not in status map
+    return strategyStatus[strategyName] !== false
+  }
   
   // New bot form state
   const [newBotName, setNewBotName] = useState('')
@@ -378,7 +412,7 @@ export function BotManager({ token = '' }: BotManagerProps) {
           <Bot className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold">Bot Manager</h2>
           <span className="text-sm text-muted-foreground">
-            ({filteredBots.length}/{bots.length} shown, max 100)
+            ({filteredBots.length}/100)
           </span>
         </div>
         
@@ -507,13 +541,16 @@ export function BotManager({ token = '' }: BotManagerProps) {
       
       {/* Bot List */}
       <div className="space-y-2 max-h-96 overflow-y-auto">
-        {filteredBots.map((bot) => (
+        {filteredBots.map((bot, index) => (
           <div
             key={bot.id}
             className="border border-border/50 rounded-lg p-3"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
+                <span className="text-xs font-mono text-muted-foreground w-6 text-right shrink-0">
+                  {index + 1}.
+                </span>
                 <div className={`h-2 w-2 rounded-full ${getStatusColor(bot.status)}`} />
                 <div>
                   <button 
@@ -724,10 +761,10 @@ export function BotManager({ token = '' }: BotManagerProps) {
                 </label>
                 <div className="flex gap-1">
                   <button
-                    onClick={() => setNewBotStrategies(ALL_STRATEGIES.map(s => s.name))}
+                    onClick={() => setNewBotStrategies(ALL_STRATEGIES.filter(s => isStrategyEnabled(s.name)).map(s => s.name))}
                     className="text-[10px] text-primary hover:underline"
                   >
-                    Select All
+                    Select All Enabled
                   </button>
                   <span className="text-muted-foreground">|</span>
                   <button
@@ -744,26 +781,34 @@ export function BotManager({ token = '' }: BotManagerProps) {
                 <div key={category} className="mb-2">
                   <p className="text-[10px] text-muted-foreground mb-1">{category}</p>
                   <div className="flex flex-wrap gap-1">
-                    {ALL_STRATEGIES.filter(s => s.category === category).map((strat) => (
-                      <button
-                        key={strat.name}
-                        onClick={() => {
-                          if (newBotStrategies.includes(strat.name)) {
-                            setNewBotStrategies(newBotStrategies.filter(s => s !== strat.name))
-                          } else {
-                            setNewBotStrategies([...newBotStrategies, strat.name])
-                          }
-                        }}
-                        title={strat.description}
-                        className={`px-2 py-1 rounded text-[10px] transition-colors ${
-                          newBotStrategies.includes(strat.name)
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
-                        }`}
-                      >
-                        {strat.name}
-                      </button>
-                    ))}
+                    {ALL_STRATEGIES.filter(s => s.category === category).map((strat) => {
+                      const isEnabled = isStrategyEnabled(strat.name)
+                      return (
+                        <button
+                          key={strat.name}
+                          onClick={() => {
+                            if (!isEnabled) return // Don't allow clicking disabled strategies
+                            if (newBotStrategies.includes(strat.name)) {
+                              setNewBotStrategies(newBotStrategies.filter(s => s !== strat.name))
+                            } else {
+                              setNewBotStrategies([...newBotStrategies, strat.name])
+                            }
+                          }}
+                          disabled={!isEnabled}
+                          title={isEnabled ? strat.description : `${strat.name} is disabled in Admin Panel`}
+                          className={`px-2 py-1 rounded text-[10px] transition-colors ${
+                            !isEnabled
+                              ? 'bg-slate-700/50 text-slate-500 cursor-not-allowed opacity-50 line-through'
+                              : newBotStrategies.includes(strat.name)
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
+                          }`}
+                        >
+                          {strat.name}
+                          {!isEnabled && ' ⛔'}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
               ))}
