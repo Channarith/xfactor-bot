@@ -6,8 +6,8 @@ interface HelpModalProps {
   onClose: () => void;
 }
 
-const VERSION = '1.0.3';
-const RELEASE_DATE = 'December 17, 2025';
+const VERSION = '1.0.4';
+const RELEASE_DATE = 'December 18, 2025';
 
 const features = [
   {
@@ -61,6 +61,23 @@ const quickStart = [
 ];
 
 const changelog = [
+  {
+    version: '1.0.4',
+    date: 'December 18, 2025',
+    changes: [
+      '📊 Stock Analyzer - Comprehensive Time Series Analysis',
+      'Search any stock across all global exchanges',
+      'Interactive candlestick chart with technical overlays',
+      'Toggle SMA/EMA/RSI/Volume overlays independently',
+      '🎯 Inflection Point Detection (peaks, troughs, crossovers)',
+      'Golden Cross & Death Cross visual markers',
+      '📈 Analyst Price Targets with projection lines',
+      'Target Meeting Analysis with confidence levels',
+      'Earnings history with surprise tracking',
+      'Future EPS estimates visualization',
+      'Fundamental metrics: P/E, PEG, profit margin, beta'
+    ]
+  },
   {
     version: '1.0.3',
     date: 'December 17, 2025',
