@@ -2,6 +2,25 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 
 export type TradingMode = 'demo' | 'paper' | 'live'
 
+// Check if running in MIN/demo mode based on hostname
+const isMinMode = (): boolean => {
+  const hostname = window.location.hostname
+  const envDemoMode = (import.meta as any).env?.VITE_DEMO_MODE === 'true'
+  
+  // MIN mode hosts
+  const isForesight = hostname.includes('foresight.nvidia.com') || hostname.includes('foresight')
+  const isNvidiaGitLab = hostname.includes('nvidia.com') || hostname.includes('gitlab-master')
+  const isPublicGitLab = hostname.includes('gitlab.io') || hostname.includes('gitlab.com')
+  
+  // Full feature hosts
+  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1'
+  const isGitHub = hostname.includes('github.io') || hostname.includes('github.com')
+  const isTauri = (window as any).__TAURI__ !== undefined
+  
+  if (isLocalhost || isGitHub || isTauri) return false
+  return envDemoMode || isForesight || isNvidiaGitLab || isPublicGitLab
+}
+
 interface BrokerConfig {
   provider: 'ibkr' | 'alpaca' | 'schwab' | 'tradier' | null
   isConnected: boolean
@@ -28,7 +47,9 @@ interface TradingModeContextType {
 const TradingModeContext = createContext<TradingModeContextType | null>(null)
 
 export function TradingModeProvider({ children }: { children: ReactNode }) {
-  const [mode, setModeState] = useState<TradingMode>('paper')
+  // In MIN mode, default to 'demo' mode; otherwise 'paper'
+  const [isMinModeActive] = useState(() => isMinMode())
+  const [mode, setModeState] = useState<TradingMode>(isMinModeActive ? 'demo' : 'paper')
   const [broker, setBroker] = useState<BrokerConfig>({
     provider: null,
     isConnected: false,
@@ -38,13 +59,21 @@ export function TradingModeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const savedMode = localStorage.getItem('xfactor-trading-mode') as TradingMode
     if (savedMode && ['demo', 'paper', 'live'].includes(savedMode)) {
-      // Don't auto-restore live mode for safety
-      setModeState(savedMode === 'live' ? 'paper' : savedMode)
+      // In MIN mode, never restore live mode
+      if (isMinModeActive) {
+        // Only allow demo mode in MIN unless unlocked
+        setModeState('demo')
+      } else {
+        // Don't auto-restore live mode for safety
+        setModeState(savedMode === 'live' ? 'paper' : savedMode)
+      }
     }
     
-    // Check broker connection status
-    checkBrokerConnection()
-  }, [])
+    // Check broker connection status (skip in MIN mode)
+    if (!isMinModeActive) {
+      checkBrokerConnection()
+    }
+  }, [isMinModeActive])
 
   const checkBrokerConnection = async () => {
     try {
@@ -69,6 +98,12 @@ export function TradingModeProvider({ children }: { children: ReactNode }) {
   }
 
   const setMode = (newMode: TradingMode) => {
+    // In MIN mode, live mode is always disabled
+    if (isMinModeActive && newMode === 'live') {
+      console.warn('Live mode is disabled in MIN mode')
+      return
+    }
+    
     // Require broker connection for live mode
     if (newMode === 'live' && !broker.isConnected) {
       console.warn('Cannot switch to live mode without broker connection')
