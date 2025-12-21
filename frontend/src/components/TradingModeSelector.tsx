@@ -107,12 +107,16 @@ export function TradingModeSelector() {
                 <div className="text-xs text-muted-foreground">Trading Mode</div>
               </div>
               
-              {(['demo', 'paper', 'live'] as TradingMode[]).map((m) => {
+              {(['demo', 'paper', 'live'] as TradingMode[])
+                .filter((m) => {
+                  // Hide 'live' option entirely when locked
+                  if (m === 'live' && isLiveLockedByMIN) return false
+                  return true
+                })
+                .map((m) => {
                 const info = getModeInfo(m)
-                // Disable live if: not unlocked, or no broker connected
-                const isDisabledByMIN = m === 'live' && isLiveLockedByMIN
                 const isDisabledByBroker = m === 'live' && !canTradeLive
-                const isDisabled = isDisabledByMIN || isDisabledByBroker
+                const isDisabled = isDisabledByBroker
                 const isActive = mode === m
                 
                 return (
@@ -125,24 +129,17 @@ export function TradingModeSelector() {
                     } ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     <span className={`mt-0.5 ${info.color}`}>
-                      {isDisabledByMIN ? <Lock className="h-4 w-4 text-amber-500" /> : info.icon}
+                      {info.icon}
                     </span>
                     <div className="flex-1">
                       <div className={`font-medium ${isActive ? info.color : ''}`}>
                         {info.label}
                         {isActive && <CheckCircle className="h-3 w-3 inline ml-2" />}
-                        {isDisabledByMIN && <Lock className="h-3 w-3 inline ml-2 text-amber-500" />}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {info.description}
                       </div>
-                      {m === 'live' && isDisabledByMIN && (
-                        <div className="text-xs text-amber-400 mt-1 flex items-center gap-1">
-                          <Lock className="h-3 w-3" />
-                          Unlock required for Live trading
-                        </div>
-                      )}
-                      {m === 'live' && !isDisabledByMIN && !canTradeLive && (
+                      {m === 'live' && !canTradeLive && (
                         <div className="text-xs text-loss mt-1">
                           Connect broker in Admin panel first
                         </div>
