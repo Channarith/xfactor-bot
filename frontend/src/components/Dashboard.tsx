@@ -227,8 +227,8 @@ export function Dashboard() {
                   <Lock className="h-6 w-6 text-slate-400" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-lg text-slate-300">Research Mode</h3>
-                  <p className="text-sm text-muted-foreground">Trading features not available in this deployment</p>
+                  <h3 className="font-semibold text-lg text-slate-300">Available Features</h3>
+                  <p className="text-sm text-muted-foreground">Additional trading features require authentication</p>
                 </div>
               </div>
               <div className="bg-slate-800 rounded-lg p-4">

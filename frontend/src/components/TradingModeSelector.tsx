@@ -14,7 +14,7 @@ export function TradingModeSelector() {
   const [showLiveWarning, setShowLiveWarning] = useState(false)
   const [pendingMode, setPendingMode] = useState<TradingMode | null>(null)
   
-  // In MIN mode without unlock, Live mode is disabled
+  // Without unlock, Live mode is disabled
   const isLiveLockedByMIN = isDemoMode && !isUnlocked
 
   const getModeInfo = (m: TradingMode) => {
@@ -109,7 +109,7 @@ export function TradingModeSelector() {
               
               {(['demo', 'paper', 'live'] as TradingMode[]).map((m) => {
                 const info = getModeInfo(m)
-                // Disable live if: MIN mode without unlock, or no broker connected
+                // Disable live if: not unlocked, or no broker connected
                 const isDisabledByMIN = m === 'live' && isLiveLockedByMIN
                 const isDisabledByBroker = m === 'live' && !canTradeLive
                 const isDisabled = isDisabledByMIN || isDisabledByBroker
@@ -139,7 +139,7 @@ export function TradingModeSelector() {
                       {m === 'live' && isDisabledByMIN && (
                         <div className="text-xs text-amber-400 mt-1 flex items-center gap-1">
                           <Lock className="h-3 w-3" />
-                          MIN mode: Unlock required for Live trading
+                          Unlock required for Live trading
                         </div>
                       )}
                       {m === 'live' && !isDisabledByMIN && !canTradeLive && (
