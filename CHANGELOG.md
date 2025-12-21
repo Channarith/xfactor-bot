@@ -5,6 +5,29 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-12-21
+
+### ⚙️ Settings Page & UI Restructuring
+
+#### Dedicated Settings Page
+- **Setup Button**: New teal "Setup" button in header opens Settings page
+- **Settings Page**: Contains Strategy Controls, Risk Management, Admin Panel, Integrations, Fees & Expenses
+- **Back Button**: Easy navigation back to Dashboard
+- **Two-Column Layout**: Settings organized in responsive grid
+
+#### Dashboard Layout Improvements
+- **Full Width Panels**: Equity Curve, Bot Manager, Agentic Tuning, Open Positions now use full browser width
+- **Two-Column Grid**: Side-by-side panels on larger screens (XL breakpoint)
+- **Cleaner Interface**: Dashboard focused on trading/research only
+- **Responsive Design**: Adapts to different screen sizes
+
+#### Component Restructuring
+- **IntegrationsPanel**: Now a standalone component
+- **SettingsPage**: New component for all admin/configuration features
+- **Removed Right Sidebar**: Settings moved to dedicated page
+
+---
+
 ## [1.0.9] - 2025-12-21
 
 ### 🎤 Voice & Audio Features

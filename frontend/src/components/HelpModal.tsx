@@ -104,9 +104,14 @@ const quickStart = [
 
 const changelog = [
   {
-    version: '1.0.9',
+    version: '1.1.0',
     date: 'December 21, 2025',
     changes: [
+      '⚙️ Settings Page & UI Restructuring',
+      'Setup button in header opens dedicated Settings page',
+      'Strategy Controls, Risk Management, Admin Panel moved to Settings',
+      'Dashboard panels now full width for better space utilization',
+      'Two-column responsive grid layout on larger screens',
       '🎤 Voice & Audio Features',
       'Audio readout for news headlines, AI responses, glossary terms',
       'Voice input for AI Assistant and glossary search',

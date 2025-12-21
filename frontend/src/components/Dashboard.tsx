@@ -124,47 +124,53 @@ export function Dashboard() {
         <NewsFeed maxItems={100} itemsPerPage={10} />
       </CollapsiblePanel>
       
-      {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Left Column - Positions & Chart */}
-        <div className="lg:col-span-2 space-y-4">
-          <CollapsiblePanel 
-            title="Equity Curve" 
-            icon={<TrendingUp className="h-5 w-5" />}
-            defaultExpanded={true}
-          >
-            <EquityChart height={240} />
-          </CollapsiblePanel>
+      {/* Main Content - Full width in MAX mode, with sidebar in restricted mode */}
+      <div className={`grid gap-4 ${isFullFeaturesAvailable ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-3'}`}>
+        {/* Main Column - Full width when settings moved to Setup page */}
+        <div className={`space-y-4 ${!isFullFeaturesAvailable ? 'lg:col-span-2' : ''}`}>
+          {/* Two-column grid for Equity and Bot Manager in MAX mode */}
+          <div className={`grid gap-4 ${isFullFeaturesAvailable ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'}`}>
+            <CollapsiblePanel 
+              title="Equity Curve" 
+              icon={<TrendingUp className="h-5 w-5" />}
+              defaultExpanded={true}
+            >
+              <EquityChart height={280} />
+            </CollapsiblePanel>
+            
+            <CollapsiblePanel 
+              title="Bot Manager" 
+              icon={<Bot className="h-5 w-5" />}
+              badge="40"
+              defaultExpanded={true}
+            >
+              <BotManagerInner />
+            </CollapsiblePanel>
+          </div>
           
-          <CollapsiblePanel 
-            title="Bot Manager" 
-            icon={<Bot className="h-5 w-5" />}
-            badge="10"
-            defaultExpanded={true}
-          >
-            <BotManagerInner />
-          </CollapsiblePanel>
-          
-          <CollapsiblePanel 
-            title="Agentic Tuning" 
-            icon={<Brain className="h-5 w-5" />}
-            badge="ATRWAC"
-            defaultExpanded={false}
-          >
-            <AgenticTuning />
-          </CollapsiblePanel>
-          
-          <CollapsiblePanel 
-            title="Open Positions" 
-            icon={<Table className="h-5 w-5" />}
-            badge={portfolioData.openPositions}
-            defaultExpanded={false}
-          >
-            <PositionsTableInner />
-          </CollapsiblePanel>
+          {/* Two-column grid for Agentic Tuning and Positions in MAX mode */}
+          <div className={`grid gap-4 ${isFullFeaturesAvailable ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'}`}>
+            <CollapsiblePanel 
+              title="Agentic Tuning" 
+              icon={<Brain className="h-5 w-5" />}
+              badge="ATRWAC"
+              defaultExpanded={false}
+            >
+              <AgenticTuning />
+            </CollapsiblePanel>
+            
+            <CollapsiblePanel 
+              title="Open Positions" 
+              icon={<Table className="h-5 w-5" />}
+              badge={portfolioData.openPositions}
+              defaultExpanded={false}
+            >
+              <PositionsTableInner />
+            </CollapsiblePanel>
+          </div>
         </div>
         
-        {/* Right Column - Quick Stats (Settings moved to dedicated Settings page) */}
+        {/* Right Column - Only shown in restricted mode */}
         {!isFullFeaturesAvailable && (
           <div className="space-y-4">
             {/* Restricted Mode - Show info message */}
