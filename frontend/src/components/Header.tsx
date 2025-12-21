@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Pause, Power, Play, Lock, ShieldAlert, HelpCircle, Sparkles, Shield } from 'lucide-react'
+import { Pause, Power, Play, Lock, ShieldAlert, HelpCircle, Sparkles, Shield, X } from 'lucide-react'
 import { TradingModeSelector } from './TradingModeSelector'
 import { useAuth } from '../context/AuthContext'
 import { useDemoMode } from '../contexts/DemoModeContext'
 import HelpModal from './HelpModal'
+import UnlockModal from './UnlockModal'
 
 type WSState = 'connecting' | 'connected' | 'disconnected' | 'error'
 
@@ -14,12 +15,19 @@ interface HeaderProps {
 
 export function Header({ connected, wsState = 'disconnected' }: HeaderProps) {
   const { isAuthenticated, token } = useAuth()
-  const { edition, isDemoMode, isUnlocked } = useDemoMode()
+  const { edition, isDemoMode, isUnlocked, incrementEasterEgg, showUnlockPrompt, setShowUnlockPrompt, easterEggClicks } = useDemoMode()
   const [logoError, setLogoError] = useState(false)
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [showHelpModal, setShowHelpModal] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+
+  // Handle easter egg click on MIN badge
+  const handleMinBadgeClick = () => {
+    if (edition === 'XFactor-botMin' && !isUnlocked) {
+      incrementEasterEgg()
+    }
+  }
 
   const handlePauseResume = async () => {
     if (!isAuthenticated) {
@@ -91,16 +99,25 @@ export function Header({ connected, wsState = 'disconnected' }: HeaderProps) {
                 <h1 className="text-lg font-bold xfactor-title tracking-wide">
                   THE XFACTOR BOT
                 </h1>
-                {/* Edition Badge */}
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                  edition === 'XFactor-botMax' 
-                    ? 'bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-400 border border-emerald-500/30'
-                    : isDemoMode && !isUnlocked
-                      ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                      : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                }`}>
+                {/* Edition Badge - MIN badge is clickable for easter egg */}
+                <span 
+                  onClick={handleMinBadgeClick}
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 select-none ${
+                    edition === 'XFactor-botMax' 
+                      ? 'bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-400 border border-emerald-500/30'
+                      : isDemoMode && !isUnlocked
+                        ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 cursor-pointer hover:bg-yellow-500/30 transition-colors'
+                        : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                  }`}
+                  title={edition === 'XFactor-botMin' && !isUnlocked ? 
+                    (easterEggClicks > 0 ? `${7 - easterEggClicks} more...` : 'Click to explore') : 
+                    undefined
+                  }
+                >
                   {edition === 'XFactor-botMax' ? (
                     <><Sparkles className="h-3 w-3" /> MAX</>
+                  ) : isUnlocked ? (
+                    <><Sparkles className="h-3 w-3" /> MIN+</>
                   ) : (
                     <><Shield className="h-3 w-3" /> MIN</>
                   )}
@@ -234,6 +251,9 @@ export function Header({ connected, wsState = 'disconnected' }: HeaderProps) {
 
       {/* Help Modal */}
       <HelpModal isOpen={showHelpModal} onClose={() => setShowHelpModal(false)} />
+
+      {/* Unlock Modal for Easter Egg */}
+      <UnlockModal isOpen={showUnlockPrompt} onClose={() => setShowUnlockPrompt(false)} />
     </>
   )
 }

@@ -7,6 +7,9 @@ Versions:
 - XFactor-botMin: Restricted features (GitLab deployments)
 """
 
+# Application version - keep in sync with frontend/package.json
+APP_VERSION = "1.0.9"
+
 import os
 import asyncio
 from contextlib import asynccontextmanager
@@ -115,7 +118,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="XFactor Bot API",
         description="AI-Powered Automated Trading System - Control Panel API",
-        version="1.0.7",
+        version=APP_VERSION,
         lifespan=lifespan,
     )
     
@@ -167,7 +170,7 @@ def create_app() -> FastAPI:
     
     @app.get("/api")
     async def api_root():
-        return {"status": "ok", "name": "XFactor Bot", "version": "0.1.0", "description": "AI-Powered Automated Trading System"}
+        return {"status": "ok", "name": "XFactor Bot", "version": APP_VERSION, "description": "AI-Powered Automated Trading System"}
     
     @app.get("/health")
     async def health():
@@ -251,7 +254,7 @@ def create_app() -> FastAPI:
         
         @app.get("/")
         async def root_no_frontend():
-            return {"status": "ok", "name": "XFactor Bot", "version": "0.1.0", "description": "AI-Powered Automated Trading System", "note": "Frontend not deployed"}
+            return {"status": "ok", "name": "XFactor Bot", "version": APP_VERSION, "description": "AI-Powered Automated Trading System", "note": "Frontend not deployed"}
     
     return app
 

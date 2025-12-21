@@ -42,6 +42,7 @@ const VideoPlatformsPanel: React.FC = () => {
   const [hasData, setHasData] = useState(false);
   const [searchSymbol, setSearchSymbol] = useState('');
   const [symbolContent, setSymbolContent] = useState<any>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
   useEffect(() => {
     checkDataStatus();
@@ -106,6 +107,7 @@ const VideoPlatformsPanel: React.FC = () => {
       console.error('Error fetching video data:', error);
     }
     setLoading(false);
+    setLastUpdate(new Date());
   };
 
   const searchSymbolContent = async () => {
@@ -139,9 +141,14 @@ const VideoPlatformsPanel: React.FC = () => {
   return (
     <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-6">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-bold text-white flex items-center gap-2">
-          📹 Video Platforms
-        </h2>
+        <div className="flex items-center gap-4">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            📹 Video Platforms
+          </h2>
+          <span className="text-xs text-slate-500">
+            Updated: {lastUpdate.toLocaleString()}
+          </span>
+        </div>
         <div className="flex gap-2">
           {!hasData && (
             <button
@@ -154,9 +161,12 @@ const VideoPlatformsPanel: React.FC = () => {
           )}
           <button
             onClick={fetchPlatformData}
-            className="px-3 py-1.5 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors text-sm"
+            disabled={loading}
+            className="px-3 py-1.5 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors text-sm flex items-center gap-1"
           >
-            Refresh
+            {loading ? (
+              <span className="w-3 h-3 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
+            ) : '🔄'} Refresh
           </button>
         </div>
       </div>

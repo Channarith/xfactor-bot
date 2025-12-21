@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { 
   RefreshCw, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, 
   Minus, Clock, Globe, Search, SortAsc, SortDesc, X, ExternalLink,
-  Info, Newspaper, BarChart3, AlertCircle, Building2
+  Info, Newspaper, BarChart3, AlertCircle, Building2, Radio, Volume2, VolumeX
 } from 'lucide-react'
+import { speak, stopSpeaking, isSpeaking, isSpeechSynthesisSupported } from '../utils/audio'
 import { 
   useDataFilters, FilterBar, QuickFilters, 
   type FieldDefinition, type FilterConfig 
@@ -306,6 +307,14 @@ export function NewsFeed({ maxItems = 100, itemsPerPage = 10 }: NewsFeedProps) {
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null)
   const [showSentimentHelp, setShowSentimentHelp] = useState(false)
+  
+  // Auto-update feature
+  const [autoUpdate, setAutoUpdate] = useState(false)
+  const [autoUpdateInterval, setAutoUpdateInterval] = useState(30) // seconds
+  const autoUpdateRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  
+  // Audio readout feature
+  const [isReadingNews, setIsReadingNews] = useState(false)
 
   // Use the data filters hook
   const {
@@ -325,6 +334,21 @@ export function NewsFeed({ maxItems = 100, itemsPerPage = 10 }: NewsFeedProps) {
   useEffect(() => {
     loadNews()
   }, [])
+  
+  // Auto-update effect
+  useEffect(() => {
+    if (autoUpdate) {
+      autoUpdateRef.current = setInterval(() => {
+        loadNews()
+      }, autoUpdateInterval * 1000)
+    }
+    return () => {
+      if (autoUpdateRef.current) {
+        clearInterval(autoUpdateRef.current)
+        autoUpdateRef.current = null
+      }
+    }
+  }, [autoUpdate, autoUpdateInterval])
 
   // Reset page when filters change
   useEffect(() => {
@@ -389,6 +413,35 @@ export function NewsFeed({ maxItems = 100, itemsPerPage = 10 }: NewsFeedProps) {
       addFilter(filter)
     }
   }
+  
+  // Audio readout of news headlines
+  const readNewsAloud = () => {
+    if (!isSpeechSynthesisSupported()) {
+      alert('Text-to-speech is not supported in this browser')
+      return
+    }
+    
+    if (isReadingNews) {
+      stopSpeaking()
+      setIsReadingNews(false)
+      return
+    }
+    
+    const topNews = displayedNews.slice(0, 5) // Read top 5 headlines
+    const newsText = topNews.map((news, i) => {
+      const sentiment = news.sentiment > 0.2 ? 'bullish' : news.sentiment < -0.2 ? 'bearish' : 'neutral'
+      return `Headline ${i + 1}. ${news.ticker}. ${news.headline}. Sentiment is ${sentiment}.`
+    }).join(' ... ')
+    
+    const intro = `Here are the top ${topNews.length} news headlines. `
+    
+    setIsReadingNews(true)
+    speak(intro + newsText, {
+      rate: 0.95,
+      onEnd: () => setIsReadingNews(false),
+      onError: () => setIsReadingNews(false)
+    })
+  }
 
   return (
     <div className="space-y-3">
@@ -436,6 +489,49 @@ export function NewsFeed({ maxItems = 100, itemsPerPage = 10 }: NewsFeedProps) {
             <Clock className="h-3 w-3" />
             <span>Updated: {lastUpdate.toLocaleTimeString()}</span>
           </div>
+          
+          {/* Audio Readout Button */}
+          <button
+            onClick={readNewsAloud}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              isReadingNews 
+                ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' 
+                : 'bg-secondary hover:bg-secondary/80 text-muted-foreground'
+            }`}
+            title={isReadingNews ? 'Stop reading' : 'Read headlines aloud'}
+          >
+            {isReadingNews ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
+            <span>{isReadingNews ? 'Stop' : '🔊'}</span>
+          </button>
+          
+          {/* Auto-Update Toggle */}
+          <button
+            onClick={() => setAutoUpdate(!autoUpdate)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              autoUpdate 
+                ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+                : 'bg-secondary hover:bg-secondary/80 text-muted-foreground'
+            }`}
+            title={autoUpdate ? `Live updates every ${autoUpdateInterval}s` : 'Enable live updates'}
+          >
+            <Radio className={`h-3 w-3 ${autoUpdate ? 'animate-pulse' : ''}`} />
+            <span>{autoUpdate ? 'LIVE' : 'Auto'}</span>
+          </button>
+          
+          {/* Auto-Update Interval Selector (shown when auto-update is on) */}
+          {autoUpdate && (
+            <select
+              value={autoUpdateInterval}
+              onChange={(e) => setAutoUpdateInterval(Number(e.target.value))}
+              className="px-2 py-1 rounded-lg bg-secondary text-xs text-muted-foreground border border-border"
+            >
+              <option value={15}>15s</option>
+              <option value={30}>30s</option>
+              <option value={60}>1m</option>
+              <option value={120}>2m</option>
+              <option value={300}>5m</option>
+            </select>
+          )}
           
           <button
             onClick={loadNews}

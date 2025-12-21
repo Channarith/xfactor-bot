@@ -1,15 +1,21 @@
 import { useState } from 'react'
 import { 
   TestTube2, Wallet, AlertTriangle, CheckCircle, 
-  ChevronDown, Shield, Zap, X, ExternalLink
+  ChevronDown, Shield, Zap, X, ExternalLink, Lock
 } from 'lucide-react'
 import { useTradingMode, TradingMode } from '../context/TradingModeContext'
+import { useDemoMode, useFeatureAvailable } from '../contexts/DemoModeContext'
 
 export function TradingModeSelector() {
   const { mode, setMode, broker, canTradeLive } = useTradingMode()
+  const { isDemoMode, isUnlocked, edition } = useDemoMode()
+  const { canTrade } = useFeatureAvailable()
   const [showDropdown, setShowDropdown] = useState(false)
   const [showLiveWarning, setShowLiveWarning] = useState(false)
   const [pendingMode, setPendingMode] = useState<TradingMode | null>(null)
+  
+  // In MIN mode without unlock, Live mode is disabled
+  const isLiveLockedByMIN = isDemoMode && !isUnlocked
 
   const getModeInfo = (m: TradingMode) => {
     switch (m) {
@@ -49,6 +55,10 @@ export function TradingModeSelector() {
 
   const handleModeChange = (newMode: TradingMode) => {
     if (newMode === 'live') {
+      // Block live mode in MIN unless unlocked
+      if (isLiveLockedByMIN) {
+        return
+      }
       if (!canTradeLive) {
         // Can't switch to live without broker
         return
@@ -99,7 +109,10 @@ export function TradingModeSelector() {
               
               {(['demo', 'paper', 'live'] as TradingMode[]).map((m) => {
                 const info = getModeInfo(m)
-                const isDisabled = m === 'live' && !canTradeLive
+                // Disable live if: MIN mode without unlock, or no broker connected
+                const isDisabledByMIN = m === 'live' && isLiveLockedByMIN
+                const isDisabledByBroker = m === 'live' && !canTradeLive
+                const isDisabled = isDisabledByMIN || isDisabledByBroker
                 const isActive = mode === m
                 
                 return (
@@ -111,16 +124,25 @@ export function TradingModeSelector() {
                       isActive ? info.bg : 'hover:bg-secondary/50'
                     } ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    <span className={`mt-0.5 ${info.color}`}>{info.icon}</span>
+                    <span className={`mt-0.5 ${info.color}`}>
+                      {isDisabledByMIN ? <Lock className="h-4 w-4 text-amber-500" /> : info.icon}
+                    </span>
                     <div className="flex-1">
                       <div className={`font-medium ${isActive ? info.color : ''}`}>
                         {info.label}
                         {isActive && <CheckCircle className="h-3 w-3 inline ml-2" />}
+                        {isDisabledByMIN && <Lock className="h-3 w-3 inline ml-2 text-amber-500" />}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {info.description}
                       </div>
-                      {m === 'live' && !canTradeLive && (
+                      {m === 'live' && isDisabledByMIN && (
+                        <div className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                          <Lock className="h-3 w-3" />
+                          MIN mode: Unlock required for Live trading
+                        </div>
+                      )}
+                      {m === 'live' && !isDisabledByMIN && !canTradeLive && (
                         <div className="text-xs text-loss mt-1">
                           Connect broker in Admin panel first
                         </div>

@@ -1,7 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createChart, ColorType, IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { apiUrl } from '../config/api';
-import { TrendingUp, TrendingDown, Target, Calendar, Zap, Brain, Activity, AlertCircle, ExternalLink, Info, ChevronDown, ChevronUp, Newspaper, Shield, BarChart3, RefreshCw, Download, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Target, Calendar, Zap, Brain, Activity, AlertCircle, ExternalLink, Info, ChevronDown, ChevronUp, Newspaper, Shield, BarChart3, RefreshCw, Download, Loader2, Search } from 'lucide-react';
+
+interface SymbolSearchResult {
+  symbol: string;
+  name: string;
+  exchange: string;
+  type: string;
+}
 
 interface TrendingSymbol {
   symbol: string;
@@ -140,10 +147,69 @@ const ForecastingPanel: React.FC = () => {
   // Force fetch state
   const [fetchStatus, setFetchStatus] = useState<FetchStatus | null>(null);
   const [isForceFetching, setIsForceFetching] = useState(false);
+  
+  // Symbol search autocomplete state
+  const [searchSuggestions, setSearchSuggestions] = useState<SymbolSearchResult[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
 
   // Chart refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Debounced symbol search
+  const searchSymbols = useCallback(async (query: string) => {
+    if (query.length < 1) {
+      setSearchSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    
+    setSearchLoading(true);
+    try {
+      const response = await fetch(apiUrl(`/api/symbols/search?q=${encodeURIComponent(query)}&limit=10`));
+      if (response.ok) {
+        const data = await response.json();
+        setSearchSuggestions(data.results || []);
+        setShowSuggestions(true);
+      }
+    } catch (e) {
+      console.error('Error searching symbols:', e);
+    }
+    setSearchLoading(false);
+  }, []);
+
+  const handleSearchChange = (value: string) => {
+    setSearchSymbol(value.toUpperCase());
+    
+    // Debounce the search
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      searchSymbols(value);
+    }, 300);
+  };
+
+  const selectSymbol = (symbol: string) => {
+    setSearchSymbol(symbol);
+    setShowSuggestions(false);
+    setSearchSuggestions([]);
+    fetchProjections(symbol);
+  };
 
   useEffect(() => {
     fetchData();
@@ -672,18 +738,55 @@ const ForecastingPanel: React.FC = () => {
         {/* Projections Tab */}
         {activeTab === 'projections' && (
           <div className="space-y-4">
-            {/* Search */}
+            {/* Search with Autocomplete */}
             <div className="flex gap-2">
-              <input
-                type="text"
-                value={searchSymbol}
-                onChange={(e) => setSearchSymbol(e.target.value.toUpperCase())}
-                placeholder="Enter symbol for projection (e.g., NVDA, AAPL)"
-                className="flex-1 px-4 py-2.5 bg-slate-700/50 border border-slate-600/50 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-violet-500"
-                onKeyDown={(e) => e.key === 'Enter' && fetchProjections(searchSymbol)}
-              />
+              <div ref={searchContainerRef} className="relative flex-1">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchSymbol}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    onFocus={() => searchSuggestions.length > 0 && setShowSuggestions(true)}
+                    placeholder="Search by symbol or company name (e.g., NVDA, Apple, Microsoft)"
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-700/50 border border-slate-600/50 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-violet-500"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        setShowSuggestions(false);
+                        fetchProjections(searchSymbol);
+                      } else if (e.key === 'Escape') {
+                        setShowSuggestions(false);
+                      }
+                    }}
+                  />
+                  {searchLoading && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />
+                    </div>
+                  )}
+                </div>
+                
+                {/* Search Suggestions Dropdown */}
+                {showSuggestions && searchSuggestions.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-slate-800 border border-slate-600/50 rounded-lg shadow-xl max-h-64 overflow-y-auto">
+                    {searchSuggestions.map((result, idx) => (
+                      <button
+                        key={`${result.symbol}-${idx}`}
+                        onClick={() => selectSymbol(result.symbol)}
+                        className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-slate-700/50 transition-colors border-b border-slate-700/50 last:border-b-0 text-left"
+                      >
+                        <span className="font-mono font-bold text-violet-400 w-16">{result.symbol}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-white truncate">{result.name}</p>
+                          <p className="text-xs text-slate-500">{result.exchange} · {result.type}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button
-                onClick={() => fetchProjections(searchSymbol)}
+                onClick={() => { setShowSuggestions(false); fetchProjections(searchSymbol); }}
                 disabled={projectionLoading || !searchSymbol}
                 className="px-6 py-2 bg-violet-600 hover:bg-violet-700 disabled:bg-slate-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
               >
@@ -879,6 +982,79 @@ const ForecastingPanel: React.FC = () => {
                               <span className="text-xs text-slate-400 w-10 text-right">{pred.confidence.toFixed(0)}%</span>
                             </div>
                           </div>
+                          
+                          {/* Mini Fluctuation Pattern SVG */}
+                          <div className="my-2">
+                            <svg viewBox="0 0 120 30" className="w-full h-8">
+                              {/* Generate a fluctuating pattern based on prediction type */}
+                              {pred.type === 'bullish' ? (
+                                <>
+                                  <path
+                                    d="M0,20 Q10,22 20,18 T40,14 T60,12 T80,8 T100,6 T120,4"
+                                    fill="none"
+                                    stroke="rgba(34, 197, 94, 0.5)"
+                                    strokeWidth="2"
+                                  />
+                                  <path
+                                    d="M0,25 Q10,23 20,24 T40,20 T60,18 T80,16 T100,12 T120,8"
+                                    fill="none"
+                                    stroke="rgba(34, 197, 94, 0.3)"
+                                    strokeWidth="1"
+                                    strokeDasharray="3,3"
+                                  />
+                                </>
+                              ) : pred.type === 'bearish' ? (
+                                <>
+                                  <path
+                                    d="M0,8 Q10,10 20,12 T40,16 T60,18 T80,22 T100,24 T120,26"
+                                    fill="none"
+                                    stroke="rgba(239, 68, 68, 0.5)"
+                                    strokeWidth="2"
+                                  />
+                                  <path
+                                    d="M0,5 Q10,8 20,10 T40,12 T60,15 T80,18 T100,22 T120,24"
+                                    fill="none"
+                                    stroke="rgba(239, 68, 68, 0.3)"
+                                    strokeWidth="1"
+                                    strokeDasharray="3,3"
+                                  />
+                                </>
+                              ) : (
+                                <>
+                                  <path
+                                    d="M0,15 Q15,10 30,18 T60,14 T90,16 T120,15"
+                                    fill="none"
+                                    stroke="rgba(156, 163, 175, 0.5)"
+                                    strokeWidth="2"
+                                  />
+                                  <path
+                                    d="M0,15 Q20,20 40,12 T80,18 T120,15"
+                                    fill="none"
+                                    stroke="rgba(156, 163, 175, 0.3)"
+                                    strokeWidth="1"
+                                    strokeDasharray="3,3"
+                                  />
+                                </>
+                              )}
+                              {/* Current price marker */}
+                              <circle 
+                                cx="0" 
+                                cy={pred.type === 'bullish' ? 20 : pred.type === 'bearish' ? 8 : 15} 
+                                r="3" 
+                                fill="white" 
+                              />
+                              {/* Target marker */}
+                              {pred.target_price && (
+                                <circle 
+                                  cx="120" 
+                                  cy={pred.type === 'bullish' ? 4 : pred.type === 'bearish' ? 26 : 15} 
+                                  r="3" 
+                                  fill={pred.type === 'bullish' ? '#22c55e' : pred.type === 'bearish' ? '#ef4444' : '#9ca3af'} 
+                                />
+                              )}
+                            </svg>
+                          </div>
+                          
                           <p className="text-xs text-slate-400 mb-2">{pred.description}</p>
                           <div className="flex flex-wrap items-center gap-2 text-xs">
                             <span className="px-2 py-0.5 bg-slate-800/50 rounded text-slate-500">

@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
+import { Mic, MicOff, Volume2 } from 'lucide-react'
+import { createSpeechRecognition, speak, isSpeechRecognitionSupported, isSpeechSynthesisSupported } from '../utils/audio'
 
 interface Message {
   id: string
@@ -38,6 +40,11 @@ export function AIAssistant() {
   const [providers, setProviders] = useState<ProvidersData | null>(null)
   const [currentProvider, setCurrentProvider] = useState<LLMProvider>('openai')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  
+  // Voice input state
+  const [isListening, setIsListening] = useState(false)
+  const [voiceSupported, setVoiceSupported] = useState(false)
+  const recognitionRef = useRef<any>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -48,11 +55,65 @@ export function AIAssistant() {
   }, [messages])
 
   useEffect(() => {
+    // Check voice support
+    setVoiceSupported(isSpeechRecognitionSupported())
+    
     // Fetch initial insights, examples, and providers
     fetchInsights()
     fetchExamples()
     fetchProviders()
+    
+    // Cleanup speech recognition on unmount
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop()
+      }
+    }
   }, [])
+  
+  // Toggle voice input
+  const toggleVoiceInput = () => {
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop()
+      }
+      setIsListening(false)
+    } else {
+      recognitionRef.current = createSpeechRecognition({
+        continuous: false,
+        interimResults: true,
+        onResult: (transcript, isFinal) => {
+          setInput(transcript)
+          if (isFinal && transcript.trim()) {
+            // Auto-send when final result is received
+            setTimeout(() => {
+              sendMessage(transcript.trim())
+            }, 500)
+          }
+        },
+        onEnd: () => setIsListening(false),
+        onError: (error) => {
+          console.error('Speech recognition error:', error)
+          setIsListening(false)
+        }
+      })
+      
+      if (recognitionRef.current) {
+        recognitionRef.current.start()
+        setIsListening(true)
+      }
+    }
+  }
+  
+  // Speak the last assistant message
+  const speakLastResponse = () => {
+    if (!isSpeechSynthesisSupported()) return
+    
+    const lastAssistantMsg = [...messages].reverse().find(m => m.role === 'assistant')
+    if (lastAssistantMsg) {
+      speak(lastAssistantMsg.content, { rate: 0.95 })
+    }
+  }
 
   const fetchProviders = async () => {
     try {
@@ -440,17 +501,46 @@ export function AIAssistant() {
       {/* Input */}
       <div className="p-4 border-t border-slate-700/50 bg-slate-800/50">
         <div className="flex items-center gap-2">
+          {/* Voice Input Button */}
+          {voiceSupported && (
+            <button
+              onClick={toggleVoiceInput}
+              className={`p-3 rounded-xl transition-all ${
+                isListening 
+                  ? 'bg-red-500 text-white animate-pulse' 
+                  : 'bg-slate-700/50 text-slate-400 hover:text-white hover:bg-slate-600'
+              }`}
+              title={isListening ? 'Stop listening' : 'Voice input'}
+            >
+              {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+            </button>
+          )}
+          
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about performance, strategies, optimization..."
-            className="flex-1 bg-slate-700/50 text-slate-200 placeholder-slate-500 
+            placeholder={isListening ? "Listening..." : "Ask about performance, strategies, optimization..."}
+            className={`flex-1 bg-slate-700/50 text-slate-200 placeholder-slate-500 
                        rounded-xl px-4 py-3 text-sm resize-none focus:outline-none 
-                       focus:ring-2 focus:ring-violet-500/50 border border-slate-600/50"
+                       focus:ring-2 focus:ring-violet-500/50 border ${
+                         isListening ? 'border-red-500/50' : 'border-slate-600/50'
+                       }`}
             rows={1}
             disabled={isLoading}
           />
+          
+          {/* Speak Last Response Button */}
+          {messages.length > 0 && (
+            <button
+              onClick={speakLastResponse}
+              className="p-3 rounded-xl bg-slate-700/50 text-slate-400 hover:text-white hover:bg-slate-600 transition-all"
+              title="Read last response aloud"
+            >
+              <Volume2 className="h-5 w-5" />
+            </button>
+          )}
+          
           <button
             onClick={() => sendMessage()}
             disabled={!input.trim() || isLoading}
@@ -463,6 +553,14 @@ export function AIAssistant() {
             </svg>
           </button>
         </div>
+        
+        {/* Voice Input Status */}
+        {isListening && (
+          <div className="mt-2 flex items-center gap-2 text-xs text-red-400">
+            <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+            Listening... Speak now
+          </div>
+        )}
       </div>
     </div>
   )

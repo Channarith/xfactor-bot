@@ -1,18 +1,19 @@
-# XFactor Bot - Automated Trading System
-# https://gitlab-master.nvidia.com/cvanthin/000_trading
+# XFactor Bot - Development Docker Compose
+# Uses volume mounts for live code changes (no rebuild needed)
 #
-# NOTE: Source code is mounted as volumes for automatic updates.
-#       Just restart the container to pick up code changes.
-#       For frontend changes: cd frontend && npm run build
+# Usage: docker-compose -f docker-compose.dev.yml up
+#
+# NOTE: Frontend changes still require rebuild of dist folder:
+#   cd frontend && npm run build
 
-name: xfactor-bot
+name: xfactor-bot-dev
 
 services:
   xfactor-bot:
     build:
       context: ..
       dockerfile: xfactor-bot/Dockerfile
-    container_name: xfactor-bot
+    container_name: xfactor-bot-dev
     ports:
       - "9876:8000"
     environment:
@@ -23,9 +24,9 @@ services:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
     volumes:
-      # Mount source code for automatic updates (no rebuild needed)
+      # Mount source code for live changes (no rebuild needed)
       - ../src:/app/src:ro
-      # Mount frontend dist (run: cd frontend && npm run build)
+      # Mount frontend dist (rebuild frontend with: cd frontend && npm run build)
       - ../frontend/dist:/app/frontend/dist:ro
       # Data directories
       - ../logs:/app/logs
@@ -35,10 +36,12 @@ services:
       - timescaledb
       - redis
     restart: unless-stopped
+    # Auto-reload on Python file changes
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/src
 
   timescaledb:
     image: timescale/timescaledb:latest-pg15
-    container_name: xfactor-timescaledb
+    container_name: xfactor-timescaledb-dev
     ports:
       - "5433:5432"
     environment:
@@ -46,26 +49,26 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=xfactor_db
     volumes:
-      - xfactor_timescale_data:/var/lib/postgresql/data
+      - xfactor_timescale_data_dev:/var/lib/postgresql/data
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    container_name: xfactor-redis
+    container_name: xfactor-redis-dev
     ports:
       - "6380:6379"
     volumes:
-      - xfactor_redis_data:/data
+      - xfactor_redis_data_dev:/data
     restart: unless-stopped
 
   prometheus:
     image: prom/prometheus:latest
-    container_name: xfactor-prometheus
+    container_name: xfactor-prometheus-dev
     ports:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - xfactor_prometheus_data:/prometheus
+      - xfactor_prometheus_data_dev:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -73,14 +76,14 @@ services:
 
   grafana:
     image: grafana/grafana:latest
-    container_name: xfactor-grafana
+    container_name: xfactor-grafana-dev
     ports:
       - "3001:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
-      - xfactor_grafana_data:/var/lib/grafana
+      - xfactor_grafana_data_dev:/var/lib/grafana
       - ./grafana/dashboards:/var/lib/grafana/dashboards
       - ./grafana/provisioning:/etc/grafana/provisioning
     depends_on:
@@ -88,8 +91,8 @@ services:
     restart: unless-stopped
 
 volumes:
-  xfactor_timescale_data:
-  xfactor_redis_data:
-  xfactor_prometheus_data:
-  xfactor_grafana_data:
+  xfactor_timescale_data_dev:
+  xfactor_redis_data_dev:
+  xfactor_prometheus_data_dev:
+  xfactor_grafana_data_dev:
 

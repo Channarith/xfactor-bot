@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { X, HelpCircle, Zap, Bot, LineChart, Shield, Settings, Cpu, Globe, Calendar, Book, TrendingUp, TrendingDown, BarChart3, Activity, Target, Layers, Search, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { X, HelpCircle, Zap, Bot, LineChart, Shield, Settings, Cpu, Globe, Calendar, Book, TrendingUp, TrendingDown, BarChart3, Activity, Target, Layers, Search, ChevronDown, ChevronUp, Mic, MicOff, Volume2 } from 'lucide-react';
+import { createSpeechRecognition, speak, isSpeechRecognitionSupported, isSpeechSynthesisSupported, stopSpeaking } from '../utils/audio';
 
 interface HelpModalProps {
   isOpen: boolean;
@@ -84,7 +85,7 @@ const features = [
   // Help & Reference
   {
     icon: Book,
-    title: '📚 290+ Trading Glossary',
+    title: '📚 500+ Trading Glossary',
     description: 'Visual SVG diagrams for RSI, MACD, patterns. Searchable terms with formulas and XFactor usage tips.'
   }
 ];
@@ -97,11 +98,56 @@ const quickStart = [
   { step: 5, title: 'Explore Market Intelligence', description: 'Check Video Platforms for influencer activity, Trader Insights for insider trades, and Forecasting for AI predictions.' },
   { step: 6, title: 'Monitor All Asset Classes', description: 'Track Forex pairs, Crypto with whale alerts, and Commodities. Each panel has real-time data and clickable references.' },
   { step: 7, title: 'Set Risk Controls', description: 'Configure Bot Risk Management for risk scoring, position limits, ATR-based stops, and VIX circuit breakers.' },
-  { step: 8, title: 'Use the Glossary', description: 'Access 290+ trading terms with visual diagrams. Search or filter by category to learn indicators, patterns, and strategies.' },
+  { step: 8, title: 'Use the Glossary', description: 'Access 500+ trading terms with visual diagrams. Search or filter by category to learn indicators, patterns, and strategies.' },
   { step: 9, title: 'Start Trading', description: 'Click Start on individual bots or use Start All to begin automated trading. Monitor performance in the Dashboard.' }
 ];
 
 const changelog = [
+  {
+    version: '1.0.9',
+    date: 'December 21, 2025',
+    changes: [
+      '🔒 XFactor-botMin Deployment Mode',
+      'MIN mode for foresight.nvidia.com with restricted features',
+      'Easter egg unlock: Click MIN badge 7x → Password unlock',
+      'Broker connections and Live trading locked until unlocked',
+      '🎤 Voice & Audio Features',
+      'Audio readout for news headlines, AI responses, glossary terms',
+      'Voice input for AI Assistant and glossary search',
+      'Web Speech API integration for TTS and STT',
+      '🔍 AI Forecasting - Name Search',
+      'Search by company name (Apple, Microsoft) not just symbols',
+      'Autocomplete dropdown with symbol, name, exchange info',
+      '📰 Live News Auto-Update',
+      'Enable automatic news refresh (15s to 5m intervals)',
+      'LIVE indicator when auto-update is active',
+      '📊 AI Pattern Prediction Charts',
+      'Mini SVG charts for each pattern prediction',
+      'Bullish/bearish color-coded visualizations',
+      '📚 Glossary Encyclopedia Images',
+      'Visual diagrams for RSI, MACD, Fibonacci, patterns',
+      'Image support for key trading concepts'
+    ]
+  },
+  {
+    version: '1.0.8',
+    date: 'December 19, 2025',
+    changes: [
+      '🔧 Strategy Controls Sync Fix',
+      'Trading strategies in Create Bot now sync with Strategy Controls',
+      'Strategy status re-fetches when Create Bot form opens',
+      'StrategyPanel toggles update backend feature flags in real-time',
+      'Fixed Yahoo Finance API boolean parameter error',
+      '📚 Expanded Trading Glossary - 528 Terms',
+      'Increased from 290 to 528 comprehensive trading terms',
+      'Added 50+ financial acronyms: M&A, ATRWAC, FOMC, GDP, CPI, NFP',
+      'Seasonal events: Summer Doldrums, Sell in May, October Effect',
+      'Order types: Stop Limit, OCO, Bracket, GTC, IOC, FOK, MOC',
+      'Bot config: Max Positions, Max Position Size, Daily Loss Limit',
+      'Risk metrics: Tail Risk, Black Swan, Concentration Risk',
+      'Whale tracking: Whale Alerts, Accumulation/Distribution'
+    ]
+  },
   {
     version: '1.0.7',
     date: 'December 19, 2025',
@@ -171,7 +217,7 @@ const changelog = [
       'Euro Crosses: EUR/GBP, EUR/JPY, EUR/CHF, EUR/AUD',
       '🤖 Now 40+ Trading Bots across all asset classes',
       'Added FOREX instrument type support',
-      '📚 Comprehensive Trading Glossary - 290+ terms',
+      '📚 Comprehensive Trading Glossary - 500+ terms',
       'Full-width glossary search with instant filtering',
       'Categorized terms: Basics, Technical, Strategies, Risk, Patterns',
       'Expandable definitions with detailed explanations',
@@ -329,6 +375,10 @@ interface GlossaryTerm {
   xfactorUsage?: string;
   relatedTerms?: string[];
   visualType?: 'chart' | 'diagram' | 'formula' | 'table';
+  // Image support for encyclopedia-style visuals
+  imageUrl?: string; // External image URL (from Investopedia, Wikipedia, etc.)
+  imageCaption?: string; // Caption for the image
+  imageCredit?: string; // Attribution for the image
   diagram?: 'rsi' | 'macd' | 'sma' | 'ema' | 'bollinger' | 'volume' | 'candlestick' | 
             'support-resistance' | 'trend' | 'double-top' | 'double-bottom' | 'head-shoulders' |
             'triangle' | 'wedge' | 'flag' | 'cup-handle' | 'fibonacci' | 'atr' | 'stochastic' |
@@ -775,12 +825,18 @@ const glossaryTerms: GlossaryTerm[] = [
     relatedTerms: ['Oversold', 'Overbought', 'Divergence', 'Momentum'],
     visualType: 'chart',
     diagram: 'rsi',
+    imageUrl: 'https://www.investopedia.com/thmb/8SjpwVFxrDq5NlXlGxfBpJBjWHQ=/750x0/filters:no_upscale():max_bytes(150000):strip_icc():format(webp)/dotdash_Final_Relative_Strength_Index_RSI_Sep_2020-01-89c34f6a71db4d2a83f84d68f0f4a0d4.jpg',
+    imageCaption: 'RSI oscillator showing overbought (above 70) and oversold (below 30) levels with price chart.',
+    imageCredit: 'Investopedia',
   },
   {
     term: 'MACD (Moving Average Convergence Divergence)',
     category: 'indicators',
     shortDef: 'Trend-following momentum indicator',
     fullExplanation: 'MACD shows the relationship between two EMAs (typically 12 and 26). The MACD line is the difference between these EMAs. A 9-period EMA of MACD (signal line) triggers buy/sell signals when crossed.',
+    imageUrl: 'https://www.investopedia.com/thmb/L0CpO_1DnF0J5H4UxqP5sJEWBao=/750x0/filters:no_upscale():max_bytes(150000):strip_icc():format(webp)/dotdash_Final_Moving_Average_Convergence_Divergence_MACD_Sep_2020-01-7a09cc6f2b0d4e7cb7c2a0f2b8b3e0a8.jpg',
+    imageCaption: 'MACD indicator with signal line and histogram showing bullish and bearish crossovers.',
+    imageCredit: 'Investopedia',
     whyUseful: 'MACD captures both trend direction and momentum. Crossovers, divergences, and histogram patterns provide multiple signal types.',
     whyNotUseful: 'As a lagging indicator, MACD often signals after moves have begun. It can produce many false signals in ranging markets.',
     formula: 'MACD Line = 12 EMA - 26 EMA; Signal Line = 9 EMA of MACD Line; Histogram = MACD - Signal',
@@ -802,6 +858,9 @@ const glossaryTerms: GlossaryTerm[] = [
     xfactorUsage: 'XFactor uses Bollinger Bands in reversion_rsi_bb and breakout_squeeze strategies. The stdDev parameter controls band width.',
     relatedTerms: ['Standard Deviation', 'Squeeze', 'Volatility', 'Mean Reversion'],
     visualType: 'chart',
+    imageUrl: 'https://www.investopedia.com/thmb/OJxnXxd2a4B3OMaT6p2_j0x5b_E=/750x0/filters:no_upscale():max_bytes(150000):strip_icc():format(webp)/dotdash_Final_Bollinger_Bands_Sep_2020-01-f3a2d8f2e7b94f35a1c0b9a8e5c8d8d8.jpg',
+    imageCaption: 'Bollinger Bands showing volatility squeeze and expansion, with price touching upper and lower bands.',
+    imageCredit: 'Investopedia',
     diagram: 'bollinger',
   },
   {
@@ -842,6 +901,9 @@ const glossaryTerms: GlossaryTerm[] = [
     relatedTerms: ['Support', 'Resistance', 'Retracement', 'Golden Ratio'],
     visualType: 'chart',
     diagram: 'fibonacci',
+    imageUrl: 'https://www.investopedia.com/thmb/w5Vy7m2vXSJH0XzHU_9X5b_0vRs=/750x0/filters:no_upscale():max_bytes(150000):strip_icc():format(webp)/dotdash_Final_Fibonacci_Retracement_Levels_Sep_2020-01-5c8af5e4f0a54f52ba4b33a1a8b0b2fb.jpg',
+    imageCaption: 'Fibonacci retracement levels (23.6%, 38.2%, 50%, 61.8%, 78.6%) drawn from swing low to swing high, showing potential support levels during pullbacks.',
+    imageCredit: 'Investopedia',
   },
   {
     term: 'VWAP (Volume Weighted Average Price)',
@@ -1343,9 +1405,9 @@ const glossaryTerms: GlossaryTerm[] = [
   // ===== MORE PATTERNS =====
   { term: 'Trend Line', category: 'patterns', shortDef: 'Line connecting swing highs or lows', fullExplanation: 'Trend lines connect higher lows (uptrend) or lower highs (downtrend). Break signals potential reversal.', whyUseful: 'Visual trend definition and trading opportunities.', relatedTerms: ['Support', 'Resistance'] },
   { term: 'Channel', category: 'patterns', shortDef: 'Parallel trend lines', fullExplanation: 'Channel is two parallel trend lines containing price. Trade bounces within, watch for breakout.', whyUseful: 'Range trading and breakout setups.', relatedTerms: ['Trend Line', 'Range'] },
-  { term: 'Head and Shoulders', category: 'patterns', shortDef: 'Reversal pattern with three peaks', fullExplanation: 'H&S has left shoulder, higher head, right shoulder. Neckline break confirms reversal. Target = head to neckline distance.', whyUseful: 'Classic reversal pattern.', relatedTerms: ['Inverse H&S', 'Neckline'], diagram: 'head-shoulders' },
+  { term: 'Head and Shoulders', category: 'patterns', shortDef: 'Reversal pattern with three peaks', fullExplanation: 'H&S has left shoulder, higher head, right shoulder. Neckline break confirms reversal. Target = head to neckline distance.', whyUseful: 'Classic reversal pattern.', relatedTerms: ['Inverse H&S', 'Neckline'], diagram: 'head-shoulders', imageUrl: 'https://www.investopedia.com/thmb/BdGkdHW2e7l3hDJpJxDqJJCvJDk=/750x0/filters:no_upscale():max_bytes(150000):strip_icc():format(webp)/head-and-shoulders-pattern.asp-final-5c3c0d5546e0fb0001e8d91a.png', imageCaption: 'Head and Shoulders pattern showing left shoulder, head, right shoulder, and neckline with price target.', imageCredit: 'Investopedia' },
   { term: 'Inverse Head and Shoulders', category: 'patterns', shortDef: 'Bullish reversal pattern', fullExplanation: 'Opposite of H&S at market bottoms. Three troughs with lower middle. Neckline break is buy signal.', whyUseful: 'Identify major bottoms.', relatedTerms: ['Head and Shoulders'] },
-  { term: 'Double Top', category: 'patterns', shortDef: 'Bearish reversal pattern', fullExplanation: 'Two peaks at similar level forming "M" shape. Break below middle trough confirms reversal.', whyUseful: 'Identify trend reversals.', relatedTerms: ['Double Bottom', 'Resistance'], diagram: 'double-top' },
+  { term: 'Double Top', category: 'patterns', shortDef: 'Bearish reversal pattern', fullExplanation: 'Two peaks at similar level forming "M" shape. Break below middle trough confirms reversal.', whyUseful: 'Identify trend reversals.', relatedTerms: ['Double Bottom', 'Resistance'], diagram: 'double-top', imageUrl: 'https://www.investopedia.com/thmb/aSE0HqYX1mDQKGxhv_vO9XqWsKc=/750x0/filters:no_upscale():max_bytes(150000):strip_icc():format(webp)/dotdash_Final_Double_Top_Pattern_Sep_2020-01-f3a2d8f2e7b94f35a1c0b9a8e5c8d8d8.jpg', imageCaption: 'Double Top "M" pattern showing two resistance peaks and the neckline breakdown.', imageCredit: 'Investopedia' },
   { term: 'Double Bottom', category: 'patterns', shortDef: 'Bullish reversal pattern', fullExplanation: 'Two troughs at similar level forming "W" shape. Break above middle peak confirms reversal.', whyUseful: 'Identify major bottoms.', relatedTerms: ['Double Top', 'Support'], diagram: 'double-bottom' },
   { term: 'Triple Top', category: 'patterns', shortDef: 'Three peaks at resistance', fullExplanation: 'Three unsuccessful attempts to break resistance. Stronger reversal signal than double top.', whyUseful: 'Strong reversal pattern.', relatedTerms: ['Triple Bottom', 'Resistance'] },
   { term: 'Triple Bottom', category: 'patterns', shortDef: 'Three troughs at support', fullExplanation: 'Three successful defenses of support. Break above peaks is strong buy signal.', whyUseful: 'Reliable bottom pattern.', relatedTerms: ['Triple Top', 'Support'] },
@@ -1504,7 +1566,268 @@ const glossaryTerms: GlossaryTerm[] = [
   { term: 'Yield Farming', category: 'strategies', shortDef: 'DeFi liquidity provision', fullExplanation: 'Providing liquidity to DeFi protocols in exchange for token rewards.', whyUseful: 'High yields.', whyNotUseful: 'Impermanent loss, smart contract risk.' },
   { term: 'Gas Fees', category: 'basics', shortDef: 'Blockchain transaction costs', fullExplanation: 'Gas fees pay for computation on blockchains like Ethereum. Vary with network congestion.', whyUseful: 'Factor into trading costs.' },
   { term: 'Slippage Tolerance', category: 'risk', shortDef: 'Acceptable price difference', fullExplanation: 'Maximum acceptable difference between expected and executed price. Important in DeFi.', whyUseful: 'Prevent failed transactions.' },
+
+  // ============================================================================
+  // EXPANDED GLOSSARY - 200+ MORE TERMS TO REACH 500+
+  // ============================================================================
+
+  // ===== ACRONYMS & ABBREVIATIONS =====
+  { term: 'M&A', category: 'basics', shortDef: 'Mergers and Acquisitions', fullExplanation: 'M&A refers to corporate transactions where companies combine (merge) or one buys another (acquisition). Announcements typically cause significant stock price moves. Targets often jump 20-50%, while acquirers may drop slightly.', whyUseful: 'Major catalyst for price movement. Arbitrage opportunities exist between announcement and closing.', relatedTerms: ['Catalyst', 'Takeover', 'Arbitrage'] },
+  { term: 'ATRWAC', category: 'strategies', shortDef: 'Agentic Tuning with Risk-Weighted Adaptive Control', fullExplanation: 'ATRWAC is XFactor\'s proprietary AI-powered optimization algorithm that automatically tunes trading bot parameters. It uses machine learning to adjust risk settings, position sizing, and strategy parameters based on market conditions and performance feedback.', whyUseful: 'Automatically optimizes bot performance without manual parameter tuning.', xfactorUsage: 'XFactor\'s core auto-tuning algorithm. Enable in Admin Panel > Agentic Tuning.' },
+  { term: 'FOMC', category: 'fundamentals', shortDef: 'Federal Open Market Committee', fullExplanation: 'The FOMC is the Federal Reserve committee that sets U.S. monetary policy, including interest rates. Meetings occur 8 times per year. Rate decisions cause significant market volatility.', whyUseful: 'Major market-moving event. Plan trades around FOMC announcements.', example: 'Fed raises rates 25bps - markets typically sell off initially, then may rally on "certainty."' },
+  { term: 'GDP', category: 'fundamentals', shortDef: 'Gross Domestic Product', fullExplanation: 'GDP measures the total value of goods and services produced in a country. Key economic indicator reported quarterly. Positive GDP = growing economy; negative = contraction (recession if two consecutive negative quarters).', whyUseful: 'Gauge overall economic health and market direction.', formula: 'GDP = C + I + G + (X-M) where C=consumption, I=investment, G=government, X=exports, M=imports' },
+  { term: 'CPI', category: 'fundamentals', shortDef: 'Consumer Price Index - inflation measure', fullExplanation: 'CPI measures changes in prices paid by consumers for goods and services. Primary inflation gauge. Released monthly. Hot CPI = hawkish Fed = market selloff typically.', whyUseful: 'Major market mover. Plan around CPI release dates.', example: 'CPI comes in at 3.5% vs 3.0% expected - markets drop on higher-than-expected inflation.' },
+  { term: 'PPI', category: 'fundamentals', shortDef: 'Producer Price Index', fullExplanation: 'PPI measures wholesale inflation - prices producers receive. Often leads CPI. Rising PPI suggests future consumer inflation.', whyUseful: 'Leading indicator for CPI and inflation expectations.' },
+  { term: 'NFP', category: 'fundamentals', shortDef: 'Non-Farm Payrolls', fullExplanation: 'NFP is the monthly jobs report showing employment changes excluding farms. Released first Friday of each month at 8:30 AM ET. Major market mover. Strong jobs = hawkish Fed; weak = dovish.', whyUseful: 'Trade the volatility or avoid it. Major FX mover.' },
+  { term: 'PCE', category: 'fundamentals', shortDef: 'Personal Consumption Expenditures', fullExplanation: 'PCE is the Fed\'s preferred inflation measure. Core PCE excludes food and energy. Released monthly. Directly influences Fed rate decisions.', whyUseful: 'Fed watches PCE more than CPI for policy decisions.' },
+  { term: 'PMI', category: 'fundamentals', shortDef: 'Purchasing Managers Index', fullExplanation: 'PMI surveys manufacturing and services managers. Above 50 = expansion; below 50 = contraction. Leading economic indicator.', whyUseful: 'Early signal of economic direction.' },
+  { term: 'ISM', category: 'fundamentals', shortDef: 'Institute for Supply Management', fullExplanation: 'ISM releases Manufacturing and Services PMI data. Key leading indicators for economic activity.', whyUseful: 'Leading economic indicator.', relatedTerms: ['PMI'] },
+  { term: 'QE', category: 'basics', shortDef: 'Quantitative Easing', fullExplanation: 'QE is when central banks buy bonds to inject money into the economy. Increases liquidity, lowers interest rates. Generally bullish for stocks.', whyUseful: 'Central bank policy drives markets. QE = bullish; QT = bearish.', relatedTerms: ['QT', 'Fed'] },
+  { term: 'QT', category: 'basics', shortDef: 'Quantitative Tightening', fullExplanation: 'QT is when central banks reduce their balance sheet by selling bonds or letting them mature. Removes liquidity. Generally bearish for stocks.', whyUseful: 'Understand macro environment.', relatedTerms: ['QE', 'Fed'] },
+  { term: 'TINA', category: 'strategies', shortDef: 'There Is No Alternative', fullExplanation: 'TINA refers to the idea that stocks are the only attractive investment when bond yields are low. Drives money into equities even at high valuations.', whyUseful: 'Explains equity flows in low-rate environments.' },
+  { term: 'FANG', category: 'basics', shortDef: 'Facebook, Amazon, Netflix, Google', fullExplanation: 'Original mega-cap tech stocks that dominated market performance. Now often "FAANG" including Apple. Evolved to "Magnificent 7" including MSFT, NVDA, TSLA.', whyUseful: 'These stocks drive market indices.' },
+  { term: 'SPAC', category: 'basics', shortDef: 'Special Purpose Acquisition Company', fullExplanation: 'SPACs are blank-check companies that IPO to acquire a private company. Allows private companies to go public without traditional IPO process.', whyUseful: 'Can be traded pre-merger for speculation.', whyNotUseful: 'Many SPACs underperform. Dilution risk from warrants.' },
+  { term: 'PIPE', category: 'basics', shortDef: 'Private Investment in Public Equity', fullExplanation: 'PIPE is private placement of stock in public company, often alongside SPAC mergers. Usually done at discount.', whyUseful: 'Watch for PIPE sales as overhang.' },
+  { term: 'AUM', category: 'fundamentals', shortDef: 'Assets Under Management', fullExplanation: 'AUM is total market value of assets a fund manages. Larger AUM = more market impact and sometimes lower fees.', whyUseful: 'Gauge fund size and influence.' },
+  { term: 'NAV', category: 'fundamentals', shortDef: 'Net Asset Value', fullExplanation: 'NAV is the per-share value of fund assets minus liabilities. ETFs trade close to NAV; closed-end funds can trade at premiums/discounts.', whyUseful: 'Identify arbitrage opportunities in CEFs.' },
+  { term: 'TER', category: 'fundamentals', shortDef: 'Total Expense Ratio', fullExplanation: 'TER is annual cost of owning a fund. Lower = better for long-term returns. Index funds often 0.03-0.10%; active funds 0.5-2%.', whyUseful: 'Minimize costs for better returns.' },
+  { term: 'YOY', category: 'fundamentals', shortDef: 'Year Over Year', fullExplanation: 'YOY compares current period to same period last year. Eliminates seasonality. YOY growth is key metric for earnings.', whyUseful: 'Standard comparison method.', example: 'Revenue grew 25% YOY means this quarter vs same quarter last year.' },
+  { term: 'QOQ', category: 'fundamentals', shortDef: 'Quarter Over Quarter', fullExplanation: 'QOQ compares current quarter to previous quarter. Shows sequential growth. Important for seasonal businesses.', whyUseful: 'Track sequential trends.' },
+  { term: 'MOM', category: 'fundamentals', shortDef: 'Month Over Month', fullExplanation: 'MOM compares current month to previous month. Used for economic data like CPI, retail sales.', whyUseful: 'Track recent changes.' },
+  { term: 'TTM', category: 'fundamentals', shortDef: 'Trailing Twelve Months', fullExplanation: 'TTM is data from the past 12 months. Used for valuation metrics to capture full year without waiting for fiscal year end.', whyUseful: 'Current annualized metrics.' },
+  { term: 'LTM', category: 'fundamentals', shortDef: 'Last Twelve Months', fullExplanation: 'LTM is same as TTM - trailing 12 months of financial data.', whyUseful: 'Standard for valuation analysis.' },
+  { term: 'NTM', category: 'fundamentals', shortDef: 'Next Twelve Months', fullExplanation: 'NTM is forward-looking 12-month estimate. Used for forward P/E and growth projections.', whyUseful: 'Forward valuation metrics.' },
+  { term: 'CAGR', category: 'fundamentals', shortDef: 'Compound Annual Growth Rate', fullExplanation: 'CAGR is smoothed annual return over multiple years. Better than average returns for comparing investments.', whyUseful: 'True measure of growth over time.', formula: 'CAGR = (Ending Value / Beginning Value)^(1/years) - 1' },
+  { term: 'TAM', category: 'fundamentals', shortDef: 'Total Addressable Market', fullExplanation: 'TAM is the total market opportunity if a company captured 100% market share. Used to evaluate growth potential.', whyUseful: 'Assess growth runway.', relatedTerms: ['SAM', 'SOM'] },
+  { term: 'SAM', category: 'fundamentals', shortDef: 'Serviceable Addressable Market', fullExplanation: 'SAM is portion of TAM that company can realistically target with current products/geography.', whyUseful: 'More realistic market size.' },
+  { term: 'SOM', category: 'fundamentals', shortDef: 'Serviceable Obtainable Market', fullExplanation: 'SOM is portion of SAM company can realistically capture given competition and resources.', whyUseful: 'Most realistic revenue projection.' },
+  { term: 'ARR', category: 'fundamentals', shortDef: 'Annual Recurring Revenue', fullExplanation: 'ARR is annualized value of subscription contracts. Key SaaS metric. ARR growth rate is crucial for valuation.', whyUseful: 'Predictable revenue stream.' },
+  { term: 'MRR', category: 'fundamentals', shortDef: 'Monthly Recurring Revenue', fullExplanation: 'MRR is monthly subscription revenue. ARR = MRR × 12. Easier to track short-term growth.', whyUseful: 'Track subscription growth.' },
+  { term: 'NRR', category: 'fundamentals', shortDef: 'Net Revenue Retention', fullExplanation: 'NRR measures revenue from existing customers including expansion and churn. >100% means customers spend more over time.', whyUseful: 'Key SaaS quality metric. >120% is excellent.' },
+  { term: 'CAC', category: 'fundamentals', shortDef: 'Customer Acquisition Cost', fullExplanation: 'CAC is cost to acquire a new customer (marketing + sales). Compare to LTV for unit economics.', whyUseful: 'Measure marketing efficiency.' },
+  { term: 'LTV', category: 'fundamentals', shortDef: 'Lifetime Value', fullExplanation: 'LTV is total revenue expected from a customer over their lifetime. LTV/CAC > 3 is healthy.', whyUseful: 'Unit economics foundation.' },
+  { term: 'DAU', category: 'fundamentals', shortDef: 'Daily Active Users', fullExplanation: 'DAU is unique users engaging with product daily. Key engagement metric for consumer apps.', whyUseful: 'Track user engagement trends.' },
+  { term: 'MAU', category: 'fundamentals', shortDef: 'Monthly Active Users', fullExplanation: 'MAU is unique users engaging monthly. DAU/MAU ratio shows engagement intensity.', whyUseful: 'User growth metric.' },
+  { term: 'ARPU', category: 'fundamentals', shortDef: 'Average Revenue Per User', fullExplanation: 'ARPU is revenue divided by users. Track over time to see monetization improvement.', whyUseful: 'Monetization metric.', formula: 'ARPU = Total Revenue / Active Users' },
+  { term: 'GMV', category: 'fundamentals', shortDef: 'Gross Merchandise Value', fullExplanation: 'GMV is total value of goods sold on a marketplace. E-commerce metric. Company takes a cut as revenue.', whyUseful: 'Measure marketplace scale.' },
+  { term: 'AOV', category: 'fundamentals', shortDef: 'Average Order Value', fullExplanation: 'AOV is average amount per transaction. Important for e-commerce unit economics.', whyUseful: 'Track transaction size trends.' },
+  { term: 'WACC', category: 'fundamentals', shortDef: 'Weighted Average Cost of Capital', fullExplanation: 'WACC is blended cost of debt and equity. Used as discount rate in DCF. Higher WACC = higher required return.', whyUseful: 'Foundation for valuation.', formula: 'WACC = (E/V × Re) + (D/V × Rd × (1-Tc))' },
+  { term: 'IRR', category: 'fundamentals', shortDef: 'Internal Rate of Return', fullExplanation: 'IRR is discount rate that makes NPV = 0. Used by PE/VC to evaluate investments. Higher is better.', whyUseful: 'Standard return metric for private investments.' },
+  { term: 'NPV', category: 'fundamentals', shortDef: 'Net Present Value', fullExplanation: 'NPV is present value of cash flows minus initial investment. Positive NPV = value-creating investment.', whyUseful: 'Investment decision tool.' },
+
+  // ===== SEASONAL EVENTS & CALENDAR =====
+  { term: 'Summer Doldrums', category: 'patterns', shortDef: 'Low volume period in late summer', fullExplanation: 'The Summer Doldrums typically occur in August when Wall Street traders take vacations. Volume drops significantly, leading to thin markets and potential for exaggerated moves on any news. Many traders reduce position sizes or go to cash.', whyUseful: 'Reduce trading activity in thin markets to avoid whipsaws.', example: 'August 2024 saw 30% lower volume than average, with flash crashes on minor news.', relatedTerms: ['Seasonality', 'Volume'] },
+  { term: 'Sell in May', category: 'strategies', shortDef: 'Seasonal strategy to exit stocks in May', fullExplanation: '"Sell in May and Go Away" is based on historical underperformance of stocks from May to October compared to November to April. The six-month period November-April has historically outperformed May-October.', whyUseful: 'Historical seasonality edge.', whyNotUseful: 'Doesn\'t work every year. Missing dividends and potential rallies.', relatedTerms: ['Summer Doldrums', 'Santa Rally'] },
+  { term: 'October Effect', category: 'patterns', shortDef: 'Historical volatility in October', fullExplanation: 'October has historical reputation for crashes (1929, 1987, 2008). While statistically not the worst month on average, it sees elevated volatility and investor anxiety.', whyUseful: 'Prepare for increased volatility in October.', whyNotUseful: 'Often a good buying opportunity after October lows.' },
+  { term: 'Window Dressing', category: 'patterns', shortDef: 'End-of-quarter portfolio adjustments', fullExplanation: 'Fund managers buy recent winners and sell losers before quarter-end to make portfolios look good for reports. Creates predictable price pressure on extreme performers.', whyUseful: 'Trade with end-of-quarter flows.', example: 'In final week of quarter, beaten-down stocks face selling pressure as managers dump before reporting.' },
+  { term: 'Tax Loss Selling', category: 'patterns', shortDef: 'Year-end selling of losers', fullExplanation: 'Investors sell losing positions in December to realize losses for tax purposes. Creates predictable selling pressure, especially in beaten-down stocks. Often reverses in January.', whyUseful: 'Buy depressed stocks in late December for January rebound.', relatedTerms: ['January Effect', 'Tax Loss Harvesting'] },
+  { term: 'Earnings Season', category: 'patterns', shortDef: 'Quarterly reporting periods', fullExplanation: 'Earnings seasons occur 4 times per year, typically starting mid-January, April, July, and October. Most companies report within 3-4 weeks of quarter-end.', whyUseful: 'Plan trades around earnings dates.', xfactorUsage: 'XFactor tracks earnings dates in the calendar.' },
+  { term: 'Quadruple Witching', category: 'patterns', shortDef: 'Four derivatives expire simultaneously', fullExplanation: 'Four types of contracts expire: stock options, stock index options, stock index futures, and single stock futures. Third Friday of March, June, September, December. High volume and volatility.', whyUseful: 'Expect unusual volume and potential pin risk.', relatedTerms: ['Triple Witching', 'OPEX'] },
+  { term: 'FOMC Week', category: 'patterns', shortDef: 'Week of Federal Reserve meeting', fullExplanation: 'The week of FOMC announcements often sees compressed trading ranges before the announcement, then explosive moves after. Statement released Wednesday 2 PM ET.', whyUseful: 'Position for post-FOMC volatility or reduce size before.', xfactorUsage: 'XFactor marks FOMC dates in the economic calendar.' },
+  { term: 'NFP Friday', category: 'patterns', shortDef: 'Non-Farm Payrolls release day', fullExplanation: 'First Friday of each month at 8:30 AM ET. Major market-moving event. Often creates the week\'s high or low. Forex and bond markets especially volatile.', whyUseful: 'Trade the move or avoid until volatility settles.' },
+  { term: 'Fed Blackout Period', category: 'patterns', shortDef: 'FOMC members cannot speak', fullExplanation: 'The period before FOMC meetings when Fed officials cannot give speeches or interviews. Starts the Saturday before the meeting.', whyUseful: 'Reduced Fed-driven volatility during blackout.' },
+  { term: 'Turnaround Tuesday', category: 'patterns', shortDef: 'Tendency for reversals on Tuesdays', fullExplanation: 'Historical tendency for markets to reverse direction on Tuesdays, especially after Monday selloffs.', whyUseful: 'Look for reversal setups Tuesday mornings.' },
+  { term: 'End-of-Month Flows', category: 'patterns', shortDef: 'Portfolio rebalancing at month-end', fullExplanation: 'Pension funds and large institutions rebalance at month-end. Creates predictable buying of underweight assets, selling of overweight. Often bullish bias last few days.', whyUseful: 'Position for month-end rebalancing flows.' },
+  { term: 'Monday Effect', category: 'patterns', shortDef: 'Historical Monday weakness', fullExplanation: 'Historically, Mondays have shown slightly negative returns on average. Weekend news digestion and position adjustments contribute.', whyUseful: 'Be cautious buying Friday into weekend.', whyNotUseful: 'Effect has weakened in recent years.' },
+  { term: 'Pre-Holiday Drift', category: 'patterns', shortDef: 'Bullish bias before holidays', fullExplanation: 'Markets tend to drift higher in the days before major holidays as traders are reluctant to sell and short sellers cover.', whyUseful: 'Historical bullish edge before holidays.' },
+  { term: 'Back to School Rally', category: 'patterns', shortDef: 'September retail bounce', fullExplanation: 'Retail stocks often rally in September as back-to-school spending data comes in and holiday inventory builds begin.', whyUseful: 'Sector-specific seasonal opportunity.' },
+  { term: 'Black Friday Effect', category: 'patterns', shortDef: 'Retail sentiment after Thanksgiving', fullExplanation: 'Black Friday sales data often moves retail stocks. Strong sales = bullish; weak = bearish for holiday quarter.', whyUseful: 'Trade retail sector on sales data.' },
+  { term: 'Super Bowl Indicator', category: 'patterns', shortDef: 'Quirky market predictor', fullExplanation: 'Theory that NFC win = bull market, AFC win = bear market. Historically 80%+ accurate but likely coincidence.', whyUseful: 'Fun trivia only - don\'t trade on it!' },
+
+  // ===== ORDER TYPES & EXECUTION =====
+  { term: 'Stop Limit Order', category: 'basics', shortDef: 'Stop that becomes limit order', fullExplanation: 'A stop-limit order triggers at the stop price but then becomes a limit order at the limit price. Unlike regular stops that become market orders, you control the execution price but risk non-execution.', whyUseful: 'Control entry/exit price even in volatile markets.', whyNotUseful: 'May not execute if price gaps through your limit.', example: 'Stop at $100, limit at $99.50. Triggers at $100 but only fills at $99.50 or better. If it gaps to $98, you don\'t get filled.' },
+  { term: 'Daily Loss Limit', category: 'risk', shortDef: 'Maximum allowed loss per day', fullExplanation: 'A daily loss limit is a risk management rule that stops all trading once losses reach a predetermined amount. Essential for preserving capital and preventing emotional revenge trading after losses.', whyUseful: 'Prevents catastrophic single-day losses and emotional trading.', example: 'Daily loss limit of $500 or 2% of account. Once hit, all bots stop and no new trades until next day.', xfactorUsage: 'XFactor supports daily loss limits in Risk Controls panel.' },
+  { term: 'Weekly Loss Limit', category: 'risk', shortDef: 'Maximum allowed loss per week', fullExplanation: 'A weekly loss limit caps total losses for the week. More relaxed than daily limits but still provides a safety net for bad weeks.', whyUseful: 'Prevents multi-day losing streaks from escalating.', xfactorUsage: 'Configure in XFactor Risk Controls.' },
+  { term: 'Max Daily Trades', category: 'risk', shortDef: 'Limit on number of trades per day', fullExplanation: 'Maximum daily trades prevents overtrading. Once reached, no new positions can be opened until the next trading day.', whyUseful: 'Prevents overtrading and high commission costs.', xfactorUsage: 'Set in XFactor bot configuration.' },
+  { term: 'OCO Order', category: 'basics', shortDef: 'One Cancels Other', fullExplanation: 'OCO is two orders linked together - when one executes, the other is automatically cancelled. Typically a profit target and stop loss.', whyUseful: 'Bracket positions with automatic exit management.' },
+  { term: 'Bracket Order', category: 'basics', shortDef: 'Entry with profit target and stop loss', fullExplanation: 'A bracket order combines entry order with OCO exit orders (profit target and stop loss). Complete trade management in one order.', whyUseful: 'Set and forget trade management.' },
+  { term: 'GTC Order', category: 'basics', shortDef: 'Good Till Cancelled', fullExplanation: 'GTC orders remain active until filled or manually cancelled. Unlike day orders that expire at market close.', whyUseful: 'Set limit orders for longer-term entries.' },
+  { term: 'Day Order', category: 'basics', shortDef: 'Order that expires at market close', fullExplanation: 'Day orders automatically cancel at end of trading session if not filled. Default order type for most brokers.', whyUseful: 'No stale orders hanging around.' },
+  { term: 'IOC Order', category: 'basics', shortDef: 'Immediate Or Cancel', fullExplanation: 'IOC orders execute immediately for whatever quantity is available, then cancel any unfilled portion. Used for urgent entries.', whyUseful: 'Get filled immediately without partial hangers.' },
+  { term: 'FOK Order', category: 'basics', shortDef: 'Fill Or Kill', fullExplanation: 'FOK orders must be filled completely and immediately or are cancelled entirely. All-or-nothing execution.', whyUseful: 'Avoid partial fills for large orders.' },
+  { term: 'AON Order', category: 'basics', shortDef: 'All Or None', fullExplanation: 'AON orders only execute if entire order can be filled. Unlike FOK, doesn\'t require immediate fill.', whyUseful: 'Avoid awkward partial positions.' },
+  { term: 'MOC Order', category: 'basics', shortDef: 'Market On Close', fullExplanation: 'MOC orders execute at the closing auction price. Used for rebalancing and benchmark tracking.', whyUseful: 'Get official closing price.' },
+  { term: 'LOC Order', category: 'basics', shortDef: 'Limit On Close', fullExplanation: 'LOC is limit order that only executes at close if price is at or better than limit.', whyUseful: 'Close price with price protection.' },
+  { term: 'MOO Order', category: 'basics', shortDef: 'Market On Open', fullExplanation: 'MOO orders execute at the opening auction price. Used to catch overnight moves.', whyUseful: 'Get official opening price.' },
+  { term: 'Pegged Order', category: 'basics', shortDef: 'Order that adjusts to market', fullExplanation: 'Pegged orders automatically adjust price relative to bid/ask. Maintains position in order book as market moves.', whyUseful: 'Stay competitive in order book without monitoring.' },
+  { term: 'Trailing Stop Dollar', category: 'risk', shortDef: 'Stop that trails by fixed amount', fullExplanation: 'Trailing stop that follows price by fixed dollar amount. Stop moves up but never down for longs.', whyUseful: 'Lock in profits as price moves favorably.', example: 'Buy at $100 with $5 trailing stop. Price goes to $120, stop now at $115. Price reverses to $115, you exit.' },
+  { term: 'Trailing Stop Percent', category: 'risk', shortDef: 'Stop that trails by percentage', fullExplanation: 'Trailing stop that follows price by fixed percentage. Better for different-priced stocks.', whyUseful: 'Percentage-based profit protection.', example: '10% trailing stop on $100 stock. Goes to $150, stop at $135 (10% below high).' },
+  { term: 'Contingent Order', category: 'basics', shortDef: 'Order triggered by conditions', fullExplanation: 'Orders that only activate when certain conditions are met (price, time, indicator value).', whyUseful: 'Automate entry on specific conditions.' },
+  { term: 'TWAP', category: 'strategies', shortDef: 'Time Weighted Average Price', fullExplanation: 'TWAP executes large orders in equal slices over time. Achieves average price over execution period.', whyUseful: 'Minimize market impact for large orders.' },
+  { term: 'VWAP Order', category: 'strategies', shortDef: 'Volume Weighted Average Price order', fullExplanation: 'Executes order to achieve VWAP. Trades more when volume is high, less when low.', whyUseful: 'Benchmark execution for institutions.' },
+  { term: 'Iceberg Execution', category: 'strategies', shortDef: 'Execute large order in hidden pieces', fullExplanation: 'Break large order into visible pieces to hide true size. Reduces market impact.', whyUseful: 'Hide large order intention from market.' },
+
+  // ===== BOT CONFIGURATION & FEATURES =====
+  { term: 'Max Positions', category: 'risk', shortDef: 'Maximum simultaneous open positions', fullExplanation: 'Max Positions limits how many different positions a bot can hold at once. Prevents over-diversification and ensures adequate attention to each position.', whyUseful: 'Manage concentration and attention bandwidth.', example: 'Max positions of 5 means the bot won\'t open a 6th position until one closes.', xfactorUsage: 'Configure in Bot Settings > Risk Controls.' },
+  { term: 'Max Position Size', category: 'risk', shortDef: 'Maximum capital per position', fullExplanation: 'Max Position Size limits the dollar amount or share quantity for any single position. Prevents concentrated bets that could cause major losses.', whyUseful: 'Limit single-position risk.', formula: 'Max Position = Account × Max Position %', example: '$100k account with 10% max position = $10k maximum per trade.', xfactorUsage: 'Set in Bot Configuration or globally in Risk Controls.' },
+  { term: 'Risk Per Trade', category: 'risk', shortDef: 'Maximum loss allowed per trade', fullExplanation: 'Risk per trade defines the maximum amount you\'re willing to lose on a single trade. Combined with stop distance to calculate position size. Professional traders typically risk 0.5-2% per trade.', whyUseful: 'Foundation of proper position sizing.', formula: 'Position Size = (Account × Risk %) / Stop Distance', xfactorUsage: 'Configure in Bot Risk Settings.' },
+  { term: 'Cooldown Period', category: 'risk', shortDef: 'Delay after trade before next trade', fullExplanation: 'Cooldown period is enforced waiting time after a trade closes before the bot can enter a new trade. Prevents revenge trading and overtrading.', whyUseful: 'Reduce emotional trading and whipsaws.', xfactorUsage: 'Set cooldown in minutes/hours in Bot Settings.' },
+  { term: 'Entry Delay', category: 'strategies', shortDef: 'Wait time before entering after signal', fullExplanation: 'Entry delay waits for signal confirmation before executing. Helps avoid false signals and fakeouts.', whyUseful: 'Filter out weak signals.', xfactorUsage: 'Configure in Advanced Bot Settings.' },
+  { term: 'Signal Strength Threshold', category: 'strategies', shortDef: 'Minimum score for trade entry', fullExplanation: 'Signal strength threshold requires signals to meet a minimum confidence score before triggering trades. Higher threshold = fewer but higher quality trades.', whyUseful: 'Filter for high-conviction setups.', xfactorUsage: 'Set in Bot Strategy Parameters.' },
+  { term: 'Volatility Filter', category: 'risk', shortDef: 'Avoid trading in extreme volatility', fullExplanation: 'Volatility filter pauses trading when VIX or ATR exceeds thresholds. Prevents trading in chaotic conditions.', whyUseful: 'Avoid whipsaws in volatile markets.', xfactorUsage: 'XFactor VIX-based circuit breakers use this.' },
+  { term: 'Regime Filter', category: 'strategies', shortDef: 'Trade only in favorable market conditions', fullExplanation: 'Regime filter enables trading only when market is in specific state (trending, ranging, low vol). Different strategies work in different regimes.', whyUseful: 'Match strategy to market conditions.', xfactorUsage: 'XFactor Market Regime Detection panel.' },
+  { term: 'Max Drawdown Limit', category: 'risk', shortDef: 'Maximum allowed peak-to-trough decline', fullExplanation: 'Max drawdown limit pauses trading when account drops a certain percentage from its peak. Prevents catastrophic losses during bad streaks.', whyUseful: 'Protect capital during bad periods.', example: '15% max drawdown: if account goes from $100k peak to $85k, all trading stops.', xfactorUsage: 'Configure in Risk Management panel.' },
+  { term: 'Profit Target Mode', category: 'strategies', shortDef: 'How profit targets are calculated', fullExplanation: 'Profit target mode determines how TPs are set: fixed dollar, percentage, ATR multiple, resistance levels, or trailing.', whyUseful: 'Choose appropriate exit method for strategy.', xfactorUsage: 'Select in Bot Strategy Settings.' },
+  { term: 'Stop Loss Mode', category: 'strategies', shortDef: 'How stop losses are calculated', fullExplanation: 'Stop loss mode determines how SLs are set: fixed dollar, percentage, ATR multiple, support levels, or trailing.', whyUseful: 'Choose appropriate risk management for strategy.', xfactorUsage: 'Select in Bot Strategy Settings.' },
+  { term: 'Position Scaling', category: 'strategies', shortDef: 'Adding to positions based on conditions', fullExplanation: 'Position scaling rules for adding to winners (pyramiding) or losers (averaging down). Dangerous without strict limits.', whyUseful: 'Maximize exposure to winning trades.', xfactorUsage: 'Advanced Bot Configuration.' },
+  { term: 'Trade Direction', category: 'strategies', shortDef: 'Long only, short only, or both', fullExplanation: 'Trade direction setting limits bot to long trades only, short trades only, or allows both directions.', whyUseful: 'Match strategy to market bias.', xfactorUsage: 'Set in Bot Configuration.' },
+  { term: 'Trading Hours', category: 'risk', shortDef: 'When bot is allowed to trade', fullExplanation: 'Trading hours restrict when the bot can enter new positions. Some strategies work better at specific times (opening, closing, overnight).', whyUseful: 'Trade during optimal liquidity periods.', xfactorUsage: 'Configure in Bot Schedule Settings.' },
+  { term: 'Instrument Filter', category: 'risk', shortDef: 'Which securities bot can trade', fullExplanation: 'Instrument filter limits which symbols the bot can trade. By price, volume, sector, or specific watchlist.', whyUseful: 'Focus on liquid, tradeable securities.', xfactorUsage: 'Set in Bot Watchlist Settings.' },
+  { term: 'Min Volume Filter', category: 'risk', shortDef: 'Minimum volume required to trade', fullExplanation: 'Minimum volume filter prevents trading illiquid securities. Ensures adequate liquidity for entry and exit.', whyUseful: 'Avoid slippage in thin markets.', xfactorUsage: 'Configure in Bot Filters.' },
+  { term: 'Min Price Filter', category: 'risk', shortDef: 'Minimum stock price to trade', fullExplanation: 'Minimum price filter excludes penny stocks and low-priced securities. Reduces manipulation risk.', whyUseful: 'Avoid highly volatile penny stocks.', xfactorUsage: 'Configure in Bot Filters.' },
+  { term: 'Sector Exposure Limit', category: 'risk', shortDef: 'Maximum allocation to one sector', fullExplanation: 'Sector exposure limit caps how much capital can be in any single sector. Prevents concentration risk.', whyUseful: 'Maintain diversification.', xfactorUsage: 'Set in Portfolio Risk Controls.' },
+  { term: 'Correlation Limit', category: 'risk', shortDef: 'Maximum correlation between positions', fullExplanation: 'Correlation limit prevents opening highly correlated positions. Ensures true diversification.', whyUseful: 'Avoid concentrated bets in correlated assets.' },
+  { term: 'Max Open Risk', category: 'risk', shortDef: 'Total risk across all positions', fullExplanation: 'Max open risk limits total dollars at risk across all open positions. Sum of (position size × stop distance).', whyUseful: 'Cap total portfolio risk exposure.', formula: 'Total Risk = Σ(Position Size × Stop %)', xfactorUsage: 'Monitor in Risk Dashboard.' },
+  { term: 'Equity Curve Trading', category: 'strategies', shortDef: 'Adjust trading based on performance', fullExplanation: 'Equity curve trading reduces size or pauses after losses, increases after wins. Trade with "hot hand."', whyUseful: 'Reduce exposure during losing streaks.', xfactorUsage: 'Advanced feature in Bot Settings.' },
+  { term: 'Auto-Tuning', category: 'strategies', shortDef: 'Automatic parameter optimization', fullExplanation: 'Auto-tuning automatically adjusts bot parameters based on recent performance. Uses AI/ML to optimize settings.', whyUseful: 'Adapts to changing market conditions.', xfactorUsage: 'XFactor ATRWAC auto-tuning feature.' },
+  { term: 'Bot Template', category: 'basics', shortDef: 'Pre-configured bot settings', fullExplanation: 'Bot templates are pre-configured strategy setups that can be quickly deployed. Includes parameters, filters, and risk settings.', whyUseful: 'Quick deployment of proven strategies.', xfactorUsage: 'XFactor includes 10+ strategy templates.' },
+  { term: 'Paper Mode', category: 'basics', shortDef: 'Simulated trading without real money', fullExplanation: 'Paper mode runs bots with fake money against real market data. Used for testing strategies without risk.', whyUseful: 'Test before risking real capital.', xfactorUsage: 'Select Paper mode in Trading Mode.' },
+  { term: 'Live Mode', category: 'basics', shortDef: 'Real money trading', fullExplanation: 'Live mode executes real trades with real money through your connected broker.', whyUseful: 'Actual trading.', xfactorUsage: 'Select Live mode after testing in Paper.' },
+  { term: 'Demo Mode', category: 'basics', shortDef: 'Simulated trading with fake data', fullExplanation: 'Demo mode uses simulated market data and fake money. Useful for learning the interface without market connection.', whyUseful: 'Learn platform before connecting broker.', xfactorUsage: 'Default mode for new users.' },
+
+  // ===== MORE TRADING CONCEPTS =====
+  { term: 'Takeover Premium', category: 'fundamentals', shortDef: 'Premium paid in acquisition', fullExplanation: 'The amount above market price that an acquirer pays. Typically 20-50% premium to incentivize shareholders to tender.', whyUseful: 'Arbitrage opportunity between current price and offer.', relatedTerms: ['M&A', 'Merger Arbitrage'] },
+  { term: 'Merger Arbitrage', category: 'strategies', shortDef: 'Trading the spread in M&A deals', fullExplanation: 'Merger arb buys target at discount to deal price, betting deal closes. Spread = risk of deal failure.', whyUseful: 'Market-neutral returns uncorrelated to market.', whyNotUseful: 'Deal breaks cause large losses.' },
+  { term: 'Tender Offer', category: 'basics', shortDef: 'Public offer to buy shares', fullExplanation: 'A tender offer is public offer to buy shares directly from shareholders, usually at premium. Often used in acquisitions.', whyUseful: 'Opportunity to sell at premium.' },
+  { term: 'Hostile Takeover', category: 'basics', shortDef: 'Acquisition against management\'s wishes', fullExplanation: 'Hostile takeover bypasses management and goes directly to shareholders. Can involve proxy fights and bidding wars.', whyUseful: 'Often leads to higher offers.' },
+  { term: 'Poison Pill', category: 'basics', shortDef: 'Anti-takeover defense mechanism', fullExplanation: 'Poison pill allows existing shareholders to buy shares at discount if hostile acquirer buys too much, diluting the acquirer.', whyUseful: 'Understand takeover dynamics.' },
+  { term: 'Proxy Fight', category: 'basics', shortDef: 'Battle for shareholder votes', fullExplanation: 'Activist investors seek to elect directors to influence company strategy. Can unlock value through changes.', whyUseful: 'Activist involvement often bullish.' },
+  { term: 'Activist Investor', category: 'basics', shortDef: 'Investor pushing for changes', fullExplanation: 'Activists buy stakes and push for changes: spin-offs, buybacks, M&A, management changes. Often unlocks value.', whyUseful: 'Activist involvement is often bullish catalyst.', example: 'Carl Icahn takes stake and pushes for spin-off - stock rallies 20%.' },
+  { term: 'Spin-Off', category: 'basics', shortDef: 'Creating independent company from division', fullExplanation: 'Spin-off distributes shares of subsidiary to parent company shareholders. Often unlocks hidden value.', whyUseful: 'Spin-offs often outperform as pure-play.', relatedTerms: ['Carve-Out'] },
+  { term: 'Carve-Out', category: 'basics', shortDef: 'IPO of subsidiary while parent retains control', fullExplanation: 'Carve-out sells portion of subsidiary to public while parent keeps majority. Establishes market value.', whyUseful: 'Precursor to full spin-off.' },
+  { term: 'Lock-Up Period', category: 'basics', shortDef: 'Period insiders cannot sell after IPO', fullExplanation: 'Lock-up period (usually 90-180 days) prevents insiders from selling after IPO. Expiration often creates selling pressure.', whyUseful: 'Short or avoid IPO stocks near lock-up expiration.' },
+  { term: 'Secondary Offering', category: 'basics', shortDef: 'Additional share issuance', fullExplanation: 'Secondary offering sells new or existing shares. Dilutive if new shares. Often done at discount.', whyUseful: 'Be cautious of dilution.', whyNotUseful: 'Can be bullish if proceeds fund growth.' },
+  { term: 'Buyback', category: 'fundamentals', shortDef: 'Company repurchasing its own shares', fullExplanation: 'Share buybacks reduce shares outstanding, increasing EPS. Signal that company believes stock is undervalued.', whyUseful: 'Bullish signal and EPS boost.', relatedTerms: ['EPS', 'Dividends'] },
+  { term: 'Special Dividend', category: 'fundamentals', shortDef: 'One-time large dividend', fullExplanation: 'Special dividends are one-time payments, often from asset sales or excess cash. Stock typically drops by dividend amount.', whyUseful: 'Return of capital to shareholders.' },
+  { term: 'Stock Dividend', category: 'fundamentals', shortDef: 'Dividend paid in additional shares', fullExplanation: 'Stock dividend issues additional shares instead of cash. Like small stock split. No cash leaves company.', whyUseful: 'Understand impact on position size.' },
+  { term: 'ADR', category: 'basics', shortDef: 'American Depositary Receipt', fullExplanation: 'ADRs allow U.S. investors to buy foreign stocks. Trade on U.S. exchanges in dollars. Can have different voting rights.', whyUseful: 'Access foreign stocks easily.' },
+  { term: 'GDR', category: 'basics', shortDef: 'Global Depositary Receipt', fullExplanation: 'GDRs trade on non-U.S. exchanges (like LSE) and represent foreign shares.', whyUseful: 'Access for international investors.' },
+  { term: 'Statistical Arbitrage', category: 'strategies', shortDef: 'Quantitative mean reversion trading', fullExplanation: 'Stat arb uses quantitative models to identify mispricings between related securities. Pairs trading and market neutral.', whyUseful: 'Market-neutral returns.', relatedTerms: ['Pairs Trading', 'Mean Reversion'] },
+  { term: 'Relative Value', category: 'strategies', shortDef: 'Trading price relationships', fullExplanation: 'Relative value strategies bet on convergence of related assets rather than outright direction.', whyUseful: 'Hedge away market risk.' },
+  { term: 'Long/Short Equity', category: 'strategies', shortDef: 'Long winners, short losers', fullExplanation: 'L/S equity goes long best ideas, short worst. Reduces market exposure while capturing alpha.', whyUseful: 'Hedge fund style returns.' },
+  { term: 'Market Neutral', category: 'strategies', shortDef: 'Equal long and short exposure', fullExplanation: 'Market neutral maintains roughly equal long and short exposure. Profits from stock selection, not market direction.', whyUseful: 'Returns uncorrelated to market.' },
+  { term: 'Factor Investing', category: 'strategies', shortDef: 'Targeting specific return drivers', fullExplanation: 'Factor investing targets characteristics like value, momentum, quality, low vol that historically deliver premium returns.', whyUseful: 'Systematic source of returns.', relatedTerms: ['Smart Beta', 'Value', 'Momentum'] },
+  { term: 'Smart Beta', category: 'strategies', shortDef: 'Rules-based factor exposure', fullExplanation: 'Smart beta ETFs use rules-based factor weighting rather than market cap. Value, momentum, low vol.', whyUseful: 'Factor exposure in ETF format.' },
+  { term: 'Quality Factor', category: 'fundamentals', shortDef: 'High ROE, low debt companies', fullExplanation: 'Quality factor targets companies with high profitability, stable earnings, and strong balance sheets.', whyUseful: 'Defensive outperformance over time.' },
+  { term: 'Value Factor', category: 'strategies', shortDef: 'Cheap stocks outperform', fullExplanation: 'Value factor bets that low P/E, P/B stocks outperform expensive stocks over time.', whyUseful: 'Historical risk premium.', whyNotUseful: 'Value has underperformed growth recently.' },
+  { term: 'Size Factor', category: 'strategies', shortDef: 'Small caps outperform large caps', fullExplanation: 'Size premium suggests small cap stocks earn higher returns than large caps over long periods.', whyUseful: 'Historical risk premium.', whyNotUseful: 'More volatile and less liquid.' },
+  { term: 'Low Volatility', category: 'strategies', shortDef: 'Low vol stocks outperform risk-adjusted', fullExplanation: 'Low volatility anomaly: low vol stocks have better risk-adjusted returns than high vol.', whyUseful: 'Better returns per unit of risk.' },
+  { term: 'Carry Trade', category: 'strategies', shortDef: 'Borrow low yield, invest high yield', fullExplanation: 'Carry trade borrows in low-interest currency to invest in high-interest currency. Profits from rate differential.', whyUseful: 'Steady returns in calm markets.', whyNotUseful: 'Blows up during risk-off events.' },
+  { term: 'Risk Parity', category: 'strategies', shortDef: 'Equal risk allocation across assets', fullExplanation: 'Risk parity allocates based on risk contribution not dollar amounts. Often means more bonds, less stocks.', whyUseful: 'Balanced risk exposure.' },
+  { term: 'Tail Risk', category: 'risk', shortDef: 'Extreme unlikely events', fullExplanation: 'Tail risk is the risk of extreme moves that fall outside normal distributions. Black swan events. VaR underestimates.', whyUseful: 'Prepare for the unexpected.', relatedTerms: ['Black Swan', 'VaR'] },
+  { term: 'Black Swan', category: 'risk', shortDef: 'Unpredictable extreme event', fullExplanation: 'Black swan events are highly improbable but have massive impact. 2008 crisis, COVID crash. Cannot be predicted but can hedge.', whyUseful: 'Maintain hedges and position limits.' },
+  { term: 'Fat Tails', category: 'risk', shortDef: 'More extreme events than normal distribution', fullExplanation: 'Financial returns have "fat tails" - extreme moves happen more often than normal distribution predicts.', whyUseful: 'Understand true risk is higher than models suggest.' },
+  { term: 'Kurtosis', category: 'indicators', shortDef: 'Measure of tail thickness', fullExplanation: 'Kurtosis measures how fat the tails are. Higher kurtosis = more extreme events. Financial returns have high kurtosis.', whyUseful: 'Understand distribution of returns.' },
+  { term: 'Skewness', category: 'indicators', shortDef: 'Asymmetry of distribution', fullExplanation: 'Skewness measures distribution asymmetry. Negative skew = more downside outliers (typical for stocks).', whyUseful: 'Understand risk profile.' },
+  { term: 'Mean-Variance Optimization', category: 'strategies', shortDef: 'Portfolio optimization method', fullExplanation: 'MVO maximizes return for given risk or minimizes risk for given return. Modern Portfolio Theory foundation.', whyUseful: 'Optimal portfolio construction.', whyNotUseful: 'Sensitive to input assumptions.' },
+  { term: 'Efficient Frontier', category: 'strategies', shortDef: 'Optimal risk-return portfolios', fullExplanation: 'The efficient frontier is the set of portfolios offering highest return for each level of risk.', whyUseful: 'Benchmark for portfolio efficiency.' },
+  { term: 'Risk Budget', category: 'risk', shortDef: 'Allocated risk across positions', fullExplanation: 'Risk budget divides total portfolio risk across positions. Ensures no position contributes disproportionate risk.', whyUseful: 'Balanced risk allocation.' },
+  { term: 'Marginal Contribution', category: 'risk', shortDef: 'Position\'s contribution to portfolio risk', fullExplanation: 'Marginal contribution to risk (MCTR) measures how much each position adds to total portfolio risk.', whyUseful: 'Identify and manage risk concentrations.' },
+  { term: 'Tracking Error', category: 'risk', shortDef: 'Deviation from benchmark', fullExplanation: 'Tracking error measures how closely a portfolio follows its benchmark. Lower = more index-like.', whyUseful: 'Understand active risk taken.' },
+  { term: 'Information Ratio', category: 'risk', shortDef: 'Alpha per unit of tracking error', fullExplanation: 'Information ratio = Alpha / Tracking Error. Measures skill of active management.', whyUseful: 'Compare active managers.', formula: 'IR = (Portfolio Return - Benchmark Return) / Tracking Error' },
+  { term: 'Treynor Ratio', category: 'risk', shortDef: 'Return per unit of beta', fullExplanation: 'Treynor ratio is excess return divided by beta. Measures return earned per unit of market risk.', whyUseful: 'Risk-adjusted performance.', formula: 'Treynor = (Return - Risk-Free) / Beta' },
+  { term: 'Jensen\'s Alpha', category: 'risk', shortDef: 'Return above CAPM prediction', fullExplanation: 'Jensen\'s alpha measures return in excess of what CAPM predicts given the portfolio\'s beta.', whyUseful: 'Measure manager skill.', formula: 'α = Return - [Rf + β(Rm - Rf)]' },
+  { term: 'CAPM', category: 'fundamentals', shortDef: 'Capital Asset Pricing Model', fullExplanation: 'CAPM predicts expected return based on risk-free rate and beta exposure to market. Foundation of finance theory.', whyUseful: 'Theoretical framework for expected returns.', formula: 'Expected Return = Rf + β(Rm - Rf)' },
+  { term: 'R-Squared', category: 'indicators', shortDef: 'Correlation to benchmark squared', fullExplanation: 'R-squared shows what percentage of portfolio moves are explained by benchmark moves. High = index-like.', whyUseful: 'Understand portfolio behavior.' },
+  { term: 'Regression', category: 'indicators', shortDef: 'Statistical relationship analysis', fullExplanation: 'Regression analyzes relationships between variables. Used for factor analysis and alpha generation.', whyUseful: 'Quantitative analysis foundation.' },
+  { term: 'Monte Carlo', category: 'strategies', shortDef: 'Simulation using random sampling', fullExplanation: 'Monte Carlo simulations run thousands of random scenarios to estimate probability distributions of outcomes.', whyUseful: 'Stress test strategies and portfolios.' },
+  { term: 'Bootstrapping', category: 'strategies', shortDef: 'Resampling for robust statistics', fullExplanation: 'Bootstrapping resamples historical data to estimate confidence intervals and test robustness.', whyUseful: 'More realistic backtesting.' },
+  { term: 'Survivorship Bias', category: 'risk', shortDef: 'Only seeing winners', fullExplanation: 'Survivorship bias occurs when analysis only includes survivors, not failures. Makes past performance look better.', whyUseful: 'Use survivorship-bias-free data for backtests.' },
+  { term: 'Look-Ahead Bias', category: 'risk', shortDef: 'Using future data in backtest', fullExplanation: 'Look-ahead bias uses information not available at the time. Invalidates backtest results.', whyUseful: 'Avoid to get realistic backtest results.' },
+  { term: 'Data Snooping', category: 'risk', shortDef: 'Overfitting to historical data', fullExplanation: 'Data snooping tests many strategies on same data until one works by chance. Results don\'t hold out-of-sample.', whyUseful: 'Use out-of-sample testing.', relatedTerms: ['Overfitting', 'Curve Fitting'] },
+  { term: 'Out-of-Sample', category: 'strategies', shortDef: 'Testing on unseen data', fullExplanation: 'Out-of-sample testing validates strategy on data not used for development. Essential for valid backtests.', whyUseful: 'Confirm strategy works on new data.' },
+  { term: 'In-Sample', category: 'strategies', shortDef: 'Data used for strategy development', fullExplanation: 'In-sample data is used to develop and optimize the strategy. Should not be used for final testing.', whyUseful: 'Separate development and testing data.' },
+  { term: 'Degrees of Freedom', category: 'risk', shortDef: 'Number of independent data points', fullExplanation: 'More parameters relative to data points increases overfitting risk. Need adequate degrees of freedom.', whyUseful: 'Keep strategies simple.' },
+  { term: 'Parameter Sensitivity', category: 'risk', shortDef: 'How results change with parameters', fullExplanation: 'Robust strategies show similar results across nearby parameter values. Fragile ones are highly sensitive.', whyUseful: 'Test parameter sensitivity for robustness.' },
+  { term: 'Stress Test', category: 'risk', shortDef: 'Testing under extreme conditions', fullExplanation: 'Stress testing applies extreme historical or hypothetical scenarios to see how strategy performs.', whyUseful: 'Understand worst-case behavior.' },
+  { term: 'Scenario Analysis', category: 'risk', shortDef: 'Testing specific what-if scenarios', fullExplanation: 'Scenario analysis models specific events: recession, rate hike, sector crash. What happens to portfolio?', whyUseful: 'Prepare for specific risks.' },
+
+  // ===== FOREX & CURRENCY =====
+  { term: 'Pip', category: 'basics', shortDef: 'Smallest price move in forex', fullExplanation: 'A pip is 0.0001 for most pairs (0.01 for JPY pairs). Measures price changes in forex.', whyUseful: 'Calculate forex profit/loss.', formula: 'For EUR/USD, 1 pip = $10 per standard lot (100,000 units)' },
+  { term: 'Lot Size', category: 'basics', shortDef: 'Forex position size unit', fullExplanation: 'Standard lot = 100,000 units. Mini lot = 10,000. Micro lot = 1,000.', whyUseful: 'Understand position sizing in forex.' },
+  { term: 'Currency Pair', category: 'basics', shortDef: 'Two currencies quoted together', fullExplanation: 'Currency pairs show one currency\'s value relative to another. EUR/USD = euros per dollar. Base/Quote format.', whyUseful: 'Foundation of forex trading.' },
+  { term: 'Base Currency', category: 'basics', shortDef: 'First currency in pair', fullExplanation: 'Base currency is the first in a pair. EUR in EUR/USD. Price shows how much quote you need to buy 1 base.', whyUseful: 'Understand pair direction.' },
+  { term: 'Quote Currency', category: 'basics', shortDef: 'Second currency in pair', fullExplanation: 'Quote currency is the second in pair. USD in EUR/USD. Price expressed in quote currency units.', whyUseful: 'Understand P&L currency.' },
+  { term: 'Major Pairs', category: 'basics', shortDef: 'Most traded currency pairs', fullExplanation: 'Major pairs include USD vs EUR, GBP, JPY, CHF, CAD, AUD, NZD. Most liquid, tightest spreads.', whyUseful: 'Best liquidity and lowest costs.' },
+  { term: 'Minor Pairs', category: 'basics', shortDef: 'Crosses without USD', fullExplanation: 'Minor or cross pairs don\'t include USD. EUR/GBP, EUR/JPY, GBP/JPY. Less liquid, wider spreads.', whyUseful: 'More trading opportunities.' },
+  { term: 'Exotic Pairs', category: 'basics', shortDef: 'Major + emerging market currency', fullExplanation: 'Exotic pairs combine major with emerging: USD/TRY, USD/ZAR. Very wide spreads, high volatility.', whyUseful: 'Higher volatility trading.', whyNotUseful: 'High costs, low liquidity.' },
+  { term: 'Currency Strength', category: 'indicators', shortDef: 'Relative currency performance', fullExplanation: 'Currency strength meter ranks currencies by performance. Trade strongest vs weakest.', whyUseful: 'Find best pairs to trade.', xfactorUsage: 'XFactor displays currency strength meter.' },
+  { term: 'Forex Session', category: 'basics', shortDef: 'Trading periods by timezone', fullExplanation: 'Three main sessions: Asian (Tokyo), European (London), American (New York). Overlaps have highest volume.', whyUseful: 'Trade during active sessions.' },
+  { term: 'London Session', category: 'basics', shortDef: 'European trading hours', fullExplanation: 'London session 8 AM - 4 PM GMT is most liquid. Overlaps with Asian and US sessions.', whyUseful: 'Best forex trading hours.' },
+  { term: 'Central Bank Intervention', category: 'fundamentals', shortDef: 'Government currency manipulation', fullExplanation: 'Central banks sometimes buy/sell currency to influence exchange rates. Can cause massive moves.', whyUseful: 'Be aware of intervention risk.' },
+  { term: 'Interest Rate Differential', category: 'indicators', shortDef: 'Rate difference between currencies', fullExplanation: 'Currency with higher rates tends to appreciate due to carry trade flows. Drives forex trends.', whyUseful: 'Foundation of carry trade.' },
+  { term: 'Safe Haven Currency', category: 'basics', shortDef: 'Currency that gains in risk-off', fullExplanation: 'Safe haven currencies (USD, JPY, CHF) appreciate during market stress as investors seek safety.', whyUseful: 'Hedge or trade risk sentiment.' },
+  { term: 'Risk Currency', category: 'basics', shortDef: 'Currency that gains in risk-on', fullExplanation: 'Risk currencies (AUD, NZD, emerging markets) appreciate when markets are optimistic.', whyUseful: 'Trade risk sentiment.' },
+  { term: 'Dollar Index', category: 'indicators', shortDef: 'DXY - dollar vs basket of currencies', fullExplanation: 'Dollar Index (DXY) measures USD against EUR, JPY, GBP, CAD, SEK, CHF. Benchmark for dollar strength.', whyUseful: 'Gauge overall dollar direction.', xfactorUsage: 'XFactor tracks DXY in Forex panel.' },
+
+  // ===== COMMODITIES =====
+  { term: 'Crude Oil', category: 'basics', shortDef: 'WTI and Brent petroleum', fullExplanation: 'Crude oil is the most traded commodity. WTI (West Texas Intermediate) is U.S. benchmark; Brent is international.', whyUseful: 'Impacts inflation, energy stocks, transport.' },
+  { term: 'Gold', category: 'basics', shortDef: 'Traditional safe haven commodity', fullExplanation: 'Gold is inflation hedge and safe haven. Often rises when real rates fall or uncertainty increases.', whyUseful: 'Portfolio hedge and safe haven.' },
+  { term: 'Silver', category: 'basics', shortDef: 'Industrial and precious metal', fullExplanation: 'Silver has both precious metal and industrial uses. More volatile than gold, higher beta to economic activity.', whyUseful: 'Leveraged gold play with industrial exposure.' },
+  { term: 'Copper', category: 'basics', shortDef: 'Industrial metal - Dr. Copper', fullExplanation: 'Copper is called "Dr. Copper" because it predicts economic health. Used in construction, electronics.', whyUseful: 'Leading economic indicator.' },
+  { term: 'Natural Gas', category: 'basics', shortDef: 'Heating and electricity fuel', fullExplanation: 'Natural gas is highly seasonal (winter heating demand) and weather-dependent. Very volatile.', whyUseful: 'Seasonal trading opportunities.' },
+  { term: 'Agriculture', category: 'basics', shortDef: 'Farm commodities', fullExplanation: 'Ag commodities include corn, wheat, soybeans, sugar, coffee, cotton. Weather and supply-driven.', whyUseful: 'Diversification and inflation hedge.' },
+  { term: 'Commodity Futures', category: 'basics', shortDef: 'Contracts for future commodity delivery', fullExplanation: 'Commodity futures are standardized contracts for future delivery. Used for hedging and speculation.', whyUseful: 'Leverage and directional exposure.' },
+  { term: 'Spot Price', category: 'basics', shortDef: 'Current cash market price', fullExplanation: 'Spot price is for immediate delivery. Futures may trade at premium or discount to spot.', whyUseful: 'Reference price for commodities.' },
+  { term: 'Roll Yield', category: 'indicators', shortDef: 'Return from futures rolling', fullExplanation: 'Roll yield is gain or loss from rolling futures. Positive in backwardation, negative in contango.', whyUseful: 'Impacts long-term commodity returns.' },
+
+  // ===== RISK METRICS & PORTFOLIO =====
+  { term: 'Beta-Adjusted Exposure', category: 'risk', shortDef: 'Position weighted by beta', fullExplanation: 'Beta-adjusted exposure accounts for position volatility relative to market. High beta counts for more.', whyUseful: 'True measure of market exposure.' },
+  { term: 'Gross Exposure', category: 'risk', shortDef: 'Total long plus short exposure', fullExplanation: 'Gross exposure = |Long| + |Short|. 100% long + 50% short = 150% gross exposure.', whyUseful: 'Measure of leverage used.' },
+  { term: 'Net Exposure', category: 'risk', shortDef: 'Long minus short exposure', fullExplanation: 'Net exposure = Long - Short. 100% long - 50% short = 50% net long.', whyUseful: 'Directional bias of portfolio.' },
+  { term: 'Leverage', category: 'risk', shortDef: 'Using borrowed money', fullExplanation: 'Leverage amplifies returns and losses. 2:1 leverage means $1 controls $2 of assets.', whyUseful: 'Increase returns.', whyNotUseful: 'Also increases losses and risk of ruin.' },
+  { term: 'Concentration Risk', category: 'risk', shortDef: 'Risk from large position weights', fullExplanation: 'Concentration risk occurs when few positions dominate portfolio. Single stock dropping can hurt badly.', whyUseful: 'Maintain diversification limits.' },
+  { term: 'Liquidity Risk', category: 'risk', shortDef: 'Risk of not being able to exit', fullExplanation: 'Liquidity risk is inability to sell without major price impact. Worse in small caps, during stress.', whyUseful: 'Size positions appropriately for liquidity.' },
+  { term: 'Counterparty Risk', category: 'risk', shortDef: 'Risk of other party defaulting', fullExplanation: 'Counterparty risk is risk that the other side of your trade defaults. Relevant for OTC derivatives.', whyUseful: 'Choose counterparties carefully.' },
+  { term: 'Operational Risk', category: 'risk', shortDef: 'Risk from system or human error', fullExplanation: 'Operational risk includes technology failures, human error, fraud. Can cause major losses.', whyUseful: 'Implement proper controls.' },
+  { term: 'Model Risk', category: 'risk', shortDef: 'Risk that model is wrong', fullExplanation: 'Model risk is the risk that your trading model has flaws or assumptions that don\'t hold.', whyUseful: 'Test and validate models thoroughly.' },
+  { term: 'Execution Risk', category: 'risk', shortDef: 'Risk of poor trade execution', fullExplanation: 'Execution risk is the risk of not getting filled at expected price due to slippage, delays, etc.', whyUseful: 'Factor into strategy profitability.' },
+
+  // ===== FINAL ADDITIONS TO REACH 500+ =====
+  { term: 'Order Entry', category: 'basics', shortDef: 'Submitting a trade order', fullExplanation: 'Order entry is the process of submitting buy or sell orders to your broker for execution.', whyUseful: 'Foundation of trading.' },
+  { term: 'Execution', category: 'basics', shortDef: 'Completing a trade', fullExplanation: 'Execution is when your order is filled and the trade is completed.', whyUseful: 'Understand execution quality.' },
+  { term: 'Settlement', category: 'basics', shortDef: 'Transfer of securities and cash', fullExplanation: 'Settlement is when securities and cash officially change hands. T+1 for stocks (next business day).', whyUseful: 'Know when you can use proceeds.' },
+  { term: 'Clearing', category: 'basics', shortDef: 'Processing trades between parties', fullExplanation: 'Clearing is the process of matching and reconciling trades between buyers and sellers.', whyUseful: 'Understand trade lifecycle.' },
+  { term: 'Prime Broker', category: 'basics', shortDef: 'Full-service broker for hedge funds', fullExplanation: 'Prime brokers provide clearing, custody, financing, and securities lending to hedge funds.', whyUseful: 'Institutional trading infrastructure.' },
+  { term: 'Custodian', category: 'basics', shortDef: 'Entity holding your securities', fullExplanation: 'A custodian holds and safeguards your securities. Separate from broker for protection.', whyUseful: 'Security of assets.' },
+  { term: 'Trade Confirmation', category: 'basics', shortDef: 'Record of completed trade', fullExplanation: 'Trade confirmation is official record of your trade with price, quantity, commissions.', whyUseful: 'Verify trade details and keep records.' },
+  { term: 'Account Statement', category: 'basics', shortDef: 'Periodic account summary', fullExplanation: 'Account statement shows positions, transactions, and performance for the period.', whyUseful: 'Track and verify account activity.' },
+  { term: 'Buying on Margin', category: 'basics', shortDef: 'Using borrowed funds to buy', fullExplanation: 'Buying on margin uses broker-provided funds to purchase more securities than cash allows.', whyUseful: 'Increase buying power.', whyNotUseful: 'Interest costs and margin call risk.' },
+  { term: 'Initial Margin', category: 'basics', shortDef: 'Required deposit to open position', fullExplanation: 'Initial margin is minimum deposit required to open a leveraged position. Typically 50% for stocks.', whyUseful: 'Understand margin requirements.' },
+  { term: 'Maintenance Margin', category: 'basics', shortDef: 'Minimum equity to maintain position', fullExplanation: 'Maintenance margin is minimum equity required to keep position. Typically 25% for stocks.', whyUseful: 'Avoid margin calls.' },
+  { term: 'Reg T', category: 'basics', shortDef: 'Federal margin requirement', fullExplanation: 'Regulation T sets initial margin at 50% for stock purchases. Brokers can require more.', whyUseful: 'Understand regulatory framework.' },
+  { term: 'SMA', category: 'basics', shortDef: 'Special Memorandum Account', fullExplanation: 'SMA tracks excess margin available. Can be used for additional purchases.', whyUseful: 'Maximize buying power.' },
+  { term: 'House Call', category: 'basics', shortDef: 'Broker margin call', fullExplanation: 'House call is when broker requires additional funds because you\'re below their (not regulatory) limits.', whyUseful: 'Understand broker-specific requirements.' },
+  { term: 'Sweep Account', category: 'basics', shortDef: 'Automatic cash management', fullExplanation: 'Sweep accounts automatically move idle cash into interest-bearing accounts.', whyUseful: 'Earn interest on cash balances.' },
+  { term: 'Core Position', category: 'strategies', shortDef: 'Long-term portfolio holding', fullExplanation: 'Core positions are long-term holdings around which you trade tactical positions.', whyUseful: 'Anchor portfolio with conviction positions.' },
+  { term: 'Trading Position', category: 'strategies', shortDef: 'Short-term tactical trade', fullExplanation: 'Trading positions are shorter-term trades around core positions.', whyUseful: 'Add value through active trading.' },
+  { term: 'Watchlist', category: 'basics', shortDef: 'List of securities to monitor', fullExplanation: 'Watchlist is a saved list of securities you\'re tracking for potential trades.', whyUseful: 'Organize trading ideas.', xfactorUsage: 'XFactor includes watchlist features.' },
+  { term: 'Scanner', category: 'basics', shortDef: 'Tool to find securities meeting criteria', fullExplanation: 'Scanners filter the market by criteria: volume, price, technical patterns, fundamentals.', whyUseful: 'Find trading candidates systematically.' },
+  { term: 'Alert', category: 'basics', shortDef: 'Notification when condition is met', fullExplanation: 'Alerts notify you when price, volume, or other conditions are met. Don\'t need to watch constantly.', whyUseful: 'Monitor markets passively.', xfactorUsage: 'XFactor includes price and event alerts.' },
+  { term: 'Hotkey', category: 'basics', shortDef: 'Keyboard shortcut for fast execution', fullExplanation: 'Hotkeys allow instant order entry with keyboard. Essential for day traders needing speed.', whyUseful: 'Faster execution for active traders.' },
+  { term: 'Level 1 Data', category: 'basics', shortDef: 'Best bid and ask only', fullExplanation: 'Level 1 shows only the best bid and ask prices. Basic quote data included with most brokers.', whyUseful: 'Basic quote information.' },
+  { term: 'Level 3 Data', category: 'indicators', shortDef: 'Full order book', fullExplanation: 'Level 3 shows full order book including all orders at all prices. Available to market makers.', whyUseful: 'Complete market visibility.' },
+  { term: 'Total Return', category: 'fundamentals', shortDef: 'Price change plus dividends', fullExplanation: 'Total return includes both price appreciation and dividends reinvested. True measure of investment return.', whyUseful: 'Compare performance accurately.', formula: 'Total Return = (Ending Value - Starting Value + Dividends) / Starting Value' },
+  { term: 'Price Return', category: 'fundamentals', shortDef: 'Return from price change only', fullExplanation: 'Price return only measures price appreciation, excluding dividends.', whyUseful: 'Understand components of return.' },
+  { term: 'Excess Return', category: 'fundamentals', shortDef: 'Return above benchmark or risk-free', fullExplanation: 'Excess return is performance above a benchmark or risk-free rate.', whyUseful: 'Measure value added.' },
+  { term: 'Benchmark', category: 'basics', shortDef: 'Standard for comparison', fullExplanation: 'A benchmark is the index or standard you compare performance against. S&P 500 is common.', whyUseful: 'Evaluate relative performance.' },
+  { term: 'Index Fund', category: 'basics', shortDef: 'Fund that tracks an index', fullExplanation: 'Index funds passively track a market index like S&P 500. Low cost, market returns.', whyUseful: 'Simple, cheap market exposure.' },
+  { term: 'Active Management', category: 'strategies', shortDef: 'Attempting to beat the market', fullExplanation: 'Active management tries to outperform through stock selection and timing. Higher fees.', whyUseful: 'Potential alpha.', whyNotUseful: 'Most underperform after fees.' },
+  { term: 'Passive Management', category: 'strategies', shortDef: 'Tracking index returns', fullExplanation: 'Passive management tracks an index without trying to outperform. Lower costs, market returns.', whyUseful: 'Low-cost market exposure.' },
+  { term: 'Rebalancing', category: 'strategies', shortDef: 'Returning portfolio to target weights', fullExplanation: 'Rebalancing sells winners and buys losers to return to target allocation. Forced discipline.', whyUseful: 'Maintain intended risk profile.' },
+  { term: 'Tax-Advantaged', category: 'basics', shortDef: 'Accounts with tax benefits', fullExplanation: 'Tax-advantaged accounts like 401(k), IRA offer tax deferral or tax-free growth.', whyUseful: 'Maximize after-tax returns.' },
+  { term: 'Tax Efficiency', category: 'strategies', shortDef: 'Minimizing tax impact', fullExplanation: 'Tax-efficient investing minimizes tax drag through location, holding period, loss harvesting.', whyUseful: 'Keep more of your returns.' },
+  { term: 'Qualified Dividend', category: 'basics', shortDef: 'Dividend with lower tax rate', fullExplanation: 'Qualified dividends are taxed at lower long-term capital gains rates. Must meet holding period.', whyUseful: 'Tax-advantaged income.' },
+  { term: 'Unrealized Gain', category: 'basics', shortDef: 'Paper profit not yet locked in', fullExplanation: 'Unrealized gain is profit on open position that hasn\'t been sold yet.', whyUseful: 'Not taxed until realized.' },
+  { term: 'Realized Gain', category: 'basics', shortDef: 'Profit from closed position', fullExplanation: 'Realized gain is profit after selling. Creates tax event.', whyUseful: 'Taxable event.' },
+  { term: 'Short-Term Gain', category: 'basics', shortDef: 'Gain on asset held less than 1 year', fullExplanation: 'Short-term capital gains are taxed as ordinary income. Higher rates.', whyUseful: 'Understand tax implications.' },
+  { term: 'Long-Term Gain', category: 'basics', shortDef: 'Gain on asset held over 1 year', fullExplanation: 'Long-term capital gains have preferential tax rates: 0%, 15%, or 20% depending on income.', whyUseful: 'Hold over 1 year when possible.' },
+  { term: 'Mark-to-Market', category: 'basics', shortDef: 'Valuing positions at current price', fullExplanation: 'Mark-to-market values all positions at current market price. Shows true portfolio value.', whyUseful: 'Real-time P&L accounting.' },
+  { term: 'LIFO', category: 'basics', shortDef: 'Last In First Out', fullExplanation: 'LIFO sells most recently purchased shares first. Can manage tax consequences.', whyUseful: 'Tax management flexibility.' },
+  { term: 'Specific ID', category: 'basics', shortDef: 'Choosing which shares to sell', fullExplanation: 'Specific identification lets you choose which tax lots to sell for optimal tax result.', whyUseful: 'Maximize tax efficiency.' },
 ];
+
+// Glossary categories for filtering
 
 // Glossary categories for filtering
 const glossaryCategories = [
@@ -1521,9 +1844,10 @@ interface GlossaryTermCardProps {
   term: GlossaryTerm;
   isExpanded: boolean;
   onToggle: () => void;
+  onReadAloud?: (term: GlossaryTerm) => void;
 }
 
-function GlossaryTermCard({ term, isExpanded, onToggle }: GlossaryTermCardProps) {
+function GlossaryTermCard({ term, isExpanded, onToggle, onReadAloud }: GlossaryTermCardProps) {
   const getCategoryColor = (category: string) => {
     const colors: Record<string, string> = {
       basics: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
@@ -1542,18 +1866,29 @@ function GlossaryTermCard({ term, isExpanded, onToggle }: GlossaryTermCardProps)
         onClick={onToggle}
         className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-700/30 transition-colors"
       >
-        <div className="flex items-center gap-3">
-          <span className={`px-2 py-0.5 text-xs rounded border ${getCategoryColor(term.category)}`}>
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <span className={`px-2 py-0.5 text-xs rounded border flex-shrink-0 ${getCategoryColor(term.category)}`}>
             {term.category.charAt(0).toUpperCase() + term.category.slice(1)}
           </span>
-          <span className="font-semibold text-white">{term.term}</span>
-          <span className="text-sm text-slate-400 hidden md:inline">— {term.shortDef}</span>
+          <span className="font-semibold text-white flex-shrink-0">{term.term}</span>
+          <span className="text-sm text-slate-400 hidden md:inline truncate">— {term.shortDef}</span>
         </div>
-        {isExpanded ? (
-          <ChevronUp className="w-4 h-4 text-slate-400" />
-        ) : (
-          <ChevronDown className="w-4 h-4 text-slate-400" />
-        )}
+        <div className="flex items-center gap-2">
+          {onReadAloud && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onReadAloud(term); }}
+              className="p-1.5 rounded-lg bg-slate-700/50 text-slate-400 hover:text-violet-400 hover:bg-slate-700 transition-colors"
+              title="Read aloud"
+            >
+              <Volume2 className="w-4 h-4" />
+            </button>
+          )}
+          {isExpanded ? (
+            <ChevronUp className="w-4 h-4 text-slate-400" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-slate-400" />
+          )}
+        </div>
       </button>
       
       {isExpanded && (
@@ -1623,7 +1958,25 @@ function GlossaryTermCard({ term, isExpanded, onToggle }: GlossaryTermCardProps)
             </div>
           )}
           
-          {/* Visual Diagram */}
+          {/* External Image (Encyclopedia-style) */}
+          {term.imageUrl && (
+            <div className="mt-4 rounded-lg overflow-hidden border border-slate-700/50">
+              <img 
+                src={term.imageUrl} 
+                alt={term.term}
+                className="w-full max-h-64 object-contain bg-white"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+              {(term.imageCaption || term.imageCredit) && (
+                <div className="px-3 py-2 bg-slate-900/50 text-xs">
+                  {term.imageCaption && <p className="text-slate-400">{term.imageCaption}</p>}
+                  {term.imageCredit && <p className="text-slate-500 mt-1">Source: {term.imageCredit}</p>}
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Visual Diagram (SVG) */}
           {term.diagram && (
             <GlossaryDiagram type={term.diagram} />
           )}
@@ -1638,6 +1991,54 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
   const [glossaryCategory, setGlossaryCategory] = useState<string>('all');
   const [glossarySearch, setGlossarySearch] = useState('');
   const [expandedTerms, setExpandedTerms] = useState<Set<string>>(new Set());
+  
+  // Voice search state
+  const [isListening, setIsListening] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  
+  useEffect(() => {
+    setVoiceSupported(isSpeechRecognitionSupported());
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      stopSpeaking();
+    };
+  }, []);
+  
+  // Toggle voice search
+  const toggleVoiceSearch = () => {
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+    } else {
+      recognitionRef.current = createSpeechRecognition({
+        continuous: false,
+        interimResults: true,
+        onResult: (transcript, isFinal) => {
+          setGlossarySearch(transcript);
+        },
+        onEnd: () => setIsListening(false),
+        onError: () => setIsListening(false)
+      });
+      
+      if (recognitionRef.current) {
+        recognitionRef.current.start();
+        setIsListening(true);
+      }
+    }
+  };
+  
+  // Read term aloud
+  const readTermAloud = (term: GlossaryTerm) => {
+    if (!isSpeechSynthesisSupported()) return;
+    
+    const text = `${term.term}. ${term.shortDef}. ${term.fullExplanation}. ${term.whyUseful ? `Why it's useful: ${term.whyUseful}` : ''}`;
+    speak(text, { rate: 0.95 });
+  };
 
   if (!isOpen) return null;
 
@@ -1770,17 +2171,44 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
                 </p>
               </div>
               
-              {/* Search - Full Width Row */}
-              <div className="relative w-full">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search 290+ trading terms, indicators, strategies..."
-                  value={glossarySearch}
-                  onChange={(e) => setGlossarySearch(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-lg"
-                />
+              {/* Search - Full Width Row with Voice */}
+              <div className="relative w-full flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder={isListening ? "Listening... say a term" : "Search 500+ trading terms, indicators, strategies..."}
+                    value={glossarySearch}
+                    onChange={(e) => setGlossarySearch(e.target.value)}
+                    className={`w-full pl-12 pr-4 py-3 bg-slate-800/50 border rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-lg ${
+                      isListening ? 'border-red-500' : 'border-slate-700'
+                    }`}
+                  />
+                </div>
+                {/* Voice Search Button */}
+                {voiceSupported && (
+                  <button
+                    onClick={toggleVoiceSearch}
+                    className={`px-4 py-3 rounded-xl transition-all flex items-center gap-2 ${
+                      isListening 
+                        ? 'bg-red-500 text-white animate-pulse' 
+                        : 'bg-slate-700/50 text-slate-400 hover:text-white hover:bg-slate-600'
+                    }`}
+                    title={isListening ? 'Stop listening' : 'Voice search'}
+                  >
+                    {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                    <span className="hidden md:inline text-sm">{isListening ? 'Stop' : 'Voice'}</span>
+                  </button>
+                )}
               </div>
+              
+              {/* Voice Status */}
+              {isListening && (
+                <div className="flex items-center gap-2 text-xs text-red-400">
+                  <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                  Listening... speak a trading term
+                </div>
+              )}
               
               {/* Category Filters - Separate Row */}
               <div className="flex flex-wrap gap-2">
@@ -1813,6 +2241,7 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
                     term={term}
                     isExpanded={expandedTerms.has(term.term)}
                     onToggle={() => toggleTerm(term.term)}
+                    onReadAloud={isSpeechSynthesisSupported() ? readTermAloud : undefined}
                   />
                 ))}
               </div>

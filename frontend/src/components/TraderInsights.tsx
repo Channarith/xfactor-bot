@@ -336,6 +336,7 @@ export function TraderInsights() {
   const [currentPage, setCurrentPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
+  const [itemsPerPage, setItemsPerPage] = useState(10)
   
   // Data states
   const [insiderTrades, setInsiderTrades] = useState<InsiderTrade[]>([])
@@ -355,8 +356,8 @@ export function TraderInsights() {
   const pressFilter = useDataFilters(pressReleases, pressFields)
   const ainvestFilter = useDataFilters(ainvestSignals, ainvestFields)
 
-  const itemsPerPage = 10
   const maxItems = 100
+  const itemsPerPageOptions = [10, 25, 50, 100]
 
   useEffect(() => {
     loadAllData()
@@ -429,11 +430,34 @@ export function TraderInsights() {
     { id: 'ainvest', label: 'AInvest AI', icon: <Brain className="h-4 w-4" />, count: ainvestFilter.filteredCount },
   ]
 
+  // Handle items per page change
+  const handleItemsPerPageChange = (newValue: number) => {
+    setItemsPerPage(newValue)
+    setCurrentPage(1) // Reset to first page when changing items per page
+  }
+
   // Pagination component
   const Pagination = () => (
     <div className="flex items-center justify-between pt-3 border-t border-border">
-      <div className="text-sm text-muted-foreground">
-        {startIndex + 1}-{Math.min(startIndex + itemsPerPage, data.length)} of {data.length}
+      <div className="flex items-center gap-3">
+        <div className="text-sm text-muted-foreground">
+          {startIndex + 1}-{Math.min(startIndex + itemsPerPage, data.length)} of {data.length}
+        </div>
+        {/* Items per page selector */}
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>Show:</span>
+          <select
+            value={itemsPerPage}
+            onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
+            className="px-2 py-1 rounded-lg bg-secondary border border-border text-foreground text-sm"
+          >
+            {itemsPerPageOptions.map(option => (
+              <option key={option} value={option}>
+                {option === 100 ? 'All' : option}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
       <div className="flex items-center gap-2">
         <button

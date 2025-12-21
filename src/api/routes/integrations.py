@@ -586,3 +586,143 @@ async def get_ainvest_news(
         ]
     }
 
+
+# =========================================================================
+# AI Provider Configuration Routes
+# =========================================================================
+
+class AIProviderConfigRequest(BaseModel):
+    """Request to configure an AI provider."""
+    provider: str  # "openai", "ollama", "anthropic"
+    api_key: Optional[str] = None
+    model: Optional[str] = None
+    base_url: Optional[str] = None
+    enabled: bool = True
+
+
+@router.get("/ai/providers")
+async def get_ai_providers() -> Dict[str, Any]:
+    """Get all AI providers and their status."""
+    from src.config.settings import get_settings
+    import os
+    
+    settings = get_settings()
+    
+    # Check Ollama availability
+    ollama_status = "offline"
+    try:
+        import httpx
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{settings.ollama_host}/api/version", timeout=2.0)
+            if response.status_code == 200:
+                ollama_status = "available"
+    except Exception:
+        pass
+    
+    return {
+        "current_provider": settings.llm_provider,
+        "providers": [
+            {
+                "id": "openai",
+                "name": "OpenAI GPT",
+                "configured": bool(settings.openai_api_key),
+                "model": settings.openai_model,
+                "status": "ready" if settings.openai_api_key else "not_configured",
+            },
+            {
+                "id": "ollama",
+                "name": "Ollama (Local)",
+                "configured": True,  # Always configured since it's local
+                "model": settings.ollama_model,
+                "host": settings.ollama_host,
+                "status": ollama_status,
+            },
+            {
+                "id": "anthropic",
+                "name": "Anthropic Claude",
+                "configured": bool(settings.anthropic_api_key),
+                "model": "claude-3-sonnet",
+                "status": "ready" if settings.anthropic_api_key else "not_configured",
+            },
+        ]
+    }
+
+
+@router.post("/ai/providers/{provider}/test")
+async def test_ai_provider(provider: str) -> Dict[str, Any]:
+    """Test an AI provider connection."""
+    from src.config.settings import get_settings
+    
+    settings = get_settings()
+    
+    if provider == "openai":
+        if not settings.openai_api_key:
+            return {"status": "error", "message": "OpenAI API key not configured. Set OPENAI_API_KEY in .env"}
+        try:
+            import httpx
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    "https://api.openai.com/v1/models",
+                    headers={"Authorization": f"Bearer {settings.openai_api_key}"},
+                    timeout=10.0
+                )
+                if response.status_code == 200:
+                    return {"status": "success", "message": "OpenAI connection successful"}
+                else:
+                    return {"status": "error", "message": f"OpenAI API error: {response.status_code}"}
+        except Exception as e:
+            return {"status": "error", "message": f"Failed to connect to OpenAI: {str(e)}"}
+    
+    elif provider == "ollama":
+        try:
+            import httpx
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{settings.ollama_host}/api/version", timeout=5.0)
+                if response.status_code == 200:
+                    version_data = response.json()
+                    # Also check if the model is available
+                    models_response = await client.get(f"{settings.ollama_host}/api/tags", timeout=5.0)
+                    models = []
+                    if models_response.status_code == 200:
+                        models_data = models_response.json()
+                        models = [m.get("name", "") for m in models_data.get("models", [])]
+                    
+                    model_available = settings.ollama_model in models or any(settings.ollama_model in m for m in models)
+                    
+                    return {
+                        "status": "success",
+                        "message": f"Ollama v{version_data.get('version', 'unknown')} is running",
+                        "available_models": models[:10],  # Limit to 10
+                        "configured_model": settings.ollama_model,
+                        "model_available": model_available
+                    }
+                else:
+                    return {"status": "error", "message": "Ollama server not responding"}
+        except Exception as e:
+            return {"status": "error", "message": f"Ollama not running at {settings.ollama_host}. Start Ollama first."}
+    
+    elif provider == "anthropic":
+        if not settings.anthropic_api_key:
+            return {"status": "error", "message": "Anthropic API key not configured. Set ANTHROPIC_API_KEY in .env"}
+        try:
+            import httpx
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    "https://api.anthropic.com/v1/models",
+                    headers={
+                        "x-api-key": settings.anthropic_api_key,
+                        "anthropic-version": "2023-06-01"
+                    },
+                    timeout=10.0
+                )
+                # Anthropic might return 404 for /models but we just check auth
+                if response.status_code in [200, 404]:
+                    return {"status": "success", "message": "Anthropic API key is valid"}
+                else:
+                    return {"status": "error", "message": f"Anthropic API error: {response.status_code}"}
+        except Exception as e:
+            return {"status": "error", "message": f"Failed to connect to Anthropic: {str(e)}"}
+    
+    else:
+        raise HTTPException(400, f"Unknown AI provider: {provider}")
+

@@ -78,11 +78,12 @@ export function BotManager({ token = '' }: BotManagerProps) {
   // Strategy enabled status from backend
   const [strategyStatus, setStrategyStatus] = useState<Record<string, boolean>>({})
   
-  // Fetch strategy status on mount
+  // Fetch strategy status on mount and when showCreateForm changes
   useEffect(() => {
     const fetchStrategyStatus = async () => {
       try {
-        const response = await fetch('/api/admin/strategies/status')
+        const baseUrl = getApiBaseUrl()
+        const response = await fetch(`${baseUrl}/api/admin/strategies/status`)
         if (response.ok) {
           const data = await response.json()
           const statusMap: Record<string, boolean> = {}
@@ -99,7 +100,12 @@ export function BotManager({ token = '' }: BotManagerProps) {
       }
     }
     fetchStrategyStatus()
-  }, [])
+    
+    // Re-fetch when create form is opened to get latest status
+    if (showCreateForm) {
+      fetchStrategyStatus()
+    }
+  }, [showCreateForm])
   
   // All available strategies with enabled status check
   const ALL_STRATEGIES = [

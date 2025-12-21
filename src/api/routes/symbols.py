@@ -111,9 +111,9 @@ async def search_symbols_yahoo_api(query: str, limit: int = 50) -> List[SymbolIn
         url = "https://query1.finance.yahoo.com/v1/finance/search"
         params = {
             "q": query,
-            "quotesCount": limit,
-            "newsCount": 0,
-            "enableFuzzyQuery": True,
+            "quotesCount": str(limit),
+            "newsCount": "0",
+            "enableFuzzyQuery": "true",
             "quotesQueryId": "tss_match_phrase_query",
         }
         

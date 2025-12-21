@@ -1,9 +1,37 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { 
   ChevronDown, ChevronUp, TrendingUp, Brain, BarChart3, 
   Activity, Users, Building2, LineChart, Zap, Target,
   Gauge, Clock, Shield, Sparkles, Waves, Calculator
 } from 'lucide-react'
+import { getApiBaseUrl } from '../config/api'
+
+// Mapping from StrategyPanel toggle IDs to backend feature flag names
+const TOGGLE_TO_FEATURE_MAP: Record<string, string> = {
+  'technical_enabled': 'strategy_technical',
+  'moving_averages': 'strategy_technical',
+  'fibonacci_retracement': 'strategy_technical',
+  'volume_analysis': 'strategy_technical',
+  'momentum_enabled': 'strategy_momentum',
+  'mean_reversion': 'strategy_mean_reversion',
+  'breakout_detection': 'strategy_momentum',
+  'news_sentiment': 'strategy_news_sentiment',
+  'social_sentiment': 'strategy_news_sentiment',
+  'earnings_plays': 'strategy_news_sentiment',
+  'ai_predictions': 'strategy_ai',
+  'pattern_recognition': 'strategy_ai',
+  'anomaly_detection': 'strategy_ai',
+  'follow_insiders': 'strategy_news_sentiment',
+  'follow_top_traders': 'strategy_social',
+  'options_flow': 'strategy_options',
+  'seasonal_enabled': 'strategy_seasonal',
+  'holiday_trading': 'strategy_seasonal',
+  'earnings_season': 'strategy_seasonal',
+  'santa_rally': 'strategy_seasonal',
+  'january_effect': 'strategy_seasonal',
+  'summer_doldrums': 'strategy_seasonal',
+  'tax_loss_harvesting': 'strategy_seasonal',
+}
 
 // ============================================================================
 // Types
@@ -181,6 +209,34 @@ export function StrategyPanel() {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['technical', 'ai']))
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [featureFlags, setFeatureFlags] = useState<Record<string, boolean>>({})
+
+  // Load feature flags from backend on mount
+  useEffect(() => {
+    const loadFeatureFlags = async () => {
+      try {
+        const baseUrl = getApiBaseUrl()
+        const response = await fetch(`${baseUrl}/api/admin/strategies/status`)
+        if (response.ok) {
+          const data = await response.json()
+          const flags = data.flags || {}
+          setFeatureFlags(flags)
+          
+          // Update toggles based on backend feature flags
+          setToggles(prev => prev.map(toggle => {
+            const featureKey = TOGGLE_TO_FEATURE_MAP[toggle.id]
+            if (featureKey && flags[featureKey] !== undefined) {
+              return { ...toggle, enabled: flags[featureKey] }
+            }
+            return toggle
+          }))
+        }
+      } catch (e) {
+        console.error('Failed to load feature flags:', e)
+      }
+    }
+    loadFeatureFlags()
+  }, [])
 
   const toggleCategory = (category: string) => {
     setExpandedCategories(prev => {
@@ -194,9 +250,31 @@ export function StrategyPanel() {
     })
   }
 
-  const updateToggle = (id: string, enabled: boolean) => {
+  const updateToggle = async (id: string, enabled: boolean) => {
+    // Update local state immediately for responsiveness
     setToggles(prev => prev.map(t => t.id === id ? { ...t, enabled } : t))
     setSaved(false)
+    
+    // Update the backend feature flag
+    const featureKey = TOGGLE_TO_FEATURE_MAP[id]
+    if (featureKey) {
+      try {
+        const baseUrl = getApiBaseUrl()
+        const token = localStorage.getItem('xfactor_admin_token')
+        await fetch(`${baseUrl}/api/admin/features/${featureKey}`, {
+          method: 'PATCH',
+          headers: { 
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ enabled }),
+        })
+        // Update local feature flags cache
+        setFeatureFlags(prev => ({ ...prev, [featureKey]: enabled }))
+      } catch (e) {
+        console.error(`Failed to update feature ${featureKey}:`, e)
+      }
+    }
   }
 
   const updateSlider = (id: string, value: number) => {

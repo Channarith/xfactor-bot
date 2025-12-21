@@ -27,6 +27,10 @@ _feature_flags = {
     "strategy_momentum": True,
     "strategy_mean_reversion": True,
     "strategy_news_sentiment": True,
+    "strategy_ai": True,
+    "strategy_social": True,
+    "strategy_options": True,
+    "strategy_seasonal": True,
     
     # News sources by category
     "news_us_sources": True,
@@ -169,8 +173,8 @@ async def get_strategy_status():
         {"id": "BollingerBands", "enabled": strategy_flags.get("strategy_technical", True)},
         {"id": "MovingAverageCrossover", "enabled": strategy_flags.get("strategy_technical", True)},
         {"id": "InsiderFollowing", "enabled": strategy_flags.get("strategy_news_sentiment", True)},
-        {"id": "SocialSentiment", "enabled": strategy_flags.get("strategy_news_sentiment", True)},
-        {"id": "AIAnalysis", "enabled": True},  # AI always available
+        {"id": "SocialSentiment", "enabled": strategy_flags.get("strategy_social", True)},
+        {"id": "AIAnalysis", "enabled": strategy_flags.get("strategy_ai", True)},
     ]
     
     return {

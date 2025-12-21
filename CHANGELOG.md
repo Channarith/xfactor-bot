@@ -5,6 +5,155 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.9] - 2025-12-21
+
+### 🔒 XFactor-botMin Deployment Mode
+
+#### MIN Mode for foresight.nvidia.com
+- **Restricted Features**: Broker connections and Live trading disabled by default
+- **Easter Egg Unlock**: Click the MIN badge 7 times quickly to trigger unlock prompt
+- **Unlock Password**: `106431` unlocks full features
+- **Visual Indicator**: MIN badge shows lock icon when restricted, sparkles when unlocked (MIN+)
+- **Session Persistence**: Unlock state persists for browser session
+
+#### Deployment Scripts
+- **`scripts/deploy-foresight.sh`**: Deploy MIN version to foresight.nvidia.com:9876
+- **`scripts/preview-min.sh`**: Test MIN mode locally before deployment
+- **`scripts/stop-min-preview.sh`**: Stop local MIN preview
+
+#### Features in MIN Mode (Always Available)
+- ✅ All Help & Glossary features (500+ terms, images, audio)
+- ✅ AI Market Forecasting (demo data)
+- ✅ News & Sentiment feed
+- ✅ Video Platforms Intelligence
+- ✅ Bot Manager (view/create, paper mode only)
+- ❌ Broker connections (locked)
+- ❌ Live trading mode (locked)
+
+### 🎤 Voice & Audio Features
+
+#### Audio Readout (Text-to-Speech)
+- **News Headlines**: "🔊" button to read top 5 news headlines aloud
+- **AI Assistant**: "🔊" button to read last AI response aloud
+- **Glossary Terms**: Each term has speaker button to read definition aloud
+- **Browser Native**: Uses Web Speech API for speech synthesis
+
+#### Voice Input (Speech-to-Text)
+- **AI Assistant**: Microphone button for voice dictation of questions
+- **Glossary Search**: Voice search button for hands-free term lookup
+- **Auto-Submit**: Voice input auto-submits after speech recognition completes
+- **Visual Feedback**: Pulsing red indicator when listening
+
+### 🔍 Enhanced Search & Navigation
+
+#### AI Forecasting - Name Search
+- **Company Name Search**: Search "Apple" or "Microsoft" instead of just symbols
+- **Autocomplete Dropdown**: Shows matching companies with symbol, name, exchange
+- **Debounced Search**: 300ms delay to prevent excessive API calls
+- **Keyboard Navigation**: Enter to forecast, Escape to close suggestions
+
+### 📰 Live News Features
+
+#### Auto-Update Feature
+- **Live Updates Toggle**: Enable automatic news refresh (15s/30s/1m/2m/5m)
+- **"LIVE" Indicator**: Pulsing green badge when auto-update is active
+- **Configurable Interval**: Dropdown to select update frequency
+
+### 📊 Improved Data Visualization
+
+#### AI Pattern Predictions - Visual Charts
+- **Mini SVG Charts**: Each pattern prediction now shows fluctuation visualization
+- **Bullish Patterns**: Green upward-trending pattern lines
+- **Bearish Patterns**: Red downward-trending pattern lines
+- **Entry/Target Markers**: Visual price markers on mini charts
+
+#### Pagination Controls
+- **Items Per Page Selector**: Choose 10, 25, 50, or All items
+- **Trader Insights**: Dropdown selector for insider trades, top traders, etc.
+- **Page Resets**: Auto-reset to page 1 when changing items per page
+
+### ⚙️ Settings & Configuration
+
+#### Integrations Panel Improvements
+- **Manage Integrations Button Fixed**: Now toggles configure mode
+- **AI Providers Section**: Shows OpenAI, Anthropic, Ollama status
+- **Configure Links**: Each integration shows configure button when managing
+- **Done Button**: Clear exit from manage mode
+
+#### AI Provider API Endpoints
+- **GET /api/integrations/ai/providers**: List all AI providers and status
+- **POST /api/integrations/ai/providers/{provider}/test**: Test provider connection
+- **Ollama Detection**: Automatically checks if Ollama is running locally
+- **Model Availability**: Lists available models for local Ollama
+
+### 📚 Glossary Enhancements
+
+#### Encyclopedia-Style Images
+- **Image Support**: Glossary terms now support external images
+- **Fibonacci Retracement**: Added visual diagram from Investopedia
+- **RSI Indicator**: Added overbought/oversold visualization
+- **MACD Chart**: Added crossover and histogram diagram
+- **Bollinger Bands**: Added squeeze and expansion visualization
+- **Head & Shoulders**: Added pattern structure diagram
+- **Double Top**: Added M-pattern visualization
+- **Image Credits**: Source attribution for all images
+
+#### Data Display Improvements
+- **Video Platforms**: Added last update timestamp display
+- **Refresh Button Enhancement**: Spinner animation while loading
+- **Loading States**: All panels show loading indicators
+
+---
+
+## [1.0.8] - 2025-12-19
+
+### 🐳 Docker Development Improvements
+
+#### Rebuild Script
+- **`scripts/docker-rebuild.sh`**: Always rebuilds with latest code
+- **Options**: `--clean` (no cache), `--logs` (show logs), `--stop` (just stop)
+- **Auto-version**: Displays current version from package.json
+
+#### Development Docker Compose
+- **`docker-compose.dev.yml`**: Volume-mounted source code for live changes
+- **Auto-reload**: Python backend auto-reloads on file changes
+- **No rebuild needed**: Just save files and refresh browser
+- **Frontend updates**: Run `cd frontend && npm run build` for UI changes
+
+### 🔧 Strategy Controls Sync Fix
+
+#### Trading Strategies ↔ Strategy Controls Synchronization
+- **Fixed Sync Issue**: Trading strategies in Create Bot now properly sync with Strategy Controls
+- **BotManager API Fix**: Now uses `getApiBaseUrl()` for strategy status fetch
+- **Re-fetch on Create**: Strategy status re-fetches when Create Bot form opens
+- **StrategyPanel Backend Sync**: Toggles now update backend feature flags in real-time
+- **Added Feature Flags**: strategy_ai, strategy_social, strategy_options, strategy_seasonal
+
+#### Backend Error Fixes
+- **Yahoo Finance API**: Fixed boolean parameter error in symbol search (`enableFuzzyQuery`)
+- **All parameters now strings**: Prevents "Invalid variable type: value should be str" errors
+
+### 📚 Expanded Trading Glossary - 528 Terms
+
+#### Massive Glossary Expansion
+- **528 Terms**: Increased from 290 to 528 comprehensive trading terms
+- **Acronyms**: M&A, ATRWAC, FOMC, GDP, CPI, NFP, QE/QT, SPAC, and 50+ more
+- **Seasonal Events**: Summer Doldrums, Sell in May, October Effect, Santa Rally, Window Dressing, Tax Loss Selling
+- **Order Types**: Stop Limit, OCO, Bracket, GTC, IOC, FOK, MOC, TWAP, VWAP execution
+- **Bot Configuration**: Max Positions, Max Position Size, Risk Per Trade, Cooldown Period, Daily Loss Limit, Weekly Loss Limit
+- **Risk Metrics**: Beta-Adjusted Exposure, Gross/Net Exposure, Concentration Risk, Tail Risk, Black Swan
+- **Forex**: Pip, Lot Size, Currency Pairs, Sessions, Carry Trade, Safe Haven currencies
+- **Commodities**: Crude Oil, Gold, Silver, Copper, Natural Gas, Agriculture
+- **Corporate Actions**: M&A, Spin-Offs, Tender Offers, Buybacks, Lock-Up Periods
+- **Factor Investing**: Value, Momentum, Quality, Size, Low Volatility factors
+- **Whale Tracking**: Whale, Whale Alert, Whale Accumulation/Distribution, Dark Pool Activity
+
+#### UI Updates
+- **Search placeholder**: Updated to reflect 500+ terms
+- **Feature descriptions**: Updated across all mentions
+
+---
+
 ## [1.0.7] - 2025-12-19
 
 ### 🔮 AI Market Forecasting - Fully Operational
