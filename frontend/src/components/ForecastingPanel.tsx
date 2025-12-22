@@ -1120,26 +1120,9 @@ const ForecastingPanel: React.FC = () => {
                 {/* Analysis with Sources */}
                 {analysisData && (
                   <>
-                    {/* Bullish/Bearish Factors */}
+                    {/* Bearish/Bullish Factors - Matching Bear/Bull Case layout above */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Bullish Factors */}
-                      <div className="p-4 bg-green-500/5 rounded-lg border border-green-500/20">
-                        <div className="flex items-center gap-2 mb-3">
-                          <TrendingUp className="w-4 h-4 text-green-400" />
-                          <span className="text-sm font-medium text-green-400">Bullish Factors</span>
-                        </div>
-                        {analysisData.bullish_factors.length > 0 ? (
-                          <ul className="space-y-2">
-                            {analysisData.bullish_factors.map((factor, i) => (
-                              <li key={i} className="text-sm text-slate-300">{factor}</li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="text-sm text-slate-500">No strong bullish signals detected</p>
-                        )}
-                      </div>
-                      
-                      {/* Bearish Factors */}
+                      {/* Bearish Factors (left - matches Bear Case) */}
                       <div className="p-4 bg-red-500/5 rounded-lg border border-red-500/20">
                         <div className="flex items-center gap-2 mb-3">
                           <TrendingDown className="w-4 h-4 text-red-400" />
@@ -1153,6 +1136,23 @@ const ForecastingPanel: React.FC = () => {
                           </ul>
                         ) : (
                           <p className="text-sm text-slate-500">No strong bearish signals detected</p>
+                        )}
+                      </div>
+                      
+                      {/* Bullish Factors (right - matches Bull Case) */}
+                      <div className="p-4 bg-green-500/5 rounded-lg border border-green-500/20">
+                        <div className="flex items-center gap-2 mb-3">
+                          <TrendingUp className="w-4 h-4 text-green-400" />
+                          <span className="text-sm font-medium text-green-400">Bullish Factors</span>
+                        </div>
+                        {analysisData.bullish_factors.length > 0 ? (
+                          <ul className="space-y-2">
+                            {analysisData.bullish_factors.map((factor, i) => (
+                              <li key={i} className="text-sm text-slate-300">{factor}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-sm text-slate-500">No strong bullish signals detected</p>
                         )}
                       </div>
                     </div>
