@@ -4,8 +4,9 @@ ib_insync>=0.9.86
 # Alpaca Trading
 alpaca-py>=0.21.0
 
-# Robinhood (unofficial API)
-robin-stocks>=3.0.0
+# Webull (official API - requires account with $5k minimum)
+# Note: Install separately if needed: pip install webull-python-sdk-core webull-python-sdk-trade
+# Has dependency conflicts with cachetools
 
 # Data Processing
 pandas==2.2.2

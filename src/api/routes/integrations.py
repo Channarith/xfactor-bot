@@ -31,7 +31,7 @@ class BrokerConnectRequest(BaseModel):
 
 
 class CredentialLoginRequest(BaseModel):
-    """Request for credential-based broker login (Robinhood, Webull)."""
+    """Request for credential-based broker login (deprecated - use /brokers/connect)."""
     broker_type: str
     username: str
     password: str
@@ -99,12 +99,12 @@ async def connect_broker(request: BrokerConnectRequest) -> Dict[str, Any]:
         **request.config
     }
     
-    success = await registry.connect_broker(broker_type, **config)
+    success, error_msg = await registry.connect_broker(broker_type, **config)
     
     if success:
         return {"status": "connected", "broker": broker_type.value}
     else:
-        raise HTTPException(500, f"Failed to connect to {broker_type.value}")
+        raise HTTPException(500, error_msg or f"Failed to connect to {broker_type.value}")
 
 
 @router.post("/brokers/login")
@@ -127,77 +127,16 @@ async def credential_login(request: CredentialLoginRequest) -> Dict[str, Any]:
     except ValueError:
         raise HTTPException(400, f"Unknown broker type: {request.broker_type}")
     
-    # Currently only Robinhood and Webull support credential login
-    if broker_type not in [BrokerType.ROBINHOOD, BrokerType.WEBULL]:
-        raise HTTPException(400, f"Broker {broker_type.value} does not support credential login. Use /brokers/connect instead.")
+    # Webull uses App Key/Secret, not username/password
+    # Redirect to the regular connect endpoint
+    if broker_type == BrokerType.WEBULL:
+        raise HTTPException(400, 
+            "Webull uses App Key and App Secret for authentication, not username/password. "
+            "Use the /brokers/connect endpoint with api_key (App Key) and secret_key (App Secret). "
+            "Get your keys from Webull API Management: https://www.webull.com/api-management"
+        )
     
-    if broker_type == BrokerType.ROBINHOOD:
-        try:
-            from src.brokers.robinhood_broker import RobinhoodBroker
-            
-            broker = RobinhoodBroker(
-                username=request.username,
-                password=request.password,
-                mfa_code=request.mfa_code,
-                device_token=request.device_token
-            )
-            
-            success = await broker.connect()
-            
-            if success:
-                # Register the connected broker
-                registry = get_broker_registry()
-                registry._brokers[BrokerType.ROBINHOOD] = broker
-                if registry._default_broker is None:
-                    registry._default_broker = BrokerType.ROBINHOOD
-                
-                # Get account info
-                accounts = await broker.get_accounts()
-                account_info = accounts[0] if accounts else None
-                
-                return {
-                    "status": "connected",
-                    "broker": broker_type.value,
-                    "requires_mfa": False,
-                    "account": {
-                        "id": account_info.account_id if account_info else None,
-                        "buying_power": account_info.buying_power if account_info else 0,
-                        "portfolio_value": account_info.portfolio_value if account_info else 0,
-                    } if account_info else None
-                }
-            elif broker.requires_mfa:
-                return {
-                    "status": "mfa_required",
-                    "broker": broker_type.value,
-                    "requires_mfa": True,
-                    "mfa_type": broker.mfa_type or "sms",
-                    "message": broker._error_message or f"Please enter the {broker.mfa_type or 'SMS'} verification code sent to your device."
-                }
-            else:
-                error_msg = getattr(broker, '_error_message', None) or "Login failed. Check your credentials or 2FA code."
-                raise HTTPException(401, error_msg)
-                
-        except ImportError:
-            raise HTTPException(500, "robin-stocks library not installed. Run: pip install robin-stocks")
-        except HTTPException:
-            raise
-        except Exception as e:
-            error_msg = str(e)
-            if "mfa" in error_msg.lower() or "challenge" in error_msg.lower():
-                return {
-                    "status": "mfa_required",
-                    "broker": broker_type.value,
-                    "requires_mfa": True,
-                    "mfa_type": "sms",
-                    "message": "2FA verification required. Please enter the code."
-                }
-            raise HTTPException(401, f"Login failed: {error_msg}")
-    
-    # Webull - placeholder
-    elif broker_type == BrokerType.WEBULL:
-        raise HTTPException(501, "Webull integration is not yet implemented")
-    
-    raise HTTPException(500, "Unexpected error during login")
+    raise HTTPException(400, f"Broker {broker_type.value} does not support credential login. Use /brokers/connect instead.")
 
 
 @router.post("/brokers/disconnect/{broker_type}")

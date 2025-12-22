@@ -71,14 +71,15 @@ class BrokerRegistry:
                 if self._default_broker is None:
                     self._default_broker = broker_type
                 
-                return True
+                return True, None
             else:
-                logger.error(f"Failed to connect to broker: {broker_type.value}")
-                return False
+                error_msg = getattr(broker, '_error_message', None) or f"Failed to connect to {broker_type.value}"
+                logger.error(f"Failed to connect to broker: {broker_type.value} - {error_msg}")
+                return False, error_msg
                 
         except Exception as e:
             logger.error(f"Error connecting to {broker_type.value}: {e}")
-            return False
+            return False, str(e)
     
     async def disconnect_broker(self, broker_type: BrokerType) -> None:
         """Disconnect from a broker."""
@@ -213,8 +214,8 @@ def _register_default_brokers(registry: BrokerRegistry) -> None:
         logger.debug("Tradier broker not available")
     
     try:
-        from src.brokers.robinhood_broker import RobinhoodBroker
-        registry.register_broker_class(BrokerType.ROBINHOOD, RobinhoodBroker)
-    except ImportError:
-        logger.debug("Robinhood broker not available")
+        from src.brokers.webull_broker import WebullBroker
+        registry.register_broker_class(BrokerType.WEBULL, WebullBroker)
+    except ImportError as e:
+        logger.debug(f"Webull broker not available: {e}")
 

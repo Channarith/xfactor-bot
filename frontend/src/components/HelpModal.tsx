@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { X, HelpCircle, Zap, Bot, LineChart, Shield, Settings, Cpu, Globe, Calendar, Book, TrendingUp, TrendingDown, BarChart3, Activity, Target, Layers, Search, ChevronDown, ChevronUp, Mic, MicOff, Volume2 } from 'lucide-react';
+import { X, HelpCircle, Zap, Bot, LineChart, Shield, Settings, Cpu, Globe, Calendar, Book, TrendingUp, TrendingDown, BarChart3, Activity, Target, Layers, Search, ChevronDown, ChevronUp, Mic, MicOff, Volume2, AlertTriangle } from 'lucide-react';
 import { createSpeechRecognition, speak, isSpeechRecognitionSupported, isSpeechSynthesisSupported, stopSpeaking } from '../utils/audio';
 
 interface HelpModalProps {
