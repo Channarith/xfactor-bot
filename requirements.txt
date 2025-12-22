@@ -4,8 +4,9 @@ ib_insync>=0.9.86
 # Alpaca Trading
 alpaca-py>=0.21.0
 
-# Webull (official API - requires account with $5k minimum)
-# Dependencies installed separately due to version conflicts
+# Webull
+webull>=0.6.0  # Unofficial API (username/password login)
+# Official SDK installed in Dockerfile with --no-deps due to version conflicts
 
 # Data Processing
 pandas==2.2.2
