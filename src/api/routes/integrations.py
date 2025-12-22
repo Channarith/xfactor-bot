@@ -171,10 +171,11 @@ async def credential_login(request: CredentialLoginRequest) -> Dict[str, Any]:
                     "broker": broker_type.value,
                     "requires_mfa": True,
                     "mfa_type": broker.mfa_type or "sms",
-                    "message": f"Please enter the {broker.mfa_type or 'SMS'} verification code sent to your device."
+                    "message": broker._error_message or f"Please enter the {broker.mfa_type or 'SMS'} verification code sent to your device."
                 }
             else:
-                raise HTTPException(401, "Login failed. Check your credentials or 2FA code.")
+                error_msg = getattr(broker, '_error_message', None) or "Login failed. Check your credentials or 2FA code."
+                raise HTTPException(401, error_msg)
                 
         except ImportError:
             raise HTTPException(500, "robin-stocks library not installed. Run: pip install robin-stocks")

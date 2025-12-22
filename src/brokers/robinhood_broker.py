@@ -60,6 +60,7 @@ class RobinhoodBroker(BaseBroker):
         self._mfa_type = None  # 'sms' or 'totp'
         self._account_number = None
         self._account_url = None
+        self._error_message = None
     
     async def connect(self) -> bool:
         """
@@ -67,34 +68,53 @@ class RobinhoodBroker(BaseBroker):
         
         Returns True if connected, False if MFA is required.
         Check self._requires_mfa to see if 2FA code is needed.
+        
+        Note: Robinhood almost always requires 2FA, even if the user thinks 
+        it's disabled. The first login from a new device will trigger SMS/email verification.
         """
         try:
             import robin_stocks.robinhood as rh
             
-            # Prepare login kwargs
+            # Prepare login kwargs (based on robin_stocks 3.x API)
             login_kwargs = {
                 "expiresIn": 86400,  # 24 hours
                 "scope": "internal",
-                "by_sms": True,  # Try SMS for 2FA
+                "store_session": True,  # Store session for future logins
             }
             
             if self.mfa_code:
                 login_kwargs["mfa_code"] = self.mfa_code
             
-            if self.device_token:
-                login_kwargs["store_session"] = True
+            logger.info(f"Attempting Robinhood login for: {self.username[:3]}***")
             
             # Attempt login
             # robin_stocks.login() is synchronous, run in executor
             loop = asyncio.get_event_loop()
-            self._login_response = await loop.run_in_executor(
-                None,
-                lambda: rh.login(
-                    self.username,
-                    self.password,
-                    **login_kwargs
+            try:
+                self._login_response = await loop.run_in_executor(
+                    None,
+                    lambda: rh.login(
+                        self.username,
+                        self.password,
+                        **login_kwargs
+                    )
                 )
-            )
+            except Exception as login_error:
+                error_str = str(login_error).lower()
+                logger.error(f"Robinhood login exception: {login_error}")
+                
+                # Check for common MFA/challenge patterns
+                if any(x in error_str for x in ['mfa', 'challenge', 'verification', 'sms', 'code']):
+                    self._requires_mfa = True
+                    self._mfa_type = "sms"
+                    self._error_message = "Robinhood requires verification. Check your phone for SMS code."
+                    return False
+                
+                self._error_message = str(login_error)
+                return False
+            
+            logger.info(f"Robinhood login response type: {type(self._login_response)}")
+            logger.info(f"Robinhood login response: {self._login_response}")
             
             # Check if login was successful
             if self._login_response and isinstance(self._login_response, dict):
@@ -114,19 +134,40 @@ class RobinhoodBroker(BaseBroker):
                     # 2FA required
                     self._requires_mfa = True
                     self._mfa_type = self._login_response.get("mfa_type", "sms")
+                    self._error_message = f"2FA required via {self._mfa_type}. Check your phone."
                     logger.info(f"Robinhood requires 2FA via {self._mfa_type}")
+                    return False
+                
+                # Check for challenge_id (newer flow)
+                elif "challenge_id" in self._login_response:
+                    self._requires_mfa = True
+                    self._mfa_type = self._login_response.get("challenge_type", "sms")
+                    self._error_message = "Device verification required. Check your email/phone."
+                    logger.info(f"Robinhood device challenge required")
                     return False
             
             # Check for errors
-            if self._login_response and "detail" in self._login_response:
+            if self._login_response and isinstance(self._login_response, dict) and "detail" in self._login_response:
                 error_msg = self._login_response.get("detail", "Unknown error")
+                self._error_message = error_msg
                 logger.error(f"Robinhood login failed: {error_msg}")
                 return False
             
-            logger.error("Robinhood login failed: Unknown response")
+            # If response is None or empty, it could be credentials issue or MFA
+            if not self._login_response:
+                self._error_message = "Login failed. Robinhood may require 2FA verification. Check your email/phone for a verification code."
+                logger.error("Robinhood login failed: Empty response (likely MFA required)")
+                # Assume MFA needed since Robinhood almost always requires it
+                self._requires_mfa = True
+                self._mfa_type = "sms"
+                return False
+            
+            self._error_message = f"Unknown response: {self._login_response}"
+            logger.error(f"Robinhood login failed: Unknown response type {type(self._login_response)}")
             return False
             
         except ImportError:
+            self._error_message = "robin-stocks library not installed"
             logger.error("robin-stocks not installed. Run: pip install robin-stocks")
             return False
         except Exception as e:
