@@ -189,6 +189,22 @@ class Settings(BaseSettings):
     ollama_auto_start: bool = Field(default=True, description="Auto-start bundled Ollama if not running")
     ollama_bundled: bool = Field(default=True, description="Use bundled Ollama binary")
     
+    @property
+    def ollama_host_resolved(self) -> str:
+        """Get Ollama host, resolving localhost to host.docker.internal when in Docker."""
+        import os
+        host = self.ollama_host
+        
+        # Check if running in Docker (/.dockerenv exists or DOCKER_CONTAINER env var)
+        in_docker = os.path.exists('/.dockerenv') or os.environ.get('DOCKER_CONTAINER', '') == 'true'
+        
+        if in_docker and 'localhost' in host:
+            # Replace localhost with host.docker.internal for Docker on Mac/Windows
+            host = host.replace('localhost', 'host.docker.internal')
+            host = host.replace('127.0.0.1', 'host.docker.internal')
+        
+        return host
+    
     # OpenAI Configuration
     openai_api_key: str = Field(default="", description="OpenAI API key")
     openai_model: str = Field(default="gpt-4-turbo-preview", description="OpenAI model to use")

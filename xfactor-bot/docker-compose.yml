@@ -16,8 +16,10 @@ services:
     ports:
       - "9876:8000"
     environment:
+      - DOCKER_CONTAINER=true
       - IBKR_HOST=host.docker.internal
       - IBKR_PORT=7497
+      - OLLAMA_HOST=http://host.docker.internal:11434
       - TIMESCALE_URL=postgresql://postgres:postgres@timescaledb:5432/xfactor_db
       - REDIS_URL=redis://redis:6379/0
       - PYTHONPATH=/app

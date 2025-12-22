@@ -613,13 +613,14 @@ async def get_ai_providers() -> Dict[str, Any]:
     
     settings = get_settings()
     
-    # Check Ollama availability
+    # Check Ollama availability (use resolved host for Docker compatibility)
     ollama_status = "offline"
     ollama_version = None
+    ollama_resolved_host = settings.ollama_host_resolved
     try:
         import httpx
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"{settings.ollama_host}/api/version", timeout=2.0)
+            response = await client.get(f"{ollama_resolved_host}/api/version", timeout=2.0)
             if response.status_code == 200:
                 ollama_status = "available"
                 ollama_version = response.json().get("version")
@@ -692,14 +693,16 @@ async def test_ai_provider(provider: str) -> Dict[str, Any]:
             return {"status": "error", "message": f"Failed to connect to OpenAI: {str(e)}"}
     
     elif provider == "ollama":
+        # Use resolved host for Docker compatibility (localhost -> host.docker.internal)
+        ollama_host = settings.ollama_host_resolved
         try:
             import httpx
             async with httpx.AsyncClient() as client:
-                response = await client.get(f"{settings.ollama_host}/api/version", timeout=5.0)
+                response = await client.get(f"{ollama_host}/api/version", timeout=5.0)
                 if response.status_code == 200:
                     version_data = response.json()
                     # Also check if the model is available
-                    models_response = await client.get(f"{settings.ollama_host}/api/tags", timeout=5.0)
+                    models_response = await client.get(f"{ollama_host}/api/tags", timeout=5.0)
                     models = []
                     if models_response.status_code == 200:
                         models_data = models_response.json()
