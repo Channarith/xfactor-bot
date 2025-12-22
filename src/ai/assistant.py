@@ -37,10 +37,12 @@ async def ensure_ollama_running() -> bool:
     # Check if already running
     try:
         import httpx
+        # Use resolved host for Docker compatibility
+        ollama_host = settings.ollama_host_resolved
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"{settings.ollama_host}/api/version", timeout=2.0)
+            response = await client.get(f"{ollama_host}/api/version", timeout=2.0)
             if response.status_code == 200:
-                logger.info("Ollama is already running")
+                logger.info(f"Ollama is already running at {ollama_host}")
                 return True
     except Exception:
         pass
@@ -81,14 +83,15 @@ async def ensure_ollama_running() -> bool:
             
             # Wait for startup
             import asyncio
+            ollama_host = settings.ollama_host_resolved
             for _ in range(10):  # Wait up to 5 seconds
                 await asyncio.sleep(0.5)
                 try:
                     import httpx
                     async with httpx.AsyncClient() as client:
-                        response = await client.get(f"{settings.ollama_host}/api/version", timeout=2.0)
+                        response = await client.get(f"{ollama_host}/api/version", timeout=2.0)
                         if response.status_code == 200:
-                            logger.info("Ollama started successfully")
+                            logger.info(f"Ollama started successfully at {ollama_host}")
                             return True
                 except Exception:
                     pass
@@ -260,7 +263,7 @@ Current system context will be provided with each query."""
         # Check if Ollama is available
         if not await self.ollama_client.is_available():
             raise ConnectionError(
-                f"Ollama server not available at {self.settings.ollama_host}. "
+                f"Ollama server not available at {self.settings.ollama_host_resolved}. "
                 "Please ensure Ollama is running: 'ollama serve'"
             )
         
@@ -427,7 +430,7 @@ Current system context will be provided with each query."""
             providers["ollama"] = {
                 "available": ollama_available,
                 "model": self.settings.ollama_model,
-                "host": self.settings.ollama_host,
+                "host": self.settings.ollama_host_resolved,
                 "models": [m.get("name", "") for m in ollama_models],
                 "reason": None if ollama_available else "Ollama server not running",
             }

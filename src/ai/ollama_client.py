@@ -48,7 +48,8 @@ class OllamaClient:
         timeout: Optional[int] = None,
     ):
         settings = get_settings()
-        self.host = host or settings.ollama_host
+        # Use resolved host for Docker compatibility (localhost -> host.docker.internal)
+        self.host = host or settings.ollama_host_resolved
         self.model = model or settings.ollama_model
         self.timeout = timeout or settings.ollama_timeout
         self.keep_alive = settings.ollama_keep_alive
