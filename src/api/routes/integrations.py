@@ -110,79 +110,12 @@ async def connect_broker(request: BrokerConnectRequest) -> Dict[str, Any]:
 @router.post("/brokers/login")
 async def credential_login(request: CredentialLoginRequest) -> Dict[str, Any]:
     """
-    Login to a credential-based broker (Robinhood, Webull).
+    Login to a credential-based broker.
     
-    These brokers use username/password instead of API keys.
-    May require 2FA code on first login or periodically.
-    
-    Flow:
-    1. Submit username/password
-    2. If 2FA required, response includes `requires_mfa: true`
-    3. Re-submit with mfa_code to complete login
+    Note: Credential-based login (username/password) is not currently supported.
+    All supported brokers use API key authentication via /brokers/connect.
     """
-    from src.brokers.base import BrokerType
-    
-    try:
-        broker_type = BrokerType(request.broker_type.lower())
-    except ValueError:
-        raise HTTPException(400, f"Unknown broker type: {request.broker_type}")
-    
-    # Webull supports both official (api_key/secret) and unofficial (username/password)
-    if broker_type == BrokerType.WEBULL:
-        try:
-            from src.brokers.webull_broker import WebullBroker
-            
-            broker = WebullBroker(
-                username=request.username,
-                password=request.password,
-                mfa_code=request.mfa_code,
-                device_id=request.device_token,
-                paper=True  # Default to paper trading for safety
-            )
-            
-            success = await broker.connect()
-            
-            if success:
-                # Register the connected broker
-                registry = get_broker_registry()
-                registry._brokers[BrokerType.WEBULL] = broker
-                if registry._default_broker is None:
-                    registry._default_broker = BrokerType.WEBULL
-                
-                # Get account info
-                accounts = await broker.get_accounts()
-                account_info = accounts[0] if accounts else None
-                
-                return {
-                    "status": "connected",
-                    "broker": broker_type.value,
-                    "requires_mfa": False,
-                    "account": {
-                        "id": account_info.account_id if account_info else None,
-                        "buying_power": account_info.buying_power if account_info else 0,
-                        "portfolio_value": account_info.portfolio_value if account_info else 0,
-                    } if account_info else None
-                }
-            elif broker.requires_mfa:
-                return {
-                    "status": "mfa_required",
-                    "broker": broker_type.value,
-                    "requires_mfa": True,
-                    "mfa_type": broker.mfa_type or "sms",
-                    "message": broker._error_message or "MFA verification required. Check your phone."
-                }
-            else:
-                error_msg = broker._error_message or "Login failed. Check your credentials."
-                raise HTTPException(401, error_msg)
-                
-        except ImportError:
-            raise HTTPException(500, "Webull library not installed. Run: pip install webull")
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(401, f"Login failed: {str(e)}")
-    
-    raise HTTPException(400, f"Broker {broker_type.value} does not support credential login. Use /brokers/connect instead.")
+    raise HTTPException(400, "Credential-based login is not supported. Use /brokers/connect with API keys instead.")
 
 
 @router.post("/brokers/disconnect/{broker_type}")

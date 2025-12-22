@@ -23,7 +23,7 @@ interface BrokerFormData {
   // Futures settings
   futuresMarginType: 'intraday' | 'overnight'
   futuresContracts: string[]
-  // Credentials-based auth (Robinhood, Webull)
+  // IBKR Web Portal auth
   username: string
   password: string
   twoFactorCode: string
@@ -113,28 +113,6 @@ export function BrokerConfig() {
       authType: 'oauth' as const,
       authDescription: 'Login with your Tradier account',
     },
-    { 
-      id: 'robinhood', 
-      name: 'Robinhood', 
-      logo: '🪶',
-      description: 'Commission-free trading for beginners',
-      features: ['Stocks', 'Options', 'Crypto'],
-      minDeposit: '$0',
-      authType: 'credentials' as const,  // Username/password + 2FA
-      authDescription: 'Login with username, password & 2FA',
-      beta: true,
-    },
-    { 
-      id: 'webull', 
-      name: 'Webull', 
-      logo: '🐂',
-      description: 'Advanced trading with extended hours',
-      features: ['Stocks', 'Options', 'Crypto', 'ETFs'],
-      minDeposit: '$0',
-      authType: 'credentials' as const,
-      authDescription: 'Login with email/phone & password',
-      beta: true,
-    },
   ]
   
   // Auto-update port based on paper trading toggle
@@ -207,7 +185,7 @@ export function BrokerConfig() {
     }
   }
 
-  // Handle credentials login (Robinhood, Webull)
+  // Handle credentials login (IBKR Web Portal)
   const handleCredentialsLogin = async () => {
     setConnecting(true)
     setError('')
@@ -302,9 +280,6 @@ export function BrokerConfig() {
     switch (authType) {
       case 'oauth':
         handleOAuthLogin()
-        break
-      case 'credentials':
-        handleCredentialsLogin()
         break
       case 'apikey':
         handleApiKeyConnect()
@@ -463,11 +438,6 @@ export function BrokerConfig() {
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-2xl">{b.logo}</span>
                       <span className="font-medium">{b.name}</span>
-                      {b.beta && (
-                        <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400">
-                          Beta
-                        </span>
-                      )}
                     </div>
                     <p className="text-xs text-muted-foreground mb-1">{b.description}</p>
                     
@@ -477,12 +447,6 @@ export function BrokerConfig() {
                         <>
                           <LogIn className="h-3 w-3" />
                           <span>Login with username & password</span>
-                        </>
-                      )}
-                      {b.authType === 'credentials' && (
-                        <>
-                          <User className="h-3 w-3" />
-                          <span>Username & password login</span>
                         </>
                       )}
                       {b.authType === 'apikey' && (
@@ -977,118 +941,6 @@ export function BrokerConfig() {
               </div>
             )}
             
-            {/* Robinhood - Credentials */}
-            {selectedBroker === 'robinhood' && (
-              <div className="p-5 space-y-4">
-                <div className="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-                  <h4 className="font-medium text-yellow-400 mb-2">⚠️ Beta Feature</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Robinhood integration uses an unofficial API. Use at your own risk.
-                    We recommend using paper trading mode first.
-                  </p>
-                </div>
-                
-                <div className="grid grid-cols-1 gap-4">
-                  <div>
-                    <label className="text-sm text-muted-foreground">Email or Phone</label>
-                    <input
-                      type="text"
-                      value={formData.username}
-                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                      className="w-full mt-1 px-3 py-2 rounded-lg bg-secondary border border-border"
-                      placeholder="your@email.com"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground">Password</label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        value={formData.password}
-                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                        className="w-full mt-1 px-3 py-2 pr-10 rounded-lg bg-secondary border border-border"
-                        placeholder="••••••••"
-                      />
-                      <button
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground">2FA Code (if enabled)</label>
-                    <input
-                      type="text"
-                      value={formData.twoFactorCode}
-                      onChange={(e) => setFormData({ ...formData, twoFactorCode: e.target.value })}
-                      className="w-full mt-1 px-3 py-2 rounded-lg bg-secondary border border-border font-mono text-center tracking-widest"
-                      placeholder="000000"
-                      maxLength={6}
-                    />
-                  </div>
-                </div>
-                
-                <p className="text-xs text-muted-foreground">
-                  🔒 Your credentials are encrypted and never stored on our servers.
-                </p>
-              </div>
-            )}
-            
-            {/* Webull - Credentials */}
-            {selectedBroker === 'webull' && (
-              <div className="p-5 space-y-4">
-                <div className="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-                  <h4 className="font-medium text-yellow-400 mb-2">⚠️ Beta Feature</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Webull integration uses an unofficial API. Use at your own risk.
-                  </p>
-                </div>
-                
-                <div className="grid grid-cols-1 gap-4">
-                  <div>
-                    <label className="text-sm text-muted-foreground">Email or Phone</label>
-                    <input
-                      type="text"
-                      value={formData.username}
-                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                      className="w-full mt-1 px-3 py-2 rounded-lg bg-secondary border border-border"
-                      placeholder="your@email.com or +1234567890"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground">Password</label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        value={formData.password}
-                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                        className="w-full mt-1 px-3 py-2 pr-10 rounded-lg bg-secondary border border-border"
-                        placeholder="••••••••"
-                      />
-                      <button
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground">Trading PIN</label>
-                    <input
-                      type="password"
-                      value={formData.twoFactorCode}
-                      onChange={(e) => setFormData({ ...formData, twoFactorCode: e.target.value })}
-                      className="w-full mt-1 px-3 py-2 rounded-lg bg-secondary border border-border font-mono text-center tracking-widest"
-                      placeholder="••••••"
-                      maxLength={6}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
             
             {error && (
               <div className="mx-5 p-3 rounded-lg bg-loss/10 border border-loss/20 text-loss text-sm">

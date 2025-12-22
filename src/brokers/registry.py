@@ -212,10 +212,4 @@ def _register_default_brokers(registry: BrokerRegistry) -> None:
         registry.register_broker_class(BrokerType.TRADIER, TradierBroker)
     except ImportError:
         logger.debug("Tradier broker not available")
-    
-    try:
-        from src.brokers.webull_broker import WebullBroker
-        registry.register_broker_class(BrokerType.WEBULL, WebullBroker)
-    except ImportError as e:
-        logger.debug(f"Webull broker not available: {e}")
 

@@ -38,13 +38,6 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Webull SDK separately (has version conflicts)
-RUN pip install --no-cache-dir --no-deps \
-    webull-python-sdk-core \
-    webull-python-sdk-trade \
-    webull-python-sdk-mdata \
-    && pip install --no-cache-dir "jmespath>=0.9.3,<1.0.0"
-
 # Copy application code
 COPY src/ ./src/
 COPY pyproject.toml .

@@ -16,8 +16,6 @@ class BrokerType(str, Enum):
     ALPACA = "alpaca"
     SCHWAB = "schwab"
     TD_AMERITRADE = "td_ameritrade"
-    ROBINHOOD = "robinhood"
-    WEBULL = "webull"
     TRADIER = "tradier"
     ETRADE = "etrade"
     FIDELITY = "fidelity"

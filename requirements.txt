@@ -4,9 +4,7 @@ ib_insync>=0.9.86
 # Alpaca Trading
 alpaca-py>=0.21.0
 
-# Webull
-webull>=0.6.0  # Unofficial API (username/password login)
-# Official SDK installed in Dockerfile with --no-deps due to version conflicts
+# Note: Robinhood and Webull integrations have been removed due to unreliable APIs
 
 # Data Processing
 pandas==2.2.2
