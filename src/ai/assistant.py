@@ -414,13 +414,6 @@ Current system context will be provided with each query."""
         """
         providers = {}
         
-        # #region agent log
-        import os
-        with open('/app/.cursor/debug.log' if os.path.exists('/app') else '/Users/cvanthin/code/trading/000_trading/.cursor/debug.log', 'a') as f:
-            import json
-            f.write(json.dumps({"location":"assistant.py:get_available_providers","message":"Checking OpenAI key","data":{"openai_key_set":bool(self.settings.openai_api_key),"openai_key_len":len(self.settings.openai_api_key) if self.settings.openai_api_key else 0},"timestamp":int(__import__('time').time()*1000),"sessionId":"debug-session","hypothesisId":"A,B"}) + '\n')
-        # #endregion
-        
         # Check OpenAI
         providers["openai"] = {
             "available": bool(self.settings.openai_api_key),

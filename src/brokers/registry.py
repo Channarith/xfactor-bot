@@ -211,4 +211,10 @@ def _register_default_brokers(registry: BrokerRegistry) -> None:
         registry.register_broker_class(BrokerType.TRADIER, TradierBroker)
     except ImportError:
         logger.debug("Tradier broker not available")
+    
+    try:
+        from src.brokers.robinhood_broker import RobinhoodBroker
+        registry.register_broker_class(BrokerType.ROBINHOOD, RobinhoodBroker)
+    except ImportError:
+        logger.debug("Robinhood broker not available")
 
