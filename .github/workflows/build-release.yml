@@ -342,30 +342,14 @@ jobs:
           cd desktop
           npm ci
 
-      - name: Install WiX Toolset
-        run: |
-          # Download WiX 3.14 directly
-          $wixUrl = "https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip"
-          $wixZip = "$env:TEMP\wix314.zip"
-          $wixDir = "$env:LOCALAPPDATA\tauri\WixTools314"
-          
-          Write-Host "Downloading WiX Toolset..."
-          Invoke-WebRequest -Uri $wixUrl -OutFile $wixZip -UseBasicParsing
-          
-          Write-Host "Extracting WiX Toolset..."
-          New-Item -ItemType Directory -Force -Path $wixDir | Out-Null
-          Expand-Archive -Path $wixZip -DestinationPath $wixDir -Force
-          
-          Write-Host "WiX Toolset installed at: $wixDir"
-          dir $wixDir
-        shell: pwsh
+      - name: Install WiX Toolset via Chocolatey
+        run: choco install wixtoolset -y --no-progress
+        shell: cmd
 
       - name: Build Tauri app
         run: |
           cd desktop
           npm run tauri build -- --target x86_64-pc-windows-msvc --bundles msi,nsis
-        env:
-          WIX: ${{ env.LOCALAPPDATA }}\tauri\WixTools314
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
