@@ -113,15 +113,17 @@ const changelog = [
       'Schwab: API key auth with Client ID, Secret, Refresh Token',
       'Tradier: API token auth with Access Token and Account ID',
       'Improved connection error messages with actionable guidance',
+      '🤖 AI Provider Integration Fixes',
+      'Ollama Docker support: auto-detects environment for correct host',
+      'Test Connection now tests entered API key, not saved one',
+      'OpenAI/Claude buttons enable properly after saving config',
+      'Default AI provider changed to Claude with Ollama fallback',
       '⚖️ Trading Compliance System',
       'Pattern Day Trader (PDT) rule monitoring',
       'Good Faith Violation detection for cash accounts',
       'Freeriding protection prevents buying with unsettled funds',
-      'Day Trading Buying Power limit checks for margin',
-      'Wash Sale warnings for tax implications',
       '📚 Glossary: Regulations Category',
-      '18+ new compliance terms: PDT, FINRA, Good Faith, Freeriding',
-      'SEC, Regulation SHO, Circuit Breaker, LULD, Margin Call'
+      '18+ new compliance terms: PDT, FINRA, Good Faith, Freeriding'
     ]
   },
   {

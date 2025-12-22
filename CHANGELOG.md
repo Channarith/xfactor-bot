@@ -21,6 +21,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Disconnect/Reconnect**: Existing disconnect functionality now properly documented
 - **Unified Footer**: All broker configs now show Connect/Cancel buttons
 
+### 🤖 AI Provider Integration Fixes
+
+#### Ollama Docker Support
+- **Docker Host Resolution**: Ollama now correctly connects via `host.docker.internal` from Docker
+- **Environment Detection**: Auto-detects Docker vs native environment for correct host
+- **Default Model**: Changed default from `nemotron-3-nano:30b` to `mistral:latest` for faster responses
+
+#### AI Configuration Improvements
+- **Test Connection**: "Test Connection" button now tests the *entered* API key, not the saved one
+- **Provider Buttons**: OpenAI and Claude buttons now properly enable after saving configuration
+- **Settings Refresh**: AI provider status refreshes when opening settings panel
+- **Default Provider**: Changed default from OpenAI to Anthropic Claude with Ollama fallback
+
 #### Trading Compliance
 - **PDT Rule Monitoring**: Pattern Day Trader rule checks and warnings
 - **Good Faith Violation**: Cash account violation detection
@@ -32,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🔧 Technical Fixes
 - **Version Sync**: All components now at version 1.1.1
 - **Docker Compose**: Added `extra_hosts` for `host.docker.internal` mapping
+- **Settings Cache Clear**: Backend reloads settings after saving AI provider config
 
 ---
 
