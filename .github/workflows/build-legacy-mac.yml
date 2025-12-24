@@ -14,7 +14,7 @@ permissions:
 jobs:
   build-macos-legacy:
     name: Build macOS Intel (Legacy)
-    runs-on: macos-15
+    runs-on: macos-15-intel  # Intel runner (x86_64)
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -34,36 +34,41 @@ jobs:
         with:
           targets: x86_64-apple-darwin
 
+      - name: Install Python dependencies
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '10.15'
+        run: |
+          python -m pip install --upgrade pip
+          pip install typing_extensions
+          pip install numpy==1.26.4 pandas==2.2.2 --only-binary :all:
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Check architecture
+        run: |
+          echo "Machine: $(uname -m)"
+          echo "Python arch: $(python -c 'import platform; print(platform.machine())')"
+
+      - name: Build Python backend
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '10.15'
+        run: |
+          cd desktop/scripts
+          python build_backend.py
+          # Verify binary was created
+          echo "=== Binaries created ==="
+          ls -la ../src-tauri/binaries/
+          file ../src-tauri/binaries/xfactor-backend-*
+
       - name: Install frontend dependencies
         run: |
           cd frontend
           npm ci
-          npm run build
 
-      - name: Build Python backend for x86_64
+      - name: Build frontend
         run: |
-          cd desktop
-          pip install pyinstaller
-          pip install -r ../requirements.txt
-          
-          # Build for x86_64 (Intel)
-          python -m PyInstaller \
-            --onefile \
-            --name xfactor-backend-x86_64-apple-darwin \
-            --distpath src-tauri/binaries \
-            --add-data "../src:src" \
-            --hidden-import ib_insync \
-            --hidden-import ib_insync.client \
-            --hidden-import ib_insync.wrapper \
-            --hidden-import ib_insync.decoder \
-            --hidden-import ib_insync.contract \
-            --hidden-import ib_insync.order \
-            --hidden-import ib_insync.ticker \
-            --hidden-import ib_insync.objects \
-            --collect-all ib_insync \
-            ../src/api/main.py
-          
-          chmod +x src-tauri/binaries/xfactor-backend-x86_64-apple-darwin
+          cd frontend
+          npm run build
 
       - name: Install Tauri dependencies
         run: |
@@ -72,11 +77,10 @@ jobs:
 
       - name: Build Tauri app for x86_64
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          MACOSX_DEPLOYMENT_TARGET: '10.15'
         run: |
           cd desktop
-          npm run tauri build -- --target x86_64-apple-darwin
+          npm run tauri build -- --target x86_64-apple-darwin --bundles app
 
       - name: Create DMG
         run: |
