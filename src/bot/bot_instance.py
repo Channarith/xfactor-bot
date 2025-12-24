@@ -532,18 +532,130 @@ class BotInstance:
                 await asyncio.sleep(5)  # Brief pause on error
     
     async def _trading_cycle(self) -> None:
-        """Execute one trading cycle."""
-        # This is where the actual trading logic would run
-        # For now, it's a placeholder that would integrate with:
-        # - Market data
-        # - Strategy analysis
-        # - Signal generation
-        # - Order execution
+        """Execute one trading cycle - analyze signals and execute trades."""
+        from src.brokers.registry import get_broker_registry
+        from src.brokers.base import OrderSide, OrderType
+        
+        registry = get_broker_registry()
+        
+        # Check if any broker is connected
+        if not registry.connected_brokers:
+            # No broker connected - log once per minute
+            if not hasattr(self, '_last_no_broker_log') or \
+               (datetime.utcnow() - self._last_no_broker_log).seconds >= 60:
+                logger.debug(f"Bot {self.id}: No broker connected, skipping trade execution")
+                self._last_no_broker_log = datetime.utcnow()
+            return
+        
+        # Get the default broker for trading
+        broker = registry.get_default_broker()
+        if not broker or not broker.is_connected:
+            return
+        
+        # Get account info for position sizing
+        try:
+            accounts = await broker.get_accounts()
+            if not accounts:
+                return
+            account = accounts[0]
+            account_id = account.account_id
+            buying_power = account.buying_power
+        except Exception as e:
+            logger.error(f"Bot {self.id}: Failed to get account info: {e}")
+            return
+        
+        # Skip if in paper trading mode and not connected to paper account
+        if self.config.use_paper_trading:
+            logger.debug(f"Bot {self.id}: Paper trading mode - signals will be logged but not executed")
         
         for symbol in self.config.symbols:
-            # Simulate signal generation
-            # In production, this would call the actual strategies
-            pass
+            try:
+                # Get current position for this symbol
+                current_position = await broker.get_position(account_id, symbol)
+                current_qty = current_position.quantity if current_position else 0
+                
+                # Generate signal (simplified - in production would use full strategy analysis)
+                signal = await self._generate_signal(symbol)
+                
+                if not signal:
+                    continue
+                
+                self.stats.signals_generated += 1
+                self._emit("on_signal", signal)
+                
+                # Determine action based on signal
+                if signal.get('type') in ('strong_buy', 'buy') and current_qty <= 0:
+                    # Calculate position size
+                    price = signal.get('price', 100)
+                    max_position = min(
+                        self.config.max_position_size,
+                        buying_power * 0.1  # Max 10% of buying power per position
+                    )
+                    quantity = int(max_position / price)
+                    
+                    if quantity > 0 and not self.config.use_paper_trading:
+                        # Execute buy order
+                        try:
+                            order = await broker.submit_order(
+                                account_id=account_id,
+                                symbol=symbol,
+                                side=OrderSide.BUY,
+                                quantity=quantity,
+                                order_type=OrderType.MARKET,
+                            )
+                            self.stats.trades_today += 1
+                            logger.info(f"Bot {self.id}: BUY {quantity} {symbol} @ market - Order {order.order_id}")
+                            self._emit("on_trade", {"symbol": symbol, "side": "buy", "quantity": quantity})
+                        except Exception as e:
+                            logger.error(f"Bot {self.id}: Order failed for {symbol}: {e}")
+                            self.stats.errors_count += 1
+                    else:
+                        logger.info(f"Bot {self.id}: Signal BUY {symbol} (paper mode, not executed)")
+                
+                elif signal.get('type') in ('strong_sell', 'sell') and current_qty > 0:
+                    # Sell existing position
+                    if not self.config.use_paper_trading:
+                        try:
+                            order = await broker.submit_order(
+                                account_id=account_id,
+                                symbol=symbol,
+                                side=OrderSide.SELL,
+                                quantity=abs(current_qty),
+                                order_type=OrderType.MARKET,
+                            )
+                            self.stats.trades_today += 1
+                            logger.info(f"Bot {self.id}: SELL {abs(current_qty)} {symbol} @ market - Order {order.order_id}")
+                            self._emit("on_trade", {"symbol": symbol, "side": "sell", "quantity": abs(current_qty)})
+                        except Exception as e:
+                            logger.error(f"Bot {self.id}: Order failed for {symbol}: {e}")
+                            self.stats.errors_count += 1
+                    else:
+                        logger.info(f"Bot {self.id}: Signal SELL {symbol} (paper mode, not executed)")
+                
+            except Exception as e:
+                logger.error(f"Bot {self.id}: Error processing {symbol}: {e}")
+                self.stats.errors_count += 1
+    
+    async def _generate_signal(self, symbol: str) -> Optional[dict]:
+        """
+        Generate trading signal for a symbol.
+        
+        In production, this would run the configured strategies.
+        For now, returns None (no signal) to prevent accidental trades.
+        """
+        # TODO: Integrate with actual strategy analysis
+        # This is intentionally returning None to prevent accidental trades
+        # until full strategy integration is implemented
+        #
+        # Example of what this would return:
+        # return {
+        #     'type': 'buy',  # 'strong_buy', 'buy', 'hold', 'sell', 'strong_sell'
+        #     'symbol': symbol,
+        #     'price': 150.0,
+        #     'confidence': 0.75,
+        #     'strategy': 'momentum',
+        # }
+        return None
     
     def update_config(self, updates: dict) -> None:
         """Update bot configuration (while running or stopped)."""

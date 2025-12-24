@@ -16,6 +16,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Exposure Tracking**: `/api/positions/exposure` calculates actual long/short exposure
 - **Symbol Lookup**: `/api/positions/{symbol}` finds positions across all connected brokers
 
+### 🤖 Bot Trading Execution
+
+#### Bots Now Execute Real Trades
+- **Broker Integration**: Bots now connect to the broker registry for order execution
+- **Position Awareness**: Checks current positions before placing orders
+- **Position Sizing**: Calculates order quantity based on buying power (max 10% per position)
+- **Paper Trading Mode**: Logs signals without executing when `use_paper_trading` is enabled
+- **Trade Callbacks**: Emits `on_trade` events for tracking executed orders
+
+#### Manual Order Endpoint
+- **New API**: `POST /api/integrations/brokers/order` for testing broker connectivity
+- **Order Types**: Supports market, limit, and stop orders
+- **Safety**: Validates broker connection and account before submitting
+
+### 🎨 Dashboard Improvements
+- **P&L Sign**: Shows correct +/- sign for gains and losses
+- **Trend Arrows**: Green up arrow for gains, red down for losses
+- **Live Status**: Shows "Live from broker" when connected
+- **Equity Polling**: Chart now refreshes every 30 seconds
+
 #### Legacy Mac IBKR Support
 - **Fresh Backend Build**: Legacy macOS Intel build now compiles backend with `ib_insync` included
 - **Removed Outdated Binary**: No longer downloads old v0.9.7-legacy-backend that lacked IBKR support

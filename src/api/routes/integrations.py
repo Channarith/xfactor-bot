@@ -201,6 +201,95 @@ async def get_total_portfolio() -> Dict[str, Any]:
     }
 
 
+class OrderRequest(BaseModel):
+    """Order request model."""
+    broker_type: str
+    symbol: str
+    side: str  # "buy" or "sell"
+    quantity: float
+    order_type: str = "market"  # "market", "limit", "stop"
+    limit_price: Optional[float] = None
+    stop_price: Optional[float] = None
+
+
+@router.post("/brokers/order")
+async def submit_order(request: OrderRequest) -> Dict[str, Any]:
+    """
+    Submit an order through a connected broker.
+    
+    This endpoint allows testing broker connectivity with real orders.
+    Use with caution - this will execute real trades if connected to a live account!
+    """
+    from src.brokers.base import OrderSide, OrderType
+    
+    registry = get_broker_registry()
+    
+    # Validate broker type
+    try:
+        bt = BrokerType(request.broker_type.lower())
+    except ValueError:
+        raise HTTPException(400, f"Unknown broker type: {request.broker_type}")
+    
+    # Get broker
+    broker = registry.get_broker(bt)
+    if not broker:
+        raise HTTPException(404, f"Broker not connected: {request.broker_type}")
+    
+    if not broker.is_connected:
+        raise HTTPException(400, f"Broker {request.broker_type} is not connected")
+    
+    # Get account
+    try:
+        accounts = await broker.get_accounts()
+        if not accounts:
+            raise HTTPException(400, "No accounts available")
+        account_id = accounts[0].account_id
+    except Exception as e:
+        raise HTTPException(500, f"Failed to get account: {e}")
+    
+    # Map order side
+    try:
+        side = OrderSide(request.side.upper())
+    except ValueError:
+        raise HTTPException(400, f"Invalid side: {request.side}. Use 'buy' or 'sell'")
+    
+    # Map order type
+    order_type_map = {
+        "market": OrderType.MARKET,
+        "limit": OrderType.LIMIT,
+        "stop": OrderType.STOP,
+    }
+    order_type = order_type_map.get(request.order_type.lower())
+    if not order_type:
+        raise HTTPException(400, f"Invalid order type: {request.order_type}")
+    
+    # Submit order
+    try:
+        order = await broker.submit_order(
+            account_id=account_id,
+            symbol=request.symbol.upper(),
+            side=side,
+            quantity=request.quantity,
+            order_type=order_type,
+            limit_price=request.limit_price,
+            stop_price=request.stop_price,
+        )
+        
+        return {
+            "status": "success",
+            "order_id": order.order_id,
+            "symbol": order.symbol,
+            "side": order.side.value,
+            "quantity": order.quantity,
+            "order_type": order.order_type.value,
+            "order_status": order.status.value,
+            "broker": request.broker_type,
+        }
+    except Exception as e:
+        logger.error(f"Order submission failed: {e}")
+        raise HTTPException(500, f"Order failed: {str(e)}")
+
+
 # =========================================================================
 # Data Source Routes
 # =========================================================================
