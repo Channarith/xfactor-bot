@@ -115,7 +115,30 @@ async def connect_broker(request: BrokerConnectRequest) -> Dict[str, Any]:
     success, error_msg = await registry.connect_broker(broker_type, **config)
     
     if success:
-        return {"status": "connected", "broker": broker_type.value}
+        # Fetch account data after successful connection
+        response_data = {
+            "status": "connected", 
+            "broker": broker_type.value,
+            "account_id": config.get("account_id"),
+            "account_type": "paper" if config.get("paper") else "live",
+        }
+        
+        # Try to get real account data
+        try:
+            broker = registry.get_broker(broker_type)
+            if broker and broker.is_connected:
+                accounts = await broker.get_accounts()
+                if accounts:
+                    account = accounts[0]
+                    response_data["account_id"] = account.account_id
+                    response_data["portfolio_value"] = account.equity
+                    response_data["buying_power"] = account.buying_power
+                    response_data["cash"] = account.cash
+                    logger.info(f"Account data: equity={account.equity}, buying_power={account.buying_power}")
+        except Exception as e:
+            logger.warning(f"Could not fetch account data after connect: {e}")
+        
+        return response_data
     else:
         raise HTTPException(500, error_msg or f"Failed to connect to {broker_type.value}")
 
@@ -143,6 +166,42 @@ async def disconnect_broker(broker_type: str) -> Dict[str, Any]:
     
     await registry.disconnect_broker(bt)
     return {"status": "disconnected", "broker": broker_type}
+
+
+@router.get("/broker/status")
+async def get_broker_status() -> Dict[str, Any]:
+    """Get the current broker connection status."""
+    registry = get_broker_registry()
+    
+    if not registry.connected_brokers:
+        return {"connected": False}
+    
+    # Get the first connected broker
+    broker_type = list(registry.connected_brokers)[0]
+    broker = registry.get_broker(broker_type)
+    
+    if not broker or not broker.is_connected:
+        return {"connected": False}
+    
+    response = {
+        "connected": True,
+        "provider": broker_type.value,
+    }
+    
+    try:
+        accounts = await broker.get_accounts()
+        if accounts:
+            account = accounts[0]
+            response["account_id"] = account.account_id
+            response["account_type"] = account.account_type
+            response["portfolio_value"] = account.equity
+            response["buying_power"] = account.buying_power
+            response["cash"] = account.cash
+            response["last_sync"] = account.last_updated.isoformat() if account.last_updated else None
+    except Exception as e:
+        logger.warning(f"Could not fetch account data for status: {e}")
+    
+    return response
 
 
 @router.get("/brokers/{broker_type}/accounts")

@@ -29,8 +29,11 @@ import VideoPlatformsPanel from './VideoPlatformsPanel'
 import BotRiskPanel from './BotRiskPanel'
 import ForexPanel from './ForexPanel'
 import StockAnalyzer from './StockAnalyzer'
+import { useTradingMode } from '../context/TradingModeContext'
 
 export function Dashboard() {
+  const { broker } = useTradingMode()
+  
   // Portfolio data - will be populated when broker is connected
   const [portfolioData, setPortfolioData] = useState({
     totalValue: 0,
@@ -47,23 +50,46 @@ export function Dashboard() {
         const res = await fetch('/api/positions/summary')
         if (res.ok) {
           const data = await res.json()
+          // Use API data if available, otherwise fall back to broker context
+          const totalValue = data.total_value || broker.portfolioValue || 0
+          const dailyPnL = data.daily_pnl || 0
+          
           setPortfolioData({
-            totalValue: data.total_value || 0,
-            dailyPnL: data.daily_pnl || 0,
-            dailyPnLPct: data.total_value > 0 ? (data.daily_pnl / data.total_value) * 100 : 0,
+            totalValue,
+            dailyPnL,
+            dailyPnLPct: totalValue > 0 ? (dailyPnL / totalValue) * 100 : 0,
             openPositions: data.position_count || 0,
             exposure: data.positions_value || 0,
+          })
+        } else if (broker.isConnected && broker.portfolioValue) {
+          // Fallback to broker context if API fails
+          setPortfolioData({
+            totalValue: broker.portfolioValue,
+            dailyPnL: 0,
+            dailyPnLPct: 0,
+            openPositions: 0,
+            exposure: 0,
           })
         }
       } catch (e) {
         console.error('Failed to fetch portfolio:', e)
+        // Fallback to broker context on error
+        if (broker.isConnected && broker.portfolioValue) {
+          setPortfolioData({
+            totalValue: broker.portfolioValue,
+            dailyPnL: 0,
+            dailyPnLPct: 0,
+            openPositions: 0,
+            exposure: 0,
+          })
+        }
       }
     }
     
     fetchPortfolio()
     const interval = setInterval(fetchPortfolio, 15000)
     return () => clearInterval(interval)
-  }, [])
+  }, [broker.isConnected, broker.portfolioValue])
 
   return (
     <div className="space-y-4">
