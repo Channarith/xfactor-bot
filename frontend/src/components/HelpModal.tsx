@@ -104,7 +104,7 @@ const quickStart = [
 
 const changelog = [
   {
-    version: '1.1.2',
+    version: '1.1.3',
     date: 'December 22, 2025',
     changes: [
       '🔌 Broker Integration Improvements',

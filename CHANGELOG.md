@@ -5,6 +5,23 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2025-12-24
+
+### 📊 Live Portfolio Data
+
+#### Positions API Connected to Brokers
+- **Real-time Positions**: `/api/positions/` now fetches live positions from connected brokers
+- **Portfolio Summary**: `/api/positions/summary` aggregates equity, cash, buying power from all brokers
+- **Equity History**: `/api/positions/equity-history` returns current equity for chart display
+- **Exposure Tracking**: `/api/positions/exposure` calculates actual long/short exposure
+- **Symbol Lookup**: `/api/positions/{symbol}` finds positions across all connected brokers
+
+#### Legacy Mac IBKR Support
+- **Fresh Backend Build**: Legacy macOS Intel build now compiles backend with `ib_insync` included
+- **Removed Outdated Binary**: No longer downloads old v0.9.7-legacy-backend that lacked IBKR support
+
+---
+
 ## [1.1.2] - 2025-12-24
 
 ### 🔌 Broker Integration Improvements
