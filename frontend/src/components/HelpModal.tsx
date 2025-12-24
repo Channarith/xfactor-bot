@@ -104,6 +104,18 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '1.1.6',
+    date: 'December 24, 2025',
+    changes: [
+      '🔧 Dashboard & Equity Chart Fixes',
+      'Portfolio Value now uses broker context as fallback',
+      'Equity Chart generates data from broker when API fails',
+      'Connect endpoint returns account data (portfolio_value)',
+      'Added /api/integrations/broker/status endpoint',
+      'Dashboard refreshes correctly on broker connection'
+    ]
+  },
+  {
     version: '1.1.5',
     date: 'December 24, 2025',
     changes: [
