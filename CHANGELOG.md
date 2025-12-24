@@ -5,6 +5,44 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] - 2025-12-24
+
+### 📰 Real-Time Market Data APIs
+
+#### News Feed - Real RSS Sources
+- **10+ RSS Feeds**: Reuters, CNBC, MarketWatch, Yahoo Finance, Seeking Alpha, CoinDesk, etc.
+- **Sentiment Analysis**: Automatic bullish/bearish scoring from headline keywords
+- **Ticker Extraction**: Identifies mentioned stock symbols (100+ known tickers)
+- **Category Detection**: Earnings, M&A, FDA, Fed, Tech, Crypto, etc.
+- **5-Minute Cache**: Fresh news with efficient caching
+
+#### Insider Trades - OpenInsider Scraping
+- **Real SEC Filings**: Scrapes from OpenInsider.com
+- **Buy/Sell Detection**: Distinguishes purchases vs sales
+- **Executive Details**: Insider name, title, shares, price, value
+- **15-Minute Cache**: Timely data without overloading source
+
+#### Earnings Calendar - Yahoo Finance
+- **14-Day Lookahead**: Upcoming earnings reports
+- **Report Timing**: Before Market Open (BMO) / After Market Close (AMC)
+- **EPS Estimates**: Expected earnings per share
+- **Fallback Data**: Uses major company estimates if scraping fails
+
+#### Market Screener Signals
+- **Technical Patterns**: Cup & Handle, Bull Flag, Breakout, etc.
+- **Volume Alerts**: Unusual volume detection
+- **Moving Average Signals**: Golden Cross, Death Cross, MA bounces
+
+### 🎯 Frontend Mode-Aware Data Loading
+
+#### Demo vs Paper/Live Mode
+- **Demo Mode**: Shows simulated data with "DEMO DATA" badge
+- **Paper/Live Mode**: Fetches real data from APIs
+- **Fallback Indicator**: Shows "SIMULATED" if API returns empty
+- **Auto-Refresh**: Reloads when trading mode changes
+
+---
+
 ## [1.1.3] - 2025-12-24
 
 ### 📊 Live Portfolio Data

@@ -141,7 +141,7 @@ def create_app() -> FastAPI:
     )
     
     # Include routers
-    from src.api.routes import config, positions, orders, risk, news, admin, bots, ai, integrations, commodities, crypto, fees, symbols, seasonal, optimizer, performance, agentic_tuning, tradingview, strategies, forex, forecasting, bot_risk, video_sentiment, stock_analysis, compliance
+    from src.api.routes import config, positions, orders, risk, news, admin, bots, ai, integrations, commodities, crypto, fees, symbols, seasonal, optimizer, performance, agentic_tuning, tradingview, strategies, forex, forecasting, bot_risk, video_sentiment, stock_analysis, compliance, market
     
     app.include_router(config.router, prefix="/api/config", tags=["Config"])
     app.include_router(positions.router, prefix="/api/positions", tags=["Positions"])
@@ -167,6 +167,7 @@ def create_app() -> FastAPI:
     app.include_router(bot_risk.router, tags=["Bot Risk Management"])  # Risk scoring and alerts for bots
     app.include_router(video_sentiment.router, tags=["Video Platforms"])  # YouTube, TikTok, Instagram analysis
     app.include_router(stock_analysis.router, prefix="/api", tags=["Stock Analysis"])  # Comprehensive stock analysis with overlays
+    app.include_router(market.router, prefix="/api/market", tags=["Market Data"])  # Insider trades, earnings, screener signals
     app.include_router(compliance.router, prefix="/api", tags=["Compliance"])  # Trading compliance (PDT, Good Faith, etc.)
     
     @app.get("/api")
