@@ -191,6 +191,9 @@ export function EquityChart({ height = 280 }: EquityChartProps) {
     }
     
     fetchEquityData()
+    // Refresh every 30 seconds to get updated equity data
+    const interval = setInterval(fetchEquityData, 30000)
+    return () => clearInterval(interval)
   }, [])
 
   // Update chart when data or range changes

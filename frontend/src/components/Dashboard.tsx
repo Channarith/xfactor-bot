@@ -72,19 +72,19 @@ export function Dashboard() {
         <PortfolioCard
           title="Portfolio Value"
           value={`$${portfolioData.totalValue.toLocaleString()}`}
-          subtitle="+2.4% MTD"
-          trend="up"
+          subtitle={portfolioData.totalValue > 0 ? "Live from broker" : "Connect broker to see data"}
+          trend={portfolioData.totalValue > 0 ? "up" : "neutral"}
         />
         <PortfolioCard
           title="Today's P&L"
-          value={`+$${portfolioData.dailyPnL.toLocaleString()}`}
-          subtitle={`+${portfolioData.dailyPnLPct}%`}
-          trend="up"
+          value={`${portfolioData.dailyPnL >= 0 ? '+' : ''}$${portfolioData.dailyPnL.toLocaleString()}`}
+          subtitle={`${portfolioData.dailyPnLPct >= 0 ? '+' : ''}${portfolioData.dailyPnLPct.toFixed(2)}%`}
+          trend={portfolioData.dailyPnL >= 0 ? "up" : "down"}
         />
         <PortfolioCard
           title="Open Positions"
           value={portfolioData.openPositions.toString()}
-          subtitle={`$${(portfolioData.exposure / 1000).toFixed(0)}K exposure`}
+          subtitle={portfolioData.exposure > 0 ? `$${(portfolioData.exposure / 1000).toFixed(1)}K exposure` : "No positions"}
           trend="neutral"
         />
       </div>
