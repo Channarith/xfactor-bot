@@ -18,6 +18,13 @@ from loguru import logger
 _bot_activity_log: deque = deque(maxlen=1000)
 _activity_lock = threading.Lock()
 
+# Shared market data cache to prevent yfinance thread exhaustion
+# Each entry: {"data": DataFrame, "timestamp": datetime, "error": Optional[str]}
+_market_data_cache: dict = {}
+_market_data_lock = threading.Lock()
+_market_data_cache_ttl = 60  # seconds - how long to cache market data
+_yfinance_semaphore: Optional[asyncio.Semaphore] = None  # Limit concurrent yfinance calls
+
 
 def get_bot_activity_log(bot_id: Optional[str] = None, limit: int = 100) -> list[dict]:
     """Get bot activity log entries, optionally filtered by bot_id."""
@@ -805,18 +812,17 @@ class BotInstance:
         
         Returns a signal if indicators align, None otherwise.
         """
+        global _yfinance_semaphore
+        
         try:
-            # Fetch market data using yfinance
-            import yfinance as yf
+            # Get market data with caching to prevent thread exhaustion
+            hist = await self._get_cached_market_data(symbol)
             
-            ticker = yf.Ticker(symbol)
-            # Get 60 days of daily data for indicator calculations
-            hist = ticker.history(period="60d", interval="1d")
-            
-            if hist.empty or len(hist) < 30:
-                self._log_activity("insufficient_data", f"{symbol}: Not enough historical data ({len(hist)} bars)", {
+            if hist is None or hist.empty or len(hist) < 30:
+                bars = len(hist) if hist is not None and not hist.empty else 0
+                self._log_activity("insufficient_data", f"{symbol}: Not enough historical data ({bars} bars)", {
                     "symbol": symbol,
-                    "bars": len(hist) if not hist.empty else 0,
+                    "bars": bars,
                 })
                 return None
             
@@ -850,6 +856,82 @@ class BotInstance:
                 "error": str(e),
             })
             return None
+    
+    async def _get_cached_market_data(self, symbol: str) -> Optional[pd.DataFrame]:
+        """
+        Get market data with caching to prevent yfinance thread exhaustion.
+        
+        Multiple bots requesting the same symbol will share cached data.
+        """
+        global _yfinance_semaphore
+        
+        cache_key = symbol.upper()
+        now = datetime.now()
+        
+        # Check cache first (thread-safe)
+        with _market_data_lock:
+            if cache_key in _market_data_cache:
+                entry = _market_data_cache[cache_key]
+                age = (now - entry["timestamp"]).total_seconds()
+                if age < _market_data_cache_ttl:
+                    if entry.get("error"):
+                        # Don't retry too quickly for errors
+                        return None
+                    return entry["data"]
+        
+        # Initialize semaphore if needed (limit concurrent yfinance calls)
+        if _yfinance_semaphore is None:
+            _yfinance_semaphore = asyncio.Semaphore(3)  # Max 3 concurrent yfinance requests
+        
+        # Fetch with semaphore to limit concurrency
+        async with _yfinance_semaphore:
+            # Double-check cache after acquiring semaphore
+            with _market_data_lock:
+                if cache_key in _market_data_cache:
+                    entry = _market_data_cache[cache_key]
+                    age = (now - entry["timestamp"]).total_seconds()
+                    if age < _market_data_cache_ttl:
+                        return entry.get("data")
+            
+            try:
+                import yfinance as yf
+                
+                # Run in executor to not block event loop
+                loop = asyncio.get_event_loop()
+                hist = await asyncio.wait_for(
+                    loop.run_in_executor(None, lambda: yf.Ticker(symbol).history(period="60d", interval="1d")),
+                    timeout=15  # 15 second timeout
+                )
+                
+                # Cache the result
+                with _market_data_lock:
+                    _market_data_cache[cache_key] = {
+                        "data": hist if not hist.empty else None,
+                        "timestamp": datetime.now(),
+                        "error": None,
+                    }
+                
+                return hist if not hist.empty else None
+                
+            except asyncio.TimeoutError:
+                logger.warning(f"yfinance timeout for {symbol}")
+                with _market_data_lock:
+                    _market_data_cache[cache_key] = {
+                        "data": None,
+                        "timestamp": datetime.now(),
+                        "error": "timeout",
+                    }
+                return None
+                
+            except Exception as e:
+                logger.warning(f"yfinance error for {symbol}: {e}")
+                with _market_data_lock:
+                    _market_data_cache[cache_key] = {
+                        "data": None,
+                        "timestamp": datetime.now(),
+                        "error": str(e),
+                    }
+                return None
     
     def _calculate_indicators(self, data: pd.DataFrame) -> Optional[dict]:
         """Calculate technical indicators from OHLCV data."""
