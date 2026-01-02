@@ -91,7 +91,7 @@ jobs:
           sleep 5
           # Retry up to 3 times
           for i in 1 2 3; do
-            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_1.1.7_aarch64.dmg" && break
+            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_1.1.8_aarch64.dmg" && break
             echo "Attempt $i failed, retrying in 5s..."
             sleep 5
           done
@@ -181,7 +181,7 @@ jobs:
           sleep 5
           # Retry up to 3 times
           for i in 1 2 3; do
-            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_1.1.7_x64_legacy.dmg" && break
+            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_1.1.8_x64_legacy.dmg" && break
             echo "Attempt $i failed, retrying in 5s..."
             sleep 5
           done
@@ -273,7 +273,7 @@ jobs:
           sleep 5
           # Retry up to 3 times
           for i in 1 2 3; do
-            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_1.1.7_x64_modern.dmg" && break
+            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_1.1.8_x64_modern.dmg" && break
             echo "Attempt $i failed, retrying in 5s..."
             sleep 5
           done
@@ -434,7 +434,8 @@ jobs:
     name: Create GitHub Release
     needs: [build-macos-arm, build-macos-intel-legacy, build-macos-intel-modern, build-windows, build-linux]
     runs-on: ubuntu-latest
-    if: always() && startsWith(github.ref, 'refs/tags/') && needs.build-macos-arm.result == 'success' && needs.build-macos-intel-legacy.result == 'success' && needs.build-windows.result == 'success'
+    # Run for both tag pushes AND manual workflow_dispatch triggers
+    if: always() && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') && needs.build-macos-arm.result == 'success' && needs.build-macos-intel-legacy.result == 'success' && needs.build-windows.result == 'success'
     steps:
       - name: Download macOS ARM64 artifact
         uses: actions/download-artifact@v4
@@ -474,6 +475,9 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          # Use input version for workflow_dispatch, or tag for tag push
+          tag_name: ${{ github.event.inputs.version || github.ref_name }}
+          name: "XFactor Bot ${{ github.event.inputs.version || github.ref_name }}"
           files: |
             artifacts/**/*.dmg
             artifacts/**/*.msi
