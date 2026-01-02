@@ -104,6 +104,53 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '1.1.8',
+    date: 'January 2, 2026',
+    changes: [
+      '🦙 Alpaca Connection Fix',
+      'Fixed API key/secret mapping between frontend and backend',
+      'Added api_secret alias for backwards compatibility',
+      'Better credential validation with descriptive error messages',
+      '💾 Saved Broker Connections',
+      'Save broker credentials securely after successful connection',
+      'Auto-connect to saved brokers on app startup',
+      'Encrypted credential storage with machine-specific key',
+      '/api/integrations/brokers/saved - List saved connections',
+      '/api/integrations/brokers/saved/connect - Quick reconnect',
+      '📊 Account Limit Validation',
+      'Validates expected account limits on connection',
+      'Logs equity, cash, and buying power on connect',
+      'Clarified Alpaca paper: $100k equity / $200k buying power (2x margin)',
+      '🔄 Auto-Reconnection System',
+      'Background health monitoring for all connected brokers',
+      'Automatic reconnection with exponential backoff',
+      'Handles TWS daily restarts gracefully',
+      'Connection event history for auditing'
+    ]
+  },
+  {
+    version: '1.1.7',
+    date: 'January 2, 2026',
+    changes: [
+      '🤖 Bot Trading Implementation Complete',
+      'Implemented real signal generation using technical analysis',
+      'RSI, MACD, Moving Average, Bollinger Bands indicators',
+      'Multi-indicator confluence scoring for trade decisions',
+      'Paper AND Live trading now execute real orders',
+      '🔍 Comprehensive Bot Debug System',
+      '/api/bots/debug - Full diagnostics for all bots',
+      '/api/bots/activity - Activity log with filtering',
+      '/api/bots/{id}/debug - Single bot diagnostics',
+      '/api/bots/{id}/activity - Per-bot activity log',
+      'Real-time logging of cycles, signals, orders, errors',
+      'Issue detection: missing broker, no signals, order rejections',
+      '📊 Enhanced Bot Statistics',
+      'Cycles completed, signals generated, orders submitted/filled/rejected',
+      'Last cycle time, last trade time tracking',
+      'Symbols analyzed per cycle metrics'
+    ]
+  },
+  {
     version: '1.1.6',
     date: 'December 24, 2025',
     changes: [

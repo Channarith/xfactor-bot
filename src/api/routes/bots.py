@@ -6,13 +6,15 @@ parameterized routes (like /{bot_id}) to prevent path parameter from capturing
 the static path segments.
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from datetime import datetime
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
 from typing import Optional
 
+from loguru import logger
 from src.api.auth import AdminUser, get_admin_user
 from src.bot.bot_manager import get_bot_manager
-from src.bot.bot_instance import BotConfig
+from src.bot.bot_instance import BotConfig, get_bot_activity_log, clear_bot_activity_log
 
 router = APIRouter()
 
@@ -111,6 +113,95 @@ async def get_bots_summary():
         "running": manager.running_count,
         "max": manager.MAX_BOTS,
     }
+
+
+@router.get("/debug")
+async def get_bot_debug_info():
+    """
+    Get debug information for all bots including activity logs.
+    Useful for troubleshooting why bots are not trading.
+    """
+    manager = get_bot_manager()
+    bots = manager.get_all_bots()
+    
+    from src.brokers.registry import get_broker_registry
+    registry = get_broker_registry()
+    
+    debug_info = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "summary": {
+            "total_bots": manager.bot_count,
+            "running_bots": manager.running_count,
+            "max_bots": manager.MAX_BOTS,
+        },
+        "broker_status": {
+            "connected_brokers": list(registry.connected_brokers.keys()) if registry.connected_brokers else [],
+            "default_broker": registry.get_default_broker().name if registry.get_default_broker() else None,
+        },
+        "bots": [],
+        "recent_activity": get_bot_activity_log(limit=50),
+    }
+    
+    for bot in bots:
+        status = bot.get_status()
+        bot_debug = {
+            "id": bot.id,
+            "name": bot.config.name,
+            "status": bot.status.value,
+            "paper_trading": bot.config.use_paper_trading,
+            "symbols": bot.config.symbols,
+            "trade_frequency_seconds": bot.config.trade_frequency_seconds,
+            "stats": status.get("stats", {}),
+            "issues": [],
+        }
+        
+        # Identify potential issues
+        if bot.status.value == "running":
+            if bot.stats.cycles_completed == 0:
+                bot_debug["issues"].append("Bot is running but has not completed any trading cycles")
+            if bot.stats.signals_generated == 0 and bot.stats.cycles_completed > 5:
+                bot_debug["issues"].append("Bot has run multiple cycles but generated no signals")
+            if bot.stats.orders_submitted == 0 and bot.stats.signals_generated > 0:
+                bot_debug["issues"].append("Signals generated but no orders submitted")
+            if bot.stats.orders_rejected > 0:
+                bot_debug["issues"].append(f"{bot.stats.orders_rejected} orders rejected")
+            if not registry.connected_brokers:
+                bot_debug["issues"].append("No broker connected - trades cannot be executed")
+        
+        debug_info["bots"].append(bot_debug)
+    
+    return debug_info
+
+
+@router.get("/activity")
+async def get_activity_log(
+    bot_id: Optional[str] = None,
+    limit: int = 100,
+):
+    """
+    Get bot activity log entries.
+    
+    Args:
+        bot_id: Optional bot ID to filter by
+        limit: Maximum number of entries (default 100, max 500)
+    """
+    from datetime import datetime
+    
+    limit = min(limit, 500)
+    entries = get_bot_activity_log(bot_id, limit)
+    
+    return {
+        "entries": entries,
+        "count": len(entries),
+        "filter": {"bot_id": bot_id} if bot_id else None,
+    }
+
+
+@router.delete("/activity")
+async def clear_activity_log(admin: AdminUser = Depends(get_admin_user)):
+    """Clear the activity log (requires admin)."""
+    clear_bot_activity_log()
+    return {"success": True, "message": "Activity log cleared"}
 
 
 @router.get("/strategies")
@@ -561,3 +652,104 @@ async def resume_bot(
         raise HTTPException(status_code=400, detail="Failed to resume bot")
     
     return {"success": True, "status": bot.status.value}
+
+
+@router.get("/{bot_id}/activity")
+async def get_bot_activity(
+    bot_id: str,
+    limit: int = Query(50, ge=1, le=500),
+):
+    """Get activity log for a specific bot."""
+    manager = get_bot_manager()
+    bot = manager.get_bot(bot_id)
+    
+    if not bot:
+        raise HTTPException(status_code=404, detail="Bot not found")
+    
+    entries = bot.get_activity_log(limit)
+    
+    return {
+        "bot_id": bot_id,
+        "bot_name": bot.config.name,
+        "status": bot.status.value,
+        "entries": entries,
+        "count": len(entries),
+    }
+
+
+@router.get("/{bot_id}/debug")
+async def get_single_bot_debug(bot_id: str):
+    """Get detailed debug information for a specific bot."""
+    manager = get_bot_manager()
+    bot = manager.get_bot(bot_id)
+    
+    if not bot:
+        raise HTTPException(status_code=404, detail="Bot not found")
+    
+    from src.brokers.registry import get_broker_registry
+    registry = get_broker_registry()
+    
+    # Get full status
+    status = bot.get_status()
+    
+    # Check for issues
+    issues = []
+    warnings = []
+    
+    if bot.status.value == "created":
+        issues.append("Bot has not been started yet")
+    elif bot.status.value == "stopped":
+        issues.append("Bot is stopped")
+    elif bot.status.value == "paused":
+        warnings.append("Bot is paused")
+    elif bot.status.value == "running":
+        if not registry.connected_brokers:
+            issues.append("No broker connected - trades cannot execute")
+        if bot.stats.cycles_completed == 0:
+            warnings.append("Bot has not completed any cycles yet")
+        elif bot.stats.signals_generated == 0:
+            warnings.append(f"No signals generated in {bot.stats.cycles_completed} cycles")
+        if bot.stats.errors_count > 0:
+            warnings.append(f"{bot.stats.errors_count} errors occurred")
+    
+    # Get broker info
+    broker_info = None
+    if registry.connected_brokers:
+        broker = registry.get_default_broker()
+        if broker:
+            broker_info = {
+                "name": broker.name,
+                "connected": broker.is_connected,
+                "broker_type": type(broker).__name__,
+            }
+    
+    return {
+        "timestamp": datetime.utcnow().isoformat(),
+        "bot": status,
+        "broker": broker_info,
+        "issues": issues,
+        "warnings": warnings,
+        "recent_activity": bot.get_activity_log(20),
+        "diagnostics": {
+            "cycles_per_hour": round(bot.stats.cycles_completed / max(1, bot.uptime / 3600), 2) if bot.uptime > 0 else 0,
+            "signal_rate": f"{bot.stats.signals_generated}/{bot.stats.symbols_analyzed} symbols" if bot.stats.symbols_analyzed > 0 else "N/A",
+            "trade_success_rate": f"{bot.stats.orders_filled}/{bot.stats.orders_submitted}" if bot.stats.orders_submitted > 0 else "N/A",
+            "uptime_formatted": format_duration(bot.uptime),
+        }
+    }
+
+
+def format_duration(seconds: float) -> str:
+    """Format duration in seconds to human-readable string."""
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    elif seconds < 3600:
+        return f"{int(seconds / 60)}m {int(seconds % 60)}s"
+    elif seconds < 86400:
+        hours = int(seconds / 3600)
+        minutes = int((seconds % 3600) / 60)
+        return f"{hours}h {minutes}m"
+    else:
+        days = int(seconds / 86400)
+        hours = int((seconds % 86400) / 3600)
+        return f"{days}d {hours}h"

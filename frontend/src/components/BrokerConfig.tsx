@@ -87,7 +87,7 @@ export function BrokerConfig() {
       description: 'Commission-free trading API for stocks and crypto',
       features: ['Stocks', 'Crypto', 'Paper Trading'],
       minDeposit: '$0 (Paper) / $1 (Live)',
-      paperInfo: '$100,000 simulated cash for paper trading',
+      paperInfo: '$100,000 equity ($200k buying power with 2x margin)',
       authType: 'apikey' as const,
       authDescription: 'Requires API keys from Alpaca dashboard',
     },
@@ -195,7 +195,7 @@ export function BrokerConfig() {
       
       if (selectedBroker === 'alpaca') {
         params.api_key = formData.apiKey
-        params.api_secret = formData.apiSecret
+        params.secret_key = formData.apiSecret  // Backend expects 'secret_key'
       } else if (selectedBroker === 'schwab') {
         params.client_id = formData.apiKey
         params.client_secret = formData.apiSecret
@@ -636,7 +636,7 @@ export function BrokerConfig() {
                       <p className="text-muted-foreground mt-1">
                         {selectedBroker === 'ibkr' 
                           ? <>IBKR provides <strong>$1,000,000</strong> in simulated cash. Port 7497 is used for paper trading.</>
-                          : <>Alpaca provides <strong>$100,000</strong> in simulated cash for paper trading.</>
+                          : <>Alpaca provides <strong>$100,000 equity</strong> with <strong>$200,000 buying power</strong> (2x margin) for paper trading.</>
                         }
                       </p>
                     </div>
@@ -852,7 +852,7 @@ export function BrokerConfig() {
                     className="rounded"
                   />
                   <label htmlFor="alpaca-paper" className="text-sm">
-                    Use Paper Trading ($100,000 simulated)
+                    Use Paper Trading ($100k equity / $200k buying power)
                   </label>
                 </div>
               </div>

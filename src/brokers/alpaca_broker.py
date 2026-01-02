@@ -4,14 +4,24 @@ Alpaca Broker Integration.
 Alpaca provides:
 - Commission-free trading
 - Excellent REST and WebSocket APIs
-- Paper trading environment
+- Paper trading environment (always online, no daily restarts)
 - Fractional shares
 - Extended hours trading
 - Crypto trading
+
+Advantages over IBKR:
+- Cloud-based API (no local software needed)
+- No daily restarts
+- Simpler setup (just API keys)
+- Modern REST API
+
+Get API keys: https://app.alpaca.markets/
 """
 
+import asyncio
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+import httpx
 
 from loguru import logger
 
@@ -38,6 +48,10 @@ class AlpacaBroker(BaseBroker):
     BASE_URL_LIVE = "https://api.alpaca.markets"
     DATA_URL = "https://data.alpaca.markets"
     
+    # Timeouts
+    CONNECT_TIMEOUT = 30  # seconds
+    REQUEST_TIMEOUT = 15  # seconds
+    
     def __init__(
         self,
         api_key: str = "",
@@ -53,13 +67,45 @@ class AlpacaBroker(BaseBroker):
         self._client = None
         self._trading_client = None
         self._data_client = None
+        self._error_message: Optional[str] = None
+        
+        # Caching to prevent excessive API calls
+        self._account_cache: Optional[List[AccountInfo]] = None
+        self._account_cache_time: Optional[datetime] = None
+        self._account_cache_ttl = 10  # seconds
+        
+        self._positions_cache: Optional[List[Position]] = None
+        self._positions_cache_time: Optional[datetime] = None
+        self._positions_cache_ttl = 5  # seconds
+        
+        # Connection tracking
+        self._last_successful_call: Optional[datetime] = None
+        self._consecutive_failures = 0
+        self._max_consecutive_failures = 5
+        
+        logger.debug(f"AlpacaBroker initialized: paper={paper}, base_url={self.base_url}")
     
     async def connect(self) -> bool:
-        """Connect to Alpaca API."""
+        """Connect to Alpaca API with timeout handling."""
+        logger.info(f"Connecting to Alpaca {'Paper' if self.paper else 'Live'} trading...")
+        
+        # Validate API keys
+        if not self.api_key or not self.secret_key:
+            self._error_message = "API key and secret key are required"
+            logger.error(self._error_message)
+            return False
+        
+        if len(self.api_key) < 10:
+            self._error_message = "API key appears invalid (too short)"
+            logger.error(self._error_message)
+            return False
+        
         try:
             # Try to import alpaca-py
             from alpaca.trading.client import TradingClient
             from alpaca.data.historical import StockHistoricalDataClient
+            
+            logger.debug("Creating Alpaca trading client...")
             
             self._trading_client = TradingClient(
                 api_key=self.api_key,
@@ -72,17 +118,56 @@ class AlpacaBroker(BaseBroker):
                 secret_key=self.secret_key
             )
             
-            # Test connection by getting account
-            account = self._trading_client.get_account()
+            # Test connection by getting account with timeout
+            logger.debug("Testing connection by fetching account...")
+            
+            try:
+                # Wrap synchronous call in executor with timeout
+                loop = asyncio.get_event_loop()
+                account = await asyncio.wait_for(
+                    loop.run_in_executor(None, self._trading_client.get_account),
+                    timeout=self.CONNECT_TIMEOUT
+                )
+            except asyncio.TimeoutError:
+                self._error_message = f"Connection timed out after {self.CONNECT_TIMEOUT}s"
+                logger.error(self._error_message)
+                return False
+            
             self._connected = True
-            logger.info(f"Connected to Alpaca {'Paper' if self.paper else 'Live'} - Account: {account.account_number}")
+            self._last_successful_call = datetime.now()
+            self._consecutive_failures = 0
+            
+            # Log account details
+            logger.info(f"✅ Connected to Alpaca {'Paper' if self.paper else 'Live'}")
+            logger.info(f"   Account: {account.account_number}")
+            logger.info(f"   Status: {account.status}")
+            logger.info(f"   Equity: ${float(account.equity):,.2f}")
+            logger.info(f"   Buying Power: ${float(account.buying_power):,.2f}")
+            logger.info(f"   Cash: ${float(account.cash):,.2f}")
+            logger.info(f"   PDT: {account.pattern_day_trader}")
+            
             return True
             
-        except ImportError:
-            logger.error("alpaca-py not installed. Run: pip install alpaca-py")
+        except ImportError as e:
+            self._error_message = "alpaca-py not installed. Run: pip install alpaca-py"
+            logger.error(self._error_message)
             return False
         except Exception as e:
-            logger.error(f"Failed to connect to Alpaca: {e}")
+            error_str = str(e)
+            
+            # Parse common errors
+            if "forbidden" in error_str.lower() or "401" in error_str:
+                self._error_message = "Invalid API key or secret. Check your credentials."
+            elif "not found" in error_str.lower() or "404" in error_str:
+                self._error_message = "Account not found. Check your API key."
+            elif "rate limit" in error_str.lower() or "429" in error_str:
+                self._error_message = "Rate limited. Please wait and try again."
+            elif "timeout" in error_str.lower():
+                self._error_message = "Connection timed out. Check your network."
+            else:
+                self._error_message = f"Connection failed: {error_str}"
+            
+            logger.error(f"Failed to connect to Alpaca: {self._error_message}")
             return False
     
     async def disconnect(self) -> None:
@@ -90,26 +175,66 @@ class AlpacaBroker(BaseBroker):
         self._trading_client = None
         self._data_client = None
         self._connected = False
+        self._account_cache = None
+        self._positions_cache = None
         logger.info("Disconnected from Alpaca")
     
     async def health_check(self) -> bool:
-        """Check Alpaca connection health."""
+        """Check Alpaca connection health with detailed logging."""
         if not self._trading_client:
+            logger.debug("Health check failed: No trading client")
             return False
+        
         try:
-            self._trading_client.get_account()
+            loop = asyncio.get_event_loop()
+            account = await asyncio.wait_for(
+                loop.run_in_executor(None, self._trading_client.get_account),
+                timeout=self.REQUEST_TIMEOUT
+            )
+            
+            self._last_successful_call = datetime.now()
+            self._consecutive_failures = 0
+            
+            logger.debug(f"Alpaca health check OK - Account status: {account.status}")
             return True
-        except Exception:
+            
+        except asyncio.TimeoutError:
+            self._consecutive_failures += 1
+            logger.warning(f"Alpaca health check timed out (failures: {self._consecutive_failures})")
+            return self._consecutive_failures < self._max_consecutive_failures
+            
+        except Exception as e:
+            self._consecutive_failures += 1
+            logger.warning(f"Alpaca health check failed: {e} (failures: {self._consecutive_failures})")
             return False
     
     async def get_accounts(self) -> List[AccountInfo]:
-        """Get Alpaca account (single account per API key)."""
+        """Get Alpaca account with caching."""
         if not self._trading_client:
+            logger.warning("get_accounts called but not connected")
             return []
         
+        # Check cache
+        now = datetime.now()
+        if self._account_cache and self._account_cache_time:
+            age = (now - self._account_cache_time).total_seconds()
+            if age < self._account_cache_ttl:
+                logger.debug(f"Using cached account data (age: {age:.1f}s)")
+                return self._account_cache
+        
         try:
-            account = self._trading_client.get_account()
-            return [AccountInfo(
+            logger.debug("Fetching Alpaca account data...")
+            
+            loop = asyncio.get_event_loop()
+            account = await asyncio.wait_for(
+                loop.run_in_executor(None, self._trading_client.get_account),
+                timeout=self.REQUEST_TIMEOUT
+            )
+            
+            self._last_successful_call = datetime.now()
+            self._consecutive_failures = 0
+            
+            result = [AccountInfo(
                 account_id=account.account_number,
                 broker=BrokerType.ALPACA,
                 account_type="margin" if account.multiplier > 1 else "cash",
@@ -124,9 +249,24 @@ class AlpacaBroker(BaseBroker):
                 currency=account.currency,
                 last_updated=datetime.now()
             )]
+            
+            # Update cache
+            self._account_cache = result
+            self._account_cache_time = datetime.now()
+            
+            logger.debug(f"Alpaca account: equity=${float(account.equity):,.2f}, buying_power=${float(account.buying_power):,.2f}")
+            
+            return result
+            
+        except asyncio.TimeoutError:
+            logger.warning("get_accounts timed out, returning cached data")
+            self._consecutive_failures += 1
+            return self._account_cache or []
+            
         except Exception as e:
             logger.error(f"Error getting Alpaca account: {e}")
-            return []
+            self._consecutive_failures += 1
+            return self._account_cache or []
     
     async def get_account_info(self, account_id: str) -> AccountInfo:
         """Get Alpaca account info."""
@@ -137,23 +277,36 @@ class AlpacaBroker(BaseBroker):
     
     async def get_buying_power(self, account_id: str) -> float:
         """Get available buying power."""
-        if not self._trading_client:
-            return 0.0
-        try:
-            account = self._trading_client.get_account()
-            return float(account.buying_power)
-        except Exception as e:
-            logger.error(f"Error getting buying power: {e}")
-            return 0.0
+        accounts = await self.get_accounts()
+        if accounts:
+            return accounts[0].buying_power
+        return 0.0
     
     async def get_positions(self, account_id: str) -> List[Position]:
-        """Get all open positions."""
+        """Get all open positions with caching."""
         if not self._trading_client:
             return []
         
+        # Check cache
+        now = datetime.now()
+        if self._positions_cache is not None and self._positions_cache_time:
+            age = (now - self._positions_cache_time).total_seconds()
+            if age < self._positions_cache_ttl:
+                logger.debug(f"Using cached positions (age: {age:.1f}s)")
+                return self._positions_cache
+        
         try:
-            positions = self._trading_client.get_all_positions()
-            return [
+            logger.debug("Fetching Alpaca positions...")
+            
+            loop = asyncio.get_event_loop()
+            positions = await asyncio.wait_for(
+                loop.run_in_executor(None, self._trading_client.get_all_positions),
+                timeout=self.REQUEST_TIMEOUT
+            )
+            
+            self._last_successful_call = datetime.now()
+            
+            result = [
                 Position(
                     symbol=p.symbol,
                     quantity=float(p.qty),
@@ -169,9 +322,24 @@ class AlpacaBroker(BaseBroker):
                 )
                 for p in positions
             ]
+            
+            # Update cache
+            self._positions_cache = result
+            self._positions_cache_time = datetime.now()
+            
+            logger.debug(f"Alpaca positions: {len(result)} open positions")
+            for p in result:
+                logger.debug(f"  {p.symbol}: {p.quantity} @ ${p.current_price:.2f} (P&L: ${p.unrealized_pnl:.2f})")
+            
+            return result
+            
+        except asyncio.TimeoutError:
+            logger.warning("get_positions timed out, returning cached data")
+            return self._positions_cache or []
+            
         except Exception as e:
             logger.error(f"Error getting positions: {e}")
-            return []
+            return self._positions_cache or []
     
     async def get_position(self, account_id: str, symbol: str) -> Optional[Position]:
         """Get position for a specific symbol."""
@@ -179,8 +347,15 @@ class AlpacaBroker(BaseBroker):
             return None
         
         try:
-            p = self._trading_client.get_open_position(symbol)
-            return Position(
+            logger.debug(f"Fetching position for {symbol}...")
+            
+            loop = asyncio.get_event_loop()
+            p = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: self._trading_client.get_open_position(symbol)),
+                timeout=self.REQUEST_TIMEOUT
+            )
+            
+            position = Position(
                 symbol=p.symbol,
                 quantity=float(p.qty),
                 avg_cost=float(p.avg_entry_price),
@@ -193,7 +368,14 @@ class AlpacaBroker(BaseBroker):
                 account_id=account_id,
                 last_updated=datetime.now()
             )
-        except Exception:
+            
+            logger.debug(f"Position {symbol}: {position.quantity} shares @ ${position.current_price:.2f}")
+            return position
+            
+        except Exception as e:
+            # Position not found is expected for symbols we don't hold
+            if "not found" not in str(e).lower():
+                logger.debug(f"No position for {symbol}: {e}")
             return None
     
     async def submit_order(
@@ -208,12 +390,14 @@ class AlpacaBroker(BaseBroker):
         time_in_force: str = "day",
         **kwargs
     ) -> Order:
-        """Submit an order to Alpaca."""
+        """Submit an order to Alpaca with detailed logging."""
         if not self._trading_client:
             raise ConnectionError("Not connected to Alpaca")
         
         from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest, StopOrderRequest, StopLimitOrderRequest
         from alpaca.trading.enums import OrderSide as AlpacaSide, TimeInForce
+        
+        logger.info(f"📤 Submitting Alpaca order: {side.value.upper()} {quantity} {symbol} ({order_type.value})")
         
         try:
             # Map order side
@@ -236,6 +420,7 @@ class AlpacaBroker(BaseBroker):
                     side=alpaca_side,
                     time_in_force=alpaca_tif
                 )
+                logger.debug(f"Market order: {alpaca_side.value} {quantity} {symbol}")
             elif order_type == OrderType.LIMIT:
                 request = LimitOrderRequest(
                     symbol=symbol,
@@ -244,6 +429,7 @@ class AlpacaBroker(BaseBroker):
                     time_in_force=alpaca_tif,
                     limit_price=limit_price
                 )
+                logger.debug(f"Limit order: {alpaca_side.value} {quantity} {symbol} @ ${limit_price}")
             elif order_type == OrderType.STOP:
                 request = StopOrderRequest(
                     symbol=symbol,
@@ -252,6 +438,7 @@ class AlpacaBroker(BaseBroker):
                     time_in_force=alpaca_tif,
                     stop_price=stop_price
                 )
+                logger.debug(f"Stop order: {alpaca_side.value} {quantity} {symbol} stop @ ${stop_price}")
             elif order_type == OrderType.STOP_LIMIT:
                 request = StopLimitOrderRequest(
                     symbol=symbol,
@@ -261,13 +448,26 @@ class AlpacaBroker(BaseBroker):
                     limit_price=limit_price,
                     stop_price=stop_price
                 )
+                logger.debug(f"Stop-limit order: {alpaca_side.value} {quantity} {symbol} stop @ ${stop_price} limit @ ${limit_price}")
             else:
                 raise ValueError(f"Unsupported order type: {order_type}")
             
-            # Submit order
-            order = self._trading_client.submit_order(request)
+            # Submit order with timeout
+            loop = asyncio.get_event_loop()
+            order = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: self._trading_client.submit_order(request)),
+                timeout=self.REQUEST_TIMEOUT
+            )
             
-            logger.info(f"Alpaca order submitted: {order.id} - {side.value} {quantity} {symbol}")
+            # Invalidate caches
+            self._account_cache = None
+            self._positions_cache = None
+            
+            logger.info(f"✅ Alpaca order submitted: {order.id}")
+            logger.info(f"   Symbol: {order.symbol}")
+            logger.info(f"   Side: {order.side.value}")
+            logger.info(f"   Quantity: {order.qty}")
+            logger.info(f"   Status: {order.status.value}")
             
             return Order(
                 order_id=str(order.id),
@@ -286,8 +486,24 @@ class AlpacaBroker(BaseBroker):
                 updated_at=order.updated_at or datetime.now()
             )
             
+        except asyncio.TimeoutError:
+            error_msg = f"Order submission timed out after {self.REQUEST_TIMEOUT}s"
+            logger.error(f"❌ {error_msg}")
+            raise ConnectionError(error_msg)
+            
         except Exception as e:
-            logger.error(f"Error submitting Alpaca order: {e}")
+            error_str = str(e)
+            
+            # Parse common order errors
+            if "insufficient" in error_str.lower():
+                logger.error(f"❌ Insufficient buying power for {quantity} {symbol}")
+            elif "not tradeable" in error_str.lower():
+                logger.error(f"❌ {symbol} is not tradeable")
+            elif "market closed" in error_str.lower() or "market is closed" in error_str.lower():
+                logger.error(f"❌ Market is closed - cannot submit order")
+            else:
+                logger.error(f"❌ Order failed: {error_str}")
+            
             raise
     
     async def cancel_order(self, account_id: str, order_id: str) -> bool:
@@ -296,11 +512,19 @@ class AlpacaBroker(BaseBroker):
             return False
         
         try:
-            self._trading_client.cancel_order_by_id(order_id)
-            logger.info(f"Alpaca order cancelled: {order_id}")
+            logger.info(f"Cancelling Alpaca order: {order_id}")
+            
+            loop = asyncio.get_event_loop()
+            await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: self._trading_client.cancel_order_by_id(order_id)),
+                timeout=self.REQUEST_TIMEOUT
+            )
+            
+            logger.info(f"✅ Alpaca order cancelled: {order_id}")
             return True
+            
         except Exception as e:
-            logger.error(f"Error cancelling Alpaca order: {e}")
+            logger.error(f"❌ Error cancelling Alpaca order: {e}")
             return False
     
     async def get_order(self, account_id: str, order_id: str) -> Optional[Order]:
@@ -309,9 +533,14 @@ class AlpacaBroker(BaseBroker):
             return None
         
         try:
-            order = self._trading_client.get_order_by_id(order_id)
+            loop = asyncio.get_event_loop()
+            order = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: self._trading_client.get_order_by_id(order_id)),
+                timeout=self.REQUEST_TIMEOUT
+            )
             return self._convert_order(order, account_id)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Could not get order {order_id}: {e}")
             return None
     
     async def get_open_orders(self, account_id: str) -> List[Order]:
@@ -323,9 +552,21 @@ class AlpacaBroker(BaseBroker):
             from alpaca.trading.requests import GetOrdersRequest
             from alpaca.trading.enums import QueryOrderStatus
             
+            logger.debug("Fetching open orders...")
+            
             request = GetOrdersRequest(status=QueryOrderStatus.OPEN)
-            orders = self._trading_client.get_orders(request)
-            return [self._convert_order(o, account_id) for o in orders]
+            
+            loop = asyncio.get_event_loop()
+            orders = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: self._trading_client.get_orders(request)),
+                timeout=self.REQUEST_TIMEOUT
+            )
+            
+            result = [self._convert_order(o, account_id) for o in orders]
+            logger.debug(f"Found {len(result)} open orders")
+            
+            return result
+            
         except Exception as e:
             logger.error(f"Error getting open orders: {e}")
             return []
@@ -351,8 +592,15 @@ class AlpacaBroker(BaseBroker):
                 after=start_date,
                 until=end_date
             )
-            orders = self._trading_client.get_orders(request)
+            
+            loop = asyncio.get_event_loop()
+            orders = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: self._trading_client.get_orders(request)),
+                timeout=self.REQUEST_TIMEOUT
+            )
+            
             return [self._convert_order(o, account_id) for o in orders]
+            
         except Exception as e:
             logger.error(f"Error getting order history: {e}")
             return []
@@ -366,7 +614,12 @@ class AlpacaBroker(BaseBroker):
             from alpaca.data.requests import StockLatestQuoteRequest
             
             request = StockLatestQuoteRequest(symbol_or_symbols=symbol)
-            quotes = self._data_client.get_stock_latest_quote(request)
+            
+            loop = asyncio.get_event_loop()
+            quotes = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: self._data_client.get_stock_latest_quote(request)),
+                timeout=self.REQUEST_TIMEOUT
+            )
             
             if symbol in quotes:
                 q = quotes[symbol]
@@ -416,7 +669,12 @@ class AlpacaBroker(BaseBroker):
                 end=end,
                 limit=limit
             )
-            bars = self._data_client.get_stock_bars(request)
+            
+            loop = asyncio.get_event_loop()
+            bars = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: self._data_client.get_stock_bars(request)),
+                timeout=self.REQUEST_TIMEOUT
+            )
             
             if symbol in bars:
                 return [
@@ -470,4 +728,17 @@ class AlpacaBroker(BaseBroker):
             created_at=order.created_at,
             updated_at=order.updated_at or datetime.now()
         )
-
+    
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """Get diagnostic information about the connection."""
+        return {
+            "broker": "alpaca",
+            "connected": self._connected,
+            "paper": self.paper,
+            "base_url": self.base_url,
+            "last_successful_call": self._last_successful_call.isoformat() if self._last_successful_call else None,
+            "consecutive_failures": self._consecutive_failures,
+            "error_message": self._error_message,
+            "account_cache_age": (datetime.now() - self._account_cache_time).total_seconds() if self._account_cache_time else None,
+            "positions_cache_age": (datetime.now() - self._positions_cache_time).total_seconds() if self._positions_cache_time else None,
+        }

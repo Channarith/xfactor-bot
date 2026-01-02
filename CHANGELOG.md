@@ -5,6 +5,48 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.8] - 2026-01-02
+
+### 🦙 Alpaca Connection Fix
+
+#### Credential Handling
+- **Fixed API Key Mapping**: Frontend now correctly sends `secret_key` instead of `api_secret`
+- **Backwards Compatibility**: Added `api_secret` alias in backend request model
+- **Better Validation**: Descriptive error messages for missing credentials
+- **Debug Logging**: Logs credential presence (not values) for troubleshooting
+
+### 💾 Saved Broker Connections
+
+#### Persistent Connection Storage
+- **Save on Connect**: Option to save broker credentials after successful connection
+- **Encrypted Storage**: Fernet encryption with machine-specific key for sensitive data
+- **Auto-Connect**: Saved connections can auto-reconnect on app startup
+- **Quick Reconnect**: `/api/integrations/brokers/saved/connect/{id}` for one-click reconnect
+
+#### New API Endpoints
+- `GET /api/integrations/brokers/saved` - List all saved connections
+- `POST /api/integrations/brokers/saved` - Save a new connection
+- `DELETE /api/integrations/brokers/saved/{id}` - Delete a saved connection
+- `POST /api/integrations/brokers/saved/connect/{id}` - Connect using saved credentials
+
+### 📊 Account Limit Validation
+
+#### Connection Verification
+- **Equity Logging**: Logs account equity, cash, buying power on connection
+- **Limit Validation**: Warns if paper account balance differs from expected
+- **Alpaca Clarification**: Updated UI to show $100k equity / $200k buying power (2x margin)
+- **IBKR Clarification**: $1,000,000 simulated cash for paper trading
+
+### 🔄 Auto-Reconnection System
+
+#### Background Monitoring
+- **Health Checks**: Periodic health monitoring for all connected brokers
+- **Automatic Reconnect**: Attempts to reconnect on detected disconnection
+- **Exponential Backoff**: Prevents overwhelming broker APIs on failures
+- **Event History**: Connection/disconnection events logged for auditing
+
+---
+
 ## [1.1.6] - 2025-12-24
 
 ### 🔧 Dashboard & Equity Chart Fixes

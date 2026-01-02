@@ -8,7 +8,7 @@ Versions:
 """
 
 # Application version - keep in sync with frontend/package.json
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.1.8"
 
 import os
 import asyncio
@@ -102,6 +102,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         asyncio.create_task(fc_routes._fetch_and_populate_data(fc_routes.POPULAR_SYMBOLS))
     except Exception as e:
         logger.warning(f"Auto-fetch initialization: {e}")
+    
+    # Auto-connect to saved broker connections
+    try:
+        from src.brokers.registry import get_broker_registry
+        registry = get_broker_registry()
+        
+        async def auto_connect_brokers():
+            await asyncio.sleep(2)  # Wait for other services to initialize
+            results = await registry.auto_connect_all()
+            if results:
+                successful = sum(1 for v in results.values() if v)
+                logger.info(f"Auto-connected to {successful}/{len(results)} saved brokers")
+        
+        asyncio.create_task(auto_connect_brokers())
+        logger.info("Broker auto-connect scheduled")
+    except Exception as e:
+        logger.warning(f"Broker auto-connect initialization: {e}")
     
     yield
     

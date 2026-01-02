@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from loguru import logger
 
 from src.brokers import BrokerType, get_broker_registry
+from src.brokers.saved_connections import get_saved_connections
 from src.data_sources import DataSourceType, get_data_registry
 from src.banking import get_plaid_client
 
@@ -24,6 +25,7 @@ class BrokerConnectRequest(BaseModel):
     broker_type: str
     api_key: Optional[str] = None
     secret_key: Optional[str] = None
+    api_secret: Optional[str] = None  # Alias for secret_key (backwards compatibility)
     account_id: Optional[str] = None
     paper: bool = True
     # IBKR-specific fields
@@ -31,8 +33,17 @@ class BrokerConnectRequest(BaseModel):
     port: Optional[int] = None
     client_id: Optional[int] = None
     paper_trading: Optional[bool] = None
+    # Save connection options
+    save_connection: bool = False
+    connection_name: Optional[str] = None
+    auto_connect: bool = False
     # Additional config can be passed
     config: Dict[str, Any] = {}
+    
+    @property
+    def effective_secret_key(self) -> Optional[str]:
+        """Get secret key from either field."""
+        return self.secret_key or self.api_secret
 
 
 class CredentialLoginRequest(BaseModel):
@@ -92,6 +103,10 @@ async def connect_broker(request: BrokerConnectRequest) -> Dict[str, Any]:
     from loguru import logger
     logger.info(f"Connecting to broker: {request.broker_type}")
     
+    # Use effective_secret_key which handles both 'secret_key' and 'api_secret' fields
+    effective_secret = request.effective_secret_key
+    logger.debug(f"API key provided: {bool(request.api_key)}, Secret key provided: {bool(effective_secret)}")
+    
     registry = get_broker_registry()
     logger.debug(f"Available brokers: {[b.value for b in registry.available_brokers]}")
     
@@ -100,9 +115,17 @@ async def connect_broker(request: BrokerConnectRequest) -> Dict[str, Any]:
     except ValueError:
         raise HTTPException(400, f"Unknown broker type: {request.broker_type}")
     
+    # Validate required credentials for API-key based brokers
+    if broker_type.value == "alpaca":
+        if not request.api_key:
+            raise HTTPException(400, "API key is required for Alpaca")
+        if not effective_secret:
+            raise HTTPException(400, "Secret key is required for Alpaca")
+        logger.info(f"Alpaca credentials: api_key={request.api_key[:8]}..., secret_len={len(effective_secret)}")
+    
     config = {
         "api_key": request.api_key,
-        "secret_key": request.secret_key,
+        "secret_key": effective_secret,  # Use effective_secret_key
         "account_id": request.account_id,
         "paper": request.paper_trading if request.paper_trading is not None else request.paper,
         # IBKR-specific
@@ -112,7 +135,13 @@ async def connect_broker(request: BrokerConnectRequest) -> Dict[str, Any]:
         **request.config
     }
     
-    success, error_msg = await registry.connect_broker(broker_type, **config)
+    success, error_msg = await registry.connect_broker(
+        broker_type,
+        save_connection=request.save_connection,
+        connection_name=request.connection_name,
+        auto_connect=request.auto_connect,
+        **config
+    )
     
     if success:
         # Fetch account data after successful connection
@@ -121,6 +150,8 @@ async def connect_broker(request: BrokerConnectRequest) -> Dict[str, Any]:
             "broker": broker_type.value,
             "account_id": config.get("account_id"),
             "account_type": "paper" if config.get("paper") else "live",
+            "saved": request.save_connection,
+            "auto_connect": request.auto_connect if request.save_connection else False,
         }
         
         # Try to get real account data (with timeout to prevent blocking)
@@ -136,11 +167,33 @@ async def connect_broker(request: BrokerConnectRequest) -> Dict[str, Any]:
                         response_data["portfolio_value"] = account.equity
                         response_data["buying_power"] = account.buying_power
                         response_data["cash"] = account.cash
-                        logger.info(f"Account data: equity={account.equity}, buying_power={account.buying_power}")
+                        
+                        # Log and validate account limits
+                        logger.info(f"✅ Account Connected: {broker_type.value}")
+                        logger.info(f"   Account ID: {account.account_id}")
+                        logger.info(f"   Equity: ${account.equity:,.2f}")
+                        logger.info(f"   Cash: ${account.cash:,.2f}")
+                        logger.info(f"   Buying Power: ${account.buying_power:,.2f}")
+                        
+                        # Validate expected limits for paper trading
+                        if config.get("paper"):
+                            if broker_type.value == "alpaca":
+                                expected_equity = 100_000.0
+                                if abs(account.equity - expected_equity) > 1000 and account.equity < expected_equity:
+                                    logger.warning(f"⚠️ Alpaca paper account equity (${account.equity:,.2f}) differs from expected (${expected_equity:,.2f})")
+                                    response_data["warning"] = f"Paper account has ${account.equity:,.2f}, expected ${expected_equity:,.2f}. You can reset your paper account at alpaca.markets"
+                            elif broker_type.value == "ibkr":
+                                expected_equity = 1_000_000.0
+                                if account.equity < 100_000:  # Flag if significantly lower
+                                    logger.warning(f"⚠️ IBKR paper account equity (${account.equity:,.2f}) is below ${100_000:,.2f}")
+                                    
                 except asyncio.TimeoutError:
                     logger.warning("Timed out fetching account data, but connection succeeded")
         except Exception as e:
             logger.warning(f"Could not fetch account data after connect: {e}")
+        
+        if request.save_connection:
+            logger.info(f"Connection saved for future use (auto_connect={request.auto_connect})")
         
         return response_data
     else:
@@ -170,6 +223,162 @@ async def disconnect_broker(broker_type: str) -> Dict[str, Any]:
     
     await registry.disconnect_broker(bt)
     return {"status": "disconnected", "broker": broker_type}
+
+
+@router.post("/brokers/reconnect/{broker_type}")
+async def reconnect_broker(broker_type: str) -> Dict[str, Any]:
+    """
+    Force reconnection to a broker.
+    
+    Useful when TWS/Gateway has restarted and you need to reconnect.
+    Uses stored connection config from the initial connection.
+    """
+    registry = get_broker_registry()
+    
+    try:
+        bt = BrokerType(broker_type.lower())
+    except ValueError:
+        raise HTTPException(400, f"Unknown broker type: {broker_type}")
+    
+    success = await registry.force_reconnect(bt)
+    
+    if success:
+        return {"status": "reconnected", "broker": broker_type}
+    else:
+        raise HTTPException(500, f"Failed to reconnect to {broker_type}")
+
+
+@router.get("/brokers/connection-events")
+async def get_connection_events(limit: int = 50) -> Dict[str, Any]:
+    """
+    Get recent broker connection events.
+    
+    Useful for debugging connection issues and monitoring auto-reconnection.
+    """
+    registry = get_broker_registry()
+    
+    return {
+        "events": registry.get_connection_events(limit),
+        "auto_reconnect_enabled": registry._auto_reconnect_enabled,
+        "health_check_interval": registry._health_check_interval,
+        "last_health_check": registry._last_health_check.isoformat() if registry._last_health_check else None,
+    }
+
+
+@router.post("/brokers/auto-reconnect")
+async def set_auto_reconnect(enabled: bool = True) -> Dict[str, Any]:
+    """Enable or disable automatic broker reconnection."""
+    registry = get_broker_registry()
+    registry.set_auto_reconnect(enabled)
+    
+    return {
+        "auto_reconnect_enabled": enabled,
+        "message": f"Auto-reconnect {'enabled' if enabled else 'disabled'}",
+    }
+
+
+# =========================================================================
+# Saved Connections Management
+# =========================================================================
+
+@router.get("/brokers/saved")
+async def get_saved_broker_connections() -> Dict[str, Any]:
+    """
+    Get all saved broker connections.
+    
+    Credentials are masked in the response for security.
+    """
+    saved = get_saved_connections()
+    return saved.to_dict()
+
+
+@router.post("/brokers/saved/connect/{connection_id}")
+async def connect_saved_broker(connection_id: str) -> Dict[str, Any]:
+    """
+    Connect using a previously saved connection.
+    
+    Args:
+        connection_id: The ID of the saved connection to use.
+    """
+    registry = get_broker_registry()
+    success, error = await registry.connect_saved(connection_id)
+    
+    if success:
+        return {
+            "status": "connected",
+            "connection_id": connection_id,
+            "message": "Successfully connected using saved connection",
+        }
+    else:
+        raise HTTPException(400, error or "Failed to connect")
+
+
+@router.post("/brokers/saved/auto-connect")
+async def auto_connect_saved_brokers() -> Dict[str, Any]:
+    """
+    Connect to all brokers marked for auto-connect.
+    
+    This is typically called on application startup.
+    """
+    registry = get_broker_registry()
+    results = await registry.auto_connect_all()
+    
+    successful = sum(1 for v in results.values() if v)
+    failed = len(results) - successful
+    
+    return {
+        "results": results,
+        "successful": successful,
+        "failed": failed,
+        "message": f"Auto-connected {successful} of {len(results)} saved connections",
+    }
+
+
+class SaveConnectionRequest(BaseModel):
+    """Request to update a saved connection."""
+    name: Optional[str] = None
+    auto_connect: Optional[bool] = None
+    set_as_default: Optional[bool] = None
+
+
+@router.patch("/brokers/saved/{connection_id}")
+async def update_saved_connection(
+    connection_id: str,
+    request: SaveConnectionRequest
+) -> Dict[str, Any]:
+    """Update a saved connection's settings."""
+    saved = get_saved_connections()
+    
+    conn = saved.update_connection(
+        connection_id,
+        name=request.name,
+        auto_connect=request.auto_connect,
+        set_as_default=request.set_as_default,
+    )
+    
+    if not conn:
+        raise HTTPException(404, "Saved connection not found")
+    
+    return {
+        "status": "updated",
+        "connection": {
+            "id": conn.id,
+            "name": conn.name,
+            "auto_connect": conn.auto_connect,
+            "is_default": conn.is_default,
+        }
+    }
+
+
+@router.delete("/brokers/saved/{connection_id}")
+async def delete_saved_connection(connection_id: str) -> Dict[str, Any]:
+    """Delete a saved connection."""
+    saved = get_saved_connections()
+    
+    if not saved.delete_connection(connection_id):
+        raise HTTPException(404, "Saved connection not found")
+    
+    return {"status": "deleted", "connection_id": connection_id}
 
 
 @router.get("/broker/status")
@@ -206,6 +415,54 @@ async def get_broker_status() -> Dict[str, Any]:
         logger.warning(f"Could not fetch account data for status: {e}")
     
     return response
+
+
+@router.get("/brokers/{broker_type}/diagnostics")
+async def get_broker_diagnostics(broker_type: str) -> Dict[str, Any]:
+    """
+    Get detailed diagnostic information for a broker.
+    
+    Useful for debugging connection issues, timeouts, and caching behavior.
+    """
+    registry = get_broker_registry()
+    
+    try:
+        bt = BrokerType(broker_type.lower())
+    except ValueError:
+        raise HTTPException(400, f"Unknown broker type: {broker_type}")
+    
+    broker = registry.get_broker(bt)
+    if not broker:
+        return {
+            "broker": broker_type,
+            "connected": False,
+            "message": "Broker not connected",
+            "available": bt in registry.available_brokers,
+        }
+    
+    # Get diagnostics if method exists
+    diagnostics = {}
+    if hasattr(broker, 'get_diagnostics'):
+        diagnostics = broker.get_diagnostics()
+    else:
+        diagnostics = {
+            "connected": broker.is_connected,
+            "error_message": getattr(broker, '_error_message', None),
+        }
+    
+    # Add health check
+    try:
+        health = await broker.health_check()
+        diagnostics["health_check"] = "OK" if health else "FAILED"
+    except Exception as e:
+        diagnostics["health_check"] = f"ERROR: {e}"
+    
+    # Add registry info
+    diagnostics["broker"] = broker_type
+    diagnostics["is_default"] = registry._default_broker == bt
+    diagnostics["reconnect_attempts"] = registry._reconnect_attempts.get(bt, 0)
+    
+    return diagnostics
 
 
 @router.get("/brokers/{broker_type}/accounts")

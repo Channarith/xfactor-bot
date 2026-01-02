@@ -7,11 +7,19 @@ Requirements:
 - TWS or IB Gateway running
 - API enabled in TWS: Configure → API → Settings
 - Socket port: 7497 (TWS paper), 7496 (TWS live), 4002 (Gateway paper), 4001 (Gateway live)
+
+IMPORTANT: TWS/Gateway Daily Restart
+- TWS disconnects daily around 11:45 PM ET and restarts
+- Configure TWS: Configure → Settings → Lock and Exit → Auto restart
+- Set "Auto restart time" to a time that works for you (e.g., 11:45 PM)
+- The BrokerRegistry has auto-reconnection that will reconnect when TWS comes back
+- IB Gateway is recommended for 24/7 operation as it's more stable
 """
 
 import asyncio
 import os
 import socket
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -23,8 +31,11 @@ from src.brokers.base import (
     OrderStatus, OrderType, OrderSide
 )
 
-# Thread pool for blocking IB operations
-_ib_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ibkr")
+# Thread pool for blocking IB operations - use single worker to prevent concurrent access
+_ib_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ibkr")
+
+# Global lock for IBKR operations to prevent concurrent API calls
+_ibkr_lock = threading.Lock()
 
 
 def _resolve_host(host: str) -> str:
@@ -77,6 +88,18 @@ class IBKRBroker(BaseBroker):
         self.readonly = readonly
         self._ib = None
         self._error_message = None
+        
+        # Caching to prevent excessive API calls
+        self._account_cache: Optional[List[AccountInfo]] = None
+        self._account_cache_time: Optional[datetime] = None
+        self._account_cache_ttl = 10  # Cache for 10 seconds
+        
+        self._positions_cache: Optional[List[Position]] = None
+        self._positions_cache_time: Optional[datetime] = None
+        self._positions_cache_ttl = 5  # Cache for 5 seconds
+        
+        # Async lock for coordinating calls
+        self._async_lock: Optional[asyncio.Lock] = None
     
     def _connect_sync(self) -> bool:
         """
@@ -233,82 +256,128 @@ class IBKRBroker(BaseBroker):
             return False
         return self._ib.isConnected()
     
+    def _get_async_lock(self) -> asyncio.Lock:
+        """Get or create async lock for the current event loop."""
+        if self._async_lock is None:
+            self._async_lock = asyncio.Lock()
+        return self._async_lock
+    
     async def get_accounts(self) -> List[AccountInfo]:
-        """Get IBKR accounts."""
+        """Get IBKR accounts with caching to prevent excessive API calls."""
         if not self._ib or not self._ib.isConnected():
             logger.warning("IBKR get_accounts called but not connected")
             return []
         
-        try:
-            loop = asyncio.get_event_loop()
+        # Check cache first
+        now = datetime.now()
+        if self._account_cache and self._account_cache_time:
+            age = (now - self._account_cache_time).total_seconds()
+            if age < self._account_cache_ttl:
+                logger.debug(f"Using cached account data (age: {age:.1f}s)")
+                return self._account_cache
+        
+        # Use async lock to prevent concurrent API calls
+        lock = self._get_async_lock()
+        
+        # Try to acquire lock without blocking - if can't, return cached data
+        if lock.locked():
+            logger.debug("IBKR API call in progress, returning cached data")
+            return self._account_cache or []
+        
+        async with lock:
+            # Double-check cache after acquiring lock
+            if self._account_cache and self._account_cache_time:
+                age = (datetime.now() - self._account_cache_time).total_seconds()
+                if age < self._account_cache_ttl:
+                    return self._account_cache
             
-            logger.debug(f"Fetching account summary for {self.account_id}")
-            
-            # Get account summary - use accountValues for more reliable data
-            def fetch_account_data():
-                # First try accountSummary
-                summary = self._ib.accountSummary(self.account_id)
-                if summary:
-                    return summary, 'summary'
+            try:
+                logger.debug(f"Fetching account summary for {self.account_id}")
                 
-                # Fall back to accountValues
-                values = self._ib.accountValues(self.account_id)
-                return values, 'values'
-            
-            data, data_type = await loop.run_in_executor(None, fetch_account_data)
-            
-            # Parse data into dict
-            summary_dict = {}
-            for item in data:
-                # Handle both AccountValue and AccountSummary objects
-                tag = getattr(item, 'tag', None)
-                value = getattr(item, 'value', None)
-                if tag and value:
-                    summary_dict[tag] = value
-            
-            logger.debug(f"IBKR account data ({data_type}): {len(summary_dict)} fields")
-            
-            # Log key values for debugging
-            net_liq = summary_dict.get("NetLiquidation", summary_dict.get("NetLiquidationByCurrency", "0"))
-            cash = summary_dict.get("TotalCashValue", summary_dict.get("CashBalance", "0"))
-            buying_power = summary_dict.get("BuyingPower", summary_dict.get("AvailableFunds", "0"))
-            
-            logger.info(f"IBKR Account {self.account_id}: NetLiq={net_liq}, Cash={cash}, BuyingPower={buying_power}")
-            
-            # Parse values safely
-            def parse_float(val, default=0.0):
-                if val is None:
-                    return default
-                try:
-                    return float(str(val).replace(',', ''))
-                except (ValueError, TypeError):
-                    return default
-            
-            equity = parse_float(summary_dict.get("NetLiquidation") or summary_dict.get("NetLiquidationByCurrency"))
-            cash_val = parse_float(summary_dict.get("TotalCashValue") or summary_dict.get("CashBalance"))
-            bp = parse_float(summary_dict.get("BuyingPower") or summary_dict.get("AvailableFunds"))
-            portfolio = parse_float(summary_dict.get("GrossPositionValue") or summary_dict.get("StockMarketValue"))
-            
-            return [AccountInfo(
-                account_id=self.account_id,
-                broker=BrokerType.IBKR,
-                account_type=summary_dict.get("AccountType", "Paper" if "D" in self.account_id else "Live"),
-                buying_power=bp,
-                cash=cash_val,
-                portfolio_value=portfolio,
-                equity=equity,
-                margin_used=parse_float(summary_dict.get("MaintMarginReq")),
-                margin_available=parse_float(summary_dict.get("AvailableFunds")),
-                day_trades_remaining=int(parse_float(summary_dict.get("DayTradesRemaining", 3))),
-                is_pattern_day_trader=summary_dict.get("DayTradesRemaining", "3") == "0",
-                currency="USD",
-                last_updated=datetime.now()
-            )]
-        except Exception as e:
-            logger.error(f"Error getting IBKR account: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            return []
+                # Get account summary - run in executor with global lock
+                def fetch_account_data():
+                    with _ibkr_lock:  # Prevent concurrent IBKR API access
+                        # First try accountSummary
+                        summary = self._ib.accountSummary(self.account_id)
+                        if summary:
+                            return summary, 'summary'
+                        
+                        # Fall back to accountValues
+                        values = self._ib.accountValues(self.account_id)
+                        return values, 'values'
+                
+                loop = asyncio.get_event_loop()
+                
+                # Use the dedicated IBKR executor
+                data, data_type = await asyncio.wait_for(
+                    loop.run_in_executor(_ib_executor, fetch_account_data),
+                    timeout=15  # 15 second timeout for account fetch
+                )
+                
+                # Parse data into dict
+                summary_dict = {}
+                for item in data:
+                    # Handle both AccountValue and AccountSummary objects
+                    tag = getattr(item, 'tag', None)
+                    value = getattr(item, 'value', None)
+                    if tag and value:
+                        summary_dict[tag] = value
+                
+                logger.debug(f"IBKR account data ({data_type}): {len(summary_dict)} fields")
+                
+                # Log key values for debugging
+                net_liq = summary_dict.get("NetLiquidation", summary_dict.get("NetLiquidationByCurrency", "0"))
+                cash = summary_dict.get("TotalCashValue", summary_dict.get("CashBalance", "0"))
+                buying_power = summary_dict.get("BuyingPower", summary_dict.get("AvailableFunds", "0"))
+                
+                logger.info(f"IBKR Account {self.account_id}: NetLiq={net_liq}, Cash={cash}, BuyingPower={buying_power}")
+                
+                # Parse values safely
+                def parse_float(val, default=0.0):
+                    if val is None:
+                        return default
+                    try:
+                        return float(str(val).replace(',', ''))
+                    except (ValueError, TypeError):
+                        return default
+                
+                equity = parse_float(summary_dict.get("NetLiquidation") or summary_dict.get("NetLiquidationByCurrency"))
+                cash_val = parse_float(summary_dict.get("TotalCashValue") or summary_dict.get("CashBalance"))
+                bp = parse_float(summary_dict.get("BuyingPower") or summary_dict.get("AvailableFunds"))
+                portfolio = parse_float(summary_dict.get("GrossPositionValue") or summary_dict.get("StockMarketValue"))
+                
+                result = [AccountInfo(
+                    account_id=self.account_id,
+                    broker=BrokerType.IBKR,
+                    account_type=summary_dict.get("AccountType", "Paper" if "D" in self.account_id else "Live"),
+                    buying_power=bp,
+                    cash=cash_val,
+                    portfolio_value=portfolio,
+                    equity=equity,
+                    margin_used=parse_float(summary_dict.get("MaintMarginReq")),
+                    margin_available=parse_float(summary_dict.get("AvailableFunds")),
+                    day_trades_remaining=int(parse_float(summary_dict.get("DayTradesRemaining", 3))),
+                    is_pattern_day_trader=summary_dict.get("DayTradesRemaining", "3") == "0",
+                    currency="USD",
+                    last_updated=datetime.now()
+                )]
+                
+                # Update cache
+                self._account_cache = result
+                self._account_cache_time = datetime.now()
+                
+                return result
+                
+            except asyncio.TimeoutError:
+                logger.warning("IBKR get_accounts timed out, returning cached data")
+                return self._account_cache or []
+            except Exception as e:
+                logger.error(f"Error getting IBKR account: {e}")
+                # Return cached data on error
+                if self._account_cache:
+                    logger.info("Returning cached account data due to error")
+                    return self._account_cache
+                return []
     
     async def get_account_info(self, account_id: str) -> AccountInfo:
         """Get IBKR account info."""
@@ -325,45 +394,74 @@ class IBKRBroker(BaseBroker):
         return 0.0
     
     async def get_positions(self, account_id: str) -> List[Position]:
-        """Get all open positions."""
+        """Get all open positions with caching."""
         if not self._ib or not self._ib.isConnected():
             return []
         
-        try:
-            loop = asyncio.get_event_loop()
-            
-            portfolio_items = await loop.run_in_executor(
-                None,
-                lambda: self._ib.portfolio(self.account_id)
-            )
-            
-            positions = []
-            for item in portfolio_items:
-                quantity = float(item.position)
-                avg_cost = float(item.averageCost)
-                current_price = float(item.marketPrice)
-                market_value = float(item.marketValue)
-                unrealized_pnl = float(item.unrealizedPNL)
+        # Check cache first
+        now = datetime.now()
+        if self._positions_cache and self._positions_cache_time:
+            age = (now - self._positions_cache_time).total_seconds()
+            if age < self._positions_cache_ttl:
+                logger.debug(f"Using cached positions data (age: {age:.1f}s)")
+                return self._positions_cache
+        
+        # Use async lock to prevent concurrent API calls
+        lock = self._get_async_lock()
+        
+        if lock.locked():
+            logger.debug("IBKR API call in progress, returning cached positions")
+            return self._positions_cache or []
+        
+        async with lock:
+            try:
+                loop = asyncio.get_event_loop()
                 
-                positions.append(Position(
-                    symbol=item.contract.symbol,
-                    quantity=quantity,
-                    avg_cost=avg_cost,
-                    current_price=current_price,
-                    market_value=market_value,
-                    unrealized_pnl=unrealized_pnl,
-                    unrealized_pnl_pct=(unrealized_pnl / (quantity * avg_cost) * 100) if quantity * avg_cost != 0 else 0,
-                    side="long" if quantity > 0 else "short",
-                    broker=BrokerType.IBKR,
-                    account_id=account_id,
-                    last_updated=datetime.now()
-                ))
-            
-            return positions
-            
-        except Exception as e:
-            logger.error(f"Error getting IBKR positions: {e}")
-            return []
+                def fetch_portfolio():
+                    with _ibkr_lock:
+                        return self._ib.portfolio(self.account_id)
+                
+                portfolio_items = await asyncio.wait_for(
+                    loop.run_in_executor(_ib_executor, fetch_portfolio),
+                    timeout=15
+                )
+                
+                positions = []
+                for item in portfolio_items:
+                    quantity = float(item.position)
+                    avg_cost = float(item.averageCost)
+                    current_price = float(item.marketPrice)
+                    market_value = float(item.marketValue)
+                    unrealized_pnl = float(item.unrealizedPNL)
+                    
+                    positions.append(Position(
+                        symbol=item.contract.symbol,
+                        quantity=quantity,
+                        avg_cost=avg_cost,
+                        current_price=current_price,
+                        market_value=market_value,
+                        unrealized_pnl=unrealized_pnl,
+                        unrealized_pnl_pct=(unrealized_pnl / (quantity * avg_cost) * 100) if quantity * avg_cost != 0 else 0,
+                        side="long" if quantity > 0 else "short",
+                        broker=BrokerType.IBKR,
+                        account_id=account_id,
+                        last_updated=datetime.now()
+                    ))
+                
+                # Update cache
+                self._positions_cache = positions
+                self._positions_cache_time = datetime.now()
+                
+                return positions
+                
+            except asyncio.TimeoutError:
+                logger.warning("IBKR get_positions timed out, returning cached data")
+                return self._positions_cache or []
+            except Exception as e:
+                logger.error(f"Error getting IBKR positions: {e}")
+                if self._positions_cache:
+                    return self._positions_cache
+                return []
     
     async def get_position(self, account_id: str, symbol: str) -> Optional[Position]:
         """Get position for a specific symbol."""
@@ -389,58 +487,68 @@ class IBKRBroker(BaseBroker):
         if not self._ib or not self._ib.isConnected():
             raise ConnectionError("Not connected to IBKR")
         
-        try:
-            from ib_insync import Stock, MarketOrder, LimitOrder, StopOrder, StopLimitOrder
-            
-            loop = asyncio.get_event_loop()
-            
-            # Create contract
-            contract = Stock(symbol.upper(), "SMART", "USD")
-            
-            # Create order based on type
-            action = "BUY" if side == OrderSide.BUY else "SELL"
-            
-            if order_type == OrderType.MARKET:
-                ib_order = MarketOrder(action, quantity)
-            elif order_type == OrderType.LIMIT:
-                ib_order = LimitOrder(action, quantity, limit_price)
-            elif order_type == OrderType.STOP:
-                ib_order = StopOrder(action, quantity, stop_price)
-            elif order_type == OrderType.STOP_LIMIT:
-                ib_order = StopLimitOrder(action, quantity, limit_price, stop_price)
-            else:
-                raise ValueError(f"Unsupported order type: {order_type}")
-            
-            ib_order.tif = time_in_force.upper()
-            
-            # Place order
-            trade = await loop.run_in_executor(
-                None,
-                lambda: self._ib.placeOrder(contract, ib_order)
-            )
-            
-            logger.info(f"IBKR order submitted: {trade.order.orderId} - {action} {quantity} {symbol}")
-            
-            return Order(
-                order_id=str(trade.order.orderId),
-                symbol=symbol,
-                side=side,
-                order_type=order_type,
-                quantity=quantity,
-                limit_price=limit_price,
-                stop_price=stop_price,
-                status=OrderStatus.SUBMITTED,
-                filled_quantity=0,
-                avg_fill_price=None,
-                broker=BrokerType.IBKR,
-                account_id=account_id,
-                created_at=datetime.now(),
-                updated_at=datetime.now()
-            )
-            
-        except Exception as e:
-            logger.error(f"Error submitting IBKR order: {e}")
-            raise
+        lock = self._get_async_lock()
+        async with lock:
+            try:
+                from ib_insync import Stock, MarketOrder, LimitOrder, StopOrder, StopLimitOrder
+                
+                loop = asyncio.get_event_loop()
+                
+                # Create contract
+                contract = Stock(symbol.upper(), "SMART", "USD")
+                
+                # Create order based on type
+                action = "BUY" if side == OrderSide.BUY else "SELL"
+                
+                if order_type == OrderType.MARKET:
+                    ib_order = MarketOrder(action, quantity)
+                elif order_type == OrderType.LIMIT:
+                    ib_order = LimitOrder(action, quantity, limit_price)
+                elif order_type == OrderType.STOP:
+                    ib_order = StopOrder(action, quantity, stop_price)
+                elif order_type == OrderType.STOP_LIMIT:
+                    ib_order = StopLimitOrder(action, quantity, limit_price, stop_price)
+                else:
+                    raise ValueError(f"Unsupported order type: {order_type}")
+                
+                ib_order.tif = time_in_force.upper()
+                
+                # Place order with lock
+                def place_order():
+                    with _ibkr_lock:
+                        return self._ib.placeOrder(contract, ib_order)
+                
+                trade = await asyncio.wait_for(
+                    loop.run_in_executor(_ib_executor, place_order),
+                    timeout=30
+                )
+                
+                logger.info(f"IBKR order submitted: {trade.order.orderId} - {action} {quantity} {symbol}")
+                
+                # Invalidate caches after order
+                self._account_cache = None
+                self._positions_cache = None
+                
+                return Order(
+                    order_id=str(trade.order.orderId),
+                    symbol=symbol,
+                    side=side,
+                    order_type=order_type,
+                    quantity=quantity,
+                    limit_price=limit_price,
+                    stop_price=stop_price,
+                    status=OrderStatus.SUBMITTED,
+                    filled_quantity=0,
+                    avg_fill_price=None,
+                    broker=BrokerType.IBKR,
+                    account_id=account_id,
+                    created_at=datetime.now(),
+                    updated_at=datetime.now()
+                )
+                
+            except Exception as e:
+                logger.error(f"Error submitting IBKR order: {e}")
+                raise
     
     async def cancel_order(self, account_id: str, order_id: str) -> bool:
         """Cancel an open order."""

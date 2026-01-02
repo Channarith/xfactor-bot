@@ -4,13 +4,34 @@ Individual bot instance that runs in its own thread.
 
 import asyncio
 import threading
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Optional, Any, Callable
 import uuid
 
+import pandas as pd
 from loguru import logger
+
+# Global activity log for debugging (thread-safe circular buffer)
+_bot_activity_log: deque = deque(maxlen=1000)
+_activity_lock = threading.Lock()
+
+
+def get_bot_activity_log(bot_id: Optional[str] = None, limit: int = 100) -> list[dict]:
+    """Get bot activity log entries, optionally filtered by bot_id."""
+    with _activity_lock:
+        entries = list(_bot_activity_log)
+    if bot_id:
+        entries = [e for e in entries if e.get("bot_id") == bot_id]
+    return entries[-limit:]
+
+
+def clear_bot_activity_log():
+    """Clear the activity log."""
+    with _activity_lock:
+        _bot_activity_log.clear()
 
 
 class BotStatus(str, Enum):
@@ -334,6 +355,12 @@ class BotStats:
     last_trade_time: Optional[datetime] = None
     errors_count: int = 0
     uptime_seconds: float = 0.0
+    cycles_completed: int = 0
+    last_cycle_time: Optional[datetime] = None
+    symbols_analyzed: int = 0
+    orders_submitted: int = 0
+    orders_filled: int = 0
+    orders_rejected: int = 0
 
 
 class BotInstance:
@@ -380,6 +407,28 @@ class BotInstance:
         }
         
         logger.info(f"Bot {self.id} created: {config.name}")
+        self._log_activity("created", f"Bot created with {len(config.symbols)} symbols")
+    
+    def _log_activity(self, event_type: str, message: str, data: Optional[dict] = None) -> None:
+        """Log bot activity for debugging."""
+        entry = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "bot_id": self.id,
+            "bot_name": self.config.name,
+            "event_type": event_type,
+            "message": message,
+            "data": data or {},
+        }
+        with _activity_lock:
+            _bot_activity_log.append(entry)
+        
+        # Also log to file at appropriate level
+        if event_type in ("error", "order_rejected"):
+            logger.error(f"[Bot {self.id}] {event_type}: {message}")
+        elif event_type in ("trade", "order_submitted", "order_filled", "signal"):
+            logger.info(f"[Bot {self.id}] {event_type}: {message}")
+        else:
+            logger.debug(f"[Bot {self.id}] {event_type}: {message}")
     
     @property
     def is_running(self) -> bool:
@@ -536,66 +585,127 @@ class BotInstance:
         from src.brokers.registry import get_broker_registry
         from src.brokers.base import OrderSide, OrderType
         
+        cycle_start = datetime.utcnow()
+        self.stats.cycles_completed += 1
+        self.stats.last_cycle_time = cycle_start
+        
+        self._log_activity("cycle_start", f"Starting trading cycle #{self.stats.cycles_completed}", {
+            "symbols": self.config.symbols,
+            "strategies": self.config.strategies[:3],  # First 3
+            "paper_trading": self.config.use_paper_trading,
+        })
+        
         registry = get_broker_registry()
         
         # Check if any broker is connected
         if not registry.connected_brokers:
-            # No broker connected - log once per minute
-            if not hasattr(self, '_last_no_broker_log') or \
-               (datetime.utcnow() - self._last_no_broker_log).seconds >= 60:
-                logger.debug(f"Bot {self.id}: No broker connected, skipping trade execution")
-                self._last_no_broker_log = datetime.utcnow()
+            self._log_activity("no_broker", "No broker connected - waiting for connection", {
+                "available_brokers": list(registry._brokers.keys()) if hasattr(registry, '_brokers') else [],
+            })
             return
         
         # Get the default broker for trading
         broker = registry.get_default_broker()
-        if not broker or not broker.is_connected:
+        if not broker:
+            self._log_activity("no_broker", "No default broker available")
             return
+            
+        if not broker.is_connected:
+            self._log_activity("broker_disconnected", f"Broker {broker.name} is not connected")
+            return
+        
+        self._log_activity("broker_connected", f"Using broker: {broker.name}", {
+            "broker_type": type(broker).__name__,
+        })
         
         # Get account info for position sizing
         try:
             accounts = await broker.get_accounts()
             if not accounts:
+                self._log_activity("no_accounts", "No accounts returned from broker")
                 return
             account = accounts[0]
             account_id = account.account_id
             buying_power = account.buying_power
+            portfolio_value = getattr(account, 'portfolio_value', buying_power)
+            
+            self._log_activity("account_info", f"Account: {account_id}", {
+                "buying_power": buying_power,
+                "portfolio_value": portfolio_value,
+            })
         except Exception as e:
-            logger.error(f"Bot {self.id}: Failed to get account info: {e}")
+            self._log_activity("error", f"Failed to get account info: {e}", {"exception": str(e)})
+            self.stats.errors_count += 1
             return
         
-        # Skip if in paper trading mode and not connected to paper account
-        if self.config.use_paper_trading:
-            logger.debug(f"Bot {self.id}: Paper trading mode - signals will be logged but not executed")
+        # Note: Paper trading mode still executes trades - just on a paper/simulated account
+        # The broker itself handles whether it's a paper or live account
+        mode = "PAPER" if self.config.use_paper_trading else "LIVE"
+        self._log_activity("trading_mode", f"Trading mode: {mode}")
+        
+        symbols_analyzed = 0
+        signals_generated = 0
         
         for symbol in self.config.symbols:
             try:
-                # Get current position for this symbol
-                current_position = await broker.get_position(account_id, symbol)
-                current_qty = current_position.quantity if current_position else 0
+                symbols_analyzed += 1
+                self._log_activity("analyzing", f"Analyzing {symbol}", {"symbol": symbol})
                 
-                # Generate signal (simplified - in production would use full strategy analysis)
+                # Get current position for this symbol
+                try:
+                    current_position = await broker.get_position(account_id, symbol)
+                    current_qty = current_position.quantity if current_position else 0
+                    self._log_activity("position_check", f"{symbol}: current position = {current_qty}", {
+                        "symbol": symbol,
+                        "quantity": current_qty,
+                    })
+                except Exception as e:
+                    current_qty = 0
+                    self._log_activity("position_error", f"Could not get position for {symbol}: {e}")
+                
+                # Generate signal using technical analysis
                 signal = await self._generate_signal(symbol)
                 
                 if not signal:
+                    self._log_activity("no_signal", f"{symbol}: No actionable signal", {"symbol": symbol})
                     continue
                 
+                signals_generated += 1
                 self.stats.signals_generated += 1
                 self._emit("on_signal", signal)
                 
+                signal_type = signal.get('type', 'hold')
+                price = signal.get('price', 0)
+                confidence = signal.get('confidence', 0)
+                
+                self._log_activity("signal", f"{symbol}: {signal_type.upper()} @ ${price:.2f} (confidence: {confidence:.1%})", {
+                    "symbol": symbol,
+                    "signal_type": signal_type,
+                    "price": price,
+                    "confidence": confidence,
+                    "indicators": signal.get('indicators', {}),
+                })
+                
                 # Determine action based on signal
-                if signal.get('type') in ('strong_buy', 'buy') and current_qty <= 0:
+                if signal_type in ('strong_buy', 'buy') and current_qty <= 0:
                     # Calculate position size
-                    price = signal.get('price', 100)
                     max_position = min(
                         self.config.max_position_size,
                         buying_power * 0.1  # Max 10% of buying power per position
                     )
-                    quantity = int(max_position / price)
+                    quantity = int(max_position / price) if price > 0 else 0
                     
-                    if quantity > 0 and not self.config.use_paper_trading:
+                    if quantity > 0:
+                        self._log_activity("order_intent", f"BUY {quantity} {symbol} @ market", {
+                            "symbol": symbol,
+                            "side": "buy",
+                            "quantity": quantity,
+                            "estimated_value": quantity * price,
+                        })
+                        
                         # Execute buy order
                         try:
+                            self.stats.orders_submitted += 1
                             order = await broker.submit_order(
                                 account_id=account_id,
                                 symbol=symbol,
@@ -604,58 +714,300 @@ class BotInstance:
                                 order_type=OrderType.MARKET,
                             )
                             self.stats.trades_today += 1
-                            logger.info(f"Bot {self.id}: BUY {quantity} {symbol} @ market - Order {order.order_id}")
-                            self._emit("on_trade", {"symbol": symbol, "side": "buy", "quantity": quantity})
+                            self.stats.orders_filled += 1
+                            self.stats.last_trade_time = datetime.utcnow()
+                            
+                            self._log_activity("order_filled", f"BUY {quantity} {symbol} - Order {order.order_id}", {
+                                "order_id": order.order_id,
+                                "symbol": symbol,
+                                "side": "buy",
+                                "quantity": quantity,
+                            })
+                            self._emit("on_trade", {"symbol": symbol, "side": "buy", "quantity": quantity, "order_id": order.order_id})
                         except Exception as e:
-                            logger.error(f"Bot {self.id}: Order failed for {symbol}: {e}")
+                            self.stats.orders_rejected += 1
                             self.stats.errors_count += 1
+                            self._log_activity("order_rejected", f"Order failed for {symbol}: {e}", {
+                                "symbol": symbol,
+                                "error": str(e),
+                            })
                     else:
-                        logger.info(f"Bot {self.id}: Signal BUY {symbol} (paper mode, not executed)")
+                        self._log_activity("skip_order", f"Quantity would be 0 for {symbol} (price={price})")
                 
-                elif signal.get('type') in ('strong_sell', 'sell') and current_qty > 0:
+                elif signal_type in ('strong_sell', 'sell') and current_qty > 0:
+                    self._log_activity("order_intent", f"SELL {abs(current_qty)} {symbol} @ market", {
+                        "symbol": symbol,
+                        "side": "sell",
+                        "quantity": abs(current_qty),
+                    })
+                    
                     # Sell existing position
-                    if not self.config.use_paper_trading:
-                        try:
-                            order = await broker.submit_order(
-                                account_id=account_id,
-                                symbol=symbol,
-                                side=OrderSide.SELL,
-                                quantity=abs(current_qty),
-                                order_type=OrderType.MARKET,
-                            )
-                            self.stats.trades_today += 1
-                            logger.info(f"Bot {self.id}: SELL {abs(current_qty)} {symbol} @ market - Order {order.order_id}")
-                            self._emit("on_trade", {"symbol": symbol, "side": "sell", "quantity": abs(current_qty)})
-                        except Exception as e:
-                            logger.error(f"Bot {self.id}: Order failed for {symbol}: {e}")
-                            self.stats.errors_count += 1
-                    else:
-                        logger.info(f"Bot {self.id}: Signal SELL {symbol} (paper mode, not executed)")
+                    try:
+                        self.stats.orders_submitted += 1
+                        order = await broker.submit_order(
+                            account_id=account_id,
+                            symbol=symbol,
+                            side=OrderSide.SELL,
+                            quantity=abs(current_qty),
+                            order_type=OrderType.MARKET,
+                        )
+                        self.stats.trades_today += 1
+                        self.stats.orders_filled += 1
+                        self.stats.last_trade_time = datetime.utcnow()
+                        
+                        self._log_activity("order_filled", f"SELL {abs(current_qty)} {symbol} - Order {order.order_id}", {
+                            "order_id": order.order_id,
+                            "symbol": symbol,
+                            "side": "sell",
+                            "quantity": abs(current_qty),
+                        })
+                        self._emit("on_trade", {"symbol": symbol, "side": "sell", "quantity": abs(current_qty), "order_id": order.order_id})
+                    except Exception as e:
+                        self.stats.orders_rejected += 1
+                        self.stats.errors_count += 1
+                        self._log_activity("order_rejected", f"Order failed for {symbol}: {e}", {
+                            "symbol": symbol,
+                            "error": str(e),
+                        })
+                else:
+                    # Signal doesn't match position state
+                    if signal_type in ('strong_buy', 'buy'):
+                        self._log_activity("skip_trade", f"{symbol}: Already have position ({current_qty}), skipping buy")
+                    elif signal_type in ('strong_sell', 'sell'):
+                        self._log_activity("skip_trade", f"{symbol}: No position to sell")
                 
             except Exception as e:
-                logger.error(f"Bot {self.id}: Error processing {symbol}: {e}")
                 self.stats.errors_count += 1
+                self._log_activity("error", f"Error processing {symbol}: {e}", {
+                    "symbol": symbol,
+                    "exception": str(e),
+                })
+        
+        self.stats.symbols_analyzed = symbols_analyzed
+        cycle_duration = (datetime.utcnow() - cycle_start).total_seconds()
+        
+        self._log_activity("cycle_complete", f"Cycle #{self.stats.cycles_completed} complete", {
+            "symbols_analyzed": symbols_analyzed,
+            "signals_generated": signals_generated,
+            "duration_seconds": round(cycle_duration, 2),
+            "trades_today": self.stats.trades_today,
+        })
     
     async def _generate_signal(self, symbol: str) -> Optional[dict]:
         """
-        Generate trading signal for a symbol.
+        Generate trading signal for a symbol using technical analysis.
         
-        In production, this would run the configured strategies.
-        For now, returns None (no signal) to prevent accidental trades.
+        Uses multiple indicators:
+        - RSI (Relative Strength Index)
+        - Moving Average crossovers (SMA 20/50)
+        - MACD
+        - Bollinger Bands
+        
+        Returns a signal if indicators align, None otherwise.
         """
-        # TODO: Integrate with actual strategy analysis
-        # This is intentionally returning None to prevent accidental trades
-        # until full strategy integration is implemented
-        #
-        # Example of what this would return:
-        # return {
-        #     'type': 'buy',  # 'strong_buy', 'buy', 'hold', 'sell', 'strong_sell'
-        #     'symbol': symbol,
-        #     'price': 150.0,
-        #     'confidence': 0.75,
-        #     'strategy': 'momentum',
-        # }
-        return None
+        try:
+            # Fetch market data using yfinance
+            import yfinance as yf
+            
+            ticker = yf.Ticker(symbol)
+            # Get 60 days of daily data for indicator calculations
+            hist = ticker.history(period="60d", interval="1d")
+            
+            if hist.empty or len(hist) < 30:
+                self._log_activity("insufficient_data", f"{symbol}: Not enough historical data ({len(hist)} bars)", {
+                    "symbol": symbol,
+                    "bars": len(hist) if not hist.empty else 0,
+                })
+                return None
+            
+            # Current price
+            current_price = hist['Close'].iloc[-1]
+            
+            # Calculate indicators
+            indicators = self._calculate_indicators(hist)
+            
+            if not indicators:
+                return None
+            
+            # Generate signal based on indicator confluence
+            signal_type, confidence = self._evaluate_indicators(indicators)
+            
+            if signal_type == 'hold':
+                return None
+            
+            return {
+                'type': signal_type,
+                'symbol': symbol,
+                'price': current_price,
+                'confidence': confidence,
+                'strategy': 'multi_indicator',
+                'indicators': indicators,
+            }
+            
+        except Exception as e:
+            self._log_activity("signal_error", f"Error generating signal for {symbol}: {e}", {
+                "symbol": symbol,
+                "error": str(e),
+            })
+            return None
+    
+    def _calculate_indicators(self, data: pd.DataFrame) -> Optional[dict]:
+        """Calculate technical indicators from OHLCV data."""
+        try:
+            close = data['Close']
+            high = data['High']
+            low = data['Low']
+            volume = data['Volume']
+            
+            # RSI (14-period)
+            delta = close.diff()
+            gain = delta.where(delta > 0, 0).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            rsi = 100 - (100 / (1 + rs))
+            current_rsi = rsi.iloc[-1]
+            
+            # Moving Averages
+            sma_20 = close.rolling(window=20).mean().iloc[-1]
+            sma_50 = close.rolling(window=50).mean().iloc[-1] if len(close) >= 50 else sma_20
+            current_price = close.iloc[-1]
+            
+            # MA Crossover signals
+            ma_bullish = current_price > sma_20 > sma_50
+            ma_bearish = current_price < sma_20 < sma_50
+            
+            # MACD
+            ema_12 = close.ewm(span=12, adjust=False).mean()
+            ema_26 = close.ewm(span=26, adjust=False).mean()
+            macd_line = ema_12 - ema_26
+            signal_line = macd_line.ewm(span=9, adjust=False).mean()
+            macd_histogram = macd_line - signal_line
+            
+            current_macd = macd_line.iloc[-1]
+            current_signal = signal_line.iloc[-1]
+            current_histogram = macd_histogram.iloc[-1]
+            prev_histogram = macd_histogram.iloc[-2] if len(macd_histogram) > 1 else 0
+            
+            macd_bullish = current_macd > current_signal and current_histogram > prev_histogram
+            macd_bearish = current_macd < current_signal and current_histogram < prev_histogram
+            
+            # Bollinger Bands
+            bb_sma = close.rolling(window=20).mean()
+            bb_std = close.rolling(window=20).std()
+            bb_upper = bb_sma + (bb_std * 2)
+            bb_lower = bb_sma - (bb_std * 2)
+            
+            current_bb_upper = bb_upper.iloc[-1]
+            current_bb_lower = bb_lower.iloc[-1]
+            bb_position = (current_price - current_bb_lower) / (current_bb_upper - current_bb_lower) if (current_bb_upper - current_bb_lower) > 0 else 0.5
+            
+            # Volume analysis
+            avg_volume = volume.rolling(window=20).mean().iloc[-1]
+            current_volume = volume.iloc[-1]
+            volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
+            
+            # Price momentum (5-day return)
+            momentum_5d = (current_price - close.iloc[-5]) / close.iloc[-5] * 100 if len(close) >= 5 else 0
+            
+            return {
+                'rsi': round(current_rsi, 2),
+                'sma_20': round(sma_20, 2),
+                'sma_50': round(sma_50, 2),
+                'price': round(current_price, 2),
+                'ma_bullish': ma_bullish,
+                'ma_bearish': ma_bearish,
+                'macd': round(current_macd, 4),
+                'macd_signal': round(current_signal, 4),
+                'macd_histogram': round(current_histogram, 4),
+                'macd_bullish': macd_bullish,
+                'macd_bearish': macd_bearish,
+                'bb_position': round(bb_position, 2),
+                'bb_upper': round(current_bb_upper, 2),
+                'bb_lower': round(current_bb_lower, 2),
+                'volume_ratio': round(volume_ratio, 2),
+                'momentum_5d': round(momentum_5d, 2),
+            }
+        except Exception as e:
+            logger.error(f"Error calculating indicators: {e}")
+            return None
+    
+    def _evaluate_indicators(self, indicators: dict) -> tuple[str, float]:
+        """
+        Evaluate indicators and return (signal_type, confidence).
+        
+        Uses a scoring system based on indicator confluence.
+        """
+        bullish_score = 0
+        bearish_score = 0
+        max_score = 5  # Number of indicators checked
+        
+        rsi = indicators.get('rsi', 50)
+        bb_position = indicators.get('bb_position', 0.5)
+        volume_ratio = indicators.get('volume_ratio', 1.0)
+        momentum = indicators.get('momentum_5d', 0)
+        
+        # RSI signals
+        if rsi < 30:  # Oversold - bullish
+            bullish_score += 1
+        elif rsi > 70:  # Overbought - bearish
+            bearish_score += 1
+        elif rsi < 40:  # Slightly oversold
+            bullish_score += 0.5
+        elif rsi > 60:  # Slightly overbought
+            bearish_score += 0.5
+        
+        # Moving Average signals
+        if indicators.get('ma_bullish'):
+            bullish_score += 1
+        elif indicators.get('ma_bearish'):
+            bearish_score += 1
+        
+        # MACD signals
+        if indicators.get('macd_bullish'):
+            bullish_score += 1
+        elif indicators.get('macd_bearish'):
+            bearish_score += 1
+        
+        # Bollinger Band signals
+        if bb_position < 0.2:  # Near lower band - bullish
+            bullish_score += 1
+        elif bb_position > 0.8:  # Near upper band - bearish
+            bearish_score += 1
+        
+        # Momentum
+        if momentum > 3:  # Strong upward momentum
+            bullish_score += 0.5
+        elif momentum < -3:  # Strong downward momentum
+            bearish_score += 0.5
+        
+        # Volume confirmation
+        if volume_ratio > 1.5:
+            # High volume amplifies the signal
+            if bullish_score > bearish_score:
+                bullish_score += 0.5
+            elif bearish_score > bullish_score:
+                bearish_score += 0.5
+        
+        # Determine signal
+        net_score = bullish_score - bearish_score
+        
+        if net_score >= 2.5:
+            signal_type = 'strong_buy'
+            confidence = min(0.9, 0.5 + (net_score / max_score) * 0.4)
+        elif net_score >= 1.5:
+            signal_type = 'buy'
+            confidence = min(0.75, 0.4 + (net_score / max_score) * 0.35)
+        elif net_score <= -2.5:
+            signal_type = 'strong_sell'
+            confidence = min(0.9, 0.5 + (abs(net_score) / max_score) * 0.4)
+        elif net_score <= -1.5:
+            signal_type = 'sell'
+            confidence = min(0.75, 0.4 + (abs(net_score) / max_score) * 0.35)
+        else:
+            signal_type = 'hold'
+            confidence = 0
+        
+        return signal_type, round(confidence, 2)
     
     def update_config(self, updates: dict) -> None:
         """Update bot configuration (while running or stopped)."""
@@ -685,6 +1037,17 @@ class BotInstance:
                 "win_rate": self.stats.win_rate,
                 "open_positions": self.stats.open_positions,
                 "errors_count": self.stats.errors_count,
+                "cycles_completed": self.stats.cycles_completed,
+                "last_cycle_time": self.stats.last_cycle_time.isoformat() if self.stats.last_cycle_time else None,
+                "symbols_analyzed": self.stats.symbols_analyzed,
+                "orders_submitted": self.stats.orders_submitted,
+                "orders_filled": self.stats.orders_filled,
+                "orders_rejected": self.stats.orders_rejected,
+                "last_trade_time": self.stats.last_trade_time.isoformat() if self.stats.last_trade_time else None,
             },
         }
+    
+    def get_activity_log(self, limit: int = 50) -> list[dict]:
+        """Get recent activity log entries for this bot."""
+        return get_bot_activity_log(self.id, limit)
 

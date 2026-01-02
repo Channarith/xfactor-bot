@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v1.1.6)'
+        description: 'Version tag (e.g., v1.1.8)'
         required: false
-        default: 'v1.1.6'
+        default: 'v1.1.8'
 
 permissions:
   contents: write
@@ -88,7 +88,7 @@ jobs:
           
           # Retry logic for DMG creation
           for i in 1 2 3; do
-            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_1.1.6_x64_legacy.dmg" && break
+            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_1.1.7_x64_legacy.dmg" && break
             echo "Attempt $i failed, retrying..."
             sleep 5
           done
@@ -103,8 +103,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.event.inputs.version || 'v1.1.6' }}
-          name: "XFactor Bot ${{ github.event.inputs.version || 'v1.1.6' }} - Legacy Mac Hotfix"
+          tag_name: ${{ github.event.inputs.version || 'v1.1.8' }}
+          name: "XFactor Bot ${{ github.event.inputs.version || 'v1.1.8' }} - Legacy Mac Hotfix"
           draft: false
           prerelease: false
           files: |
