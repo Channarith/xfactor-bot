@@ -72,16 +72,19 @@ class AlpacaBroker(BaseBroker):
         # Caching to prevent excessive API calls
         self._account_cache: Optional[List[AccountInfo]] = None
         self._account_cache_time: Optional[datetime] = None
-        self._account_cache_ttl = 10  # seconds
+        self._account_cache_ttl = 15  # seconds - increased to reduce API calls
         
         self._positions_cache: Optional[List[Position]] = None
         self._positions_cache_time: Optional[datetime] = None
-        self._positions_cache_ttl = 5  # seconds
+        self._positions_cache_ttl = 10  # seconds - increased to reduce API calls
         
         # Connection tracking
         self._last_successful_call: Optional[datetime] = None
         self._consecutive_failures = 0
         self._max_consecutive_failures = 5
+        
+        # Async lock to prevent concurrent API calls (connection pool exhaustion)
+        self._api_lock = asyncio.Lock()
         
         logger.debug(f"AlpacaBroker initialized: paper={paper}, base_url={self.base_url}")
     
@@ -214,7 +217,7 @@ class AlpacaBroker(BaseBroker):
             logger.warning("get_accounts called but not connected")
             return []
         
-        # Check cache
+        # Check cache first (outside lock for performance)
         now = datetime.now()
         if self._account_cache and self._account_cache_time:
             age = (now - self._account_cache_time).total_seconds()
@@ -222,51 +225,63 @@ class AlpacaBroker(BaseBroker):
                 logger.debug(f"Using cached account data (age: {age:.1f}s)")
                 return self._account_cache
         
-        try:
-            logger.debug("Fetching Alpaca account data...")
+        # Use lock to prevent concurrent API calls (connection pool exhaustion)
+        async with self._api_lock:
+            # Double-check cache after acquiring lock
+            now = datetime.now()
+            if self._account_cache and self._account_cache_time:
+                age = (now - self._account_cache_time).total_seconds()
+                if age < self._account_cache_ttl:
+                    return self._account_cache
             
-            loop = asyncio.get_event_loop()
-            account = await asyncio.wait_for(
-                loop.run_in_executor(None, self._trading_client.get_account),
-                timeout=self.REQUEST_TIMEOUT
-            )
-            
-            self._last_successful_call = datetime.now()
-            self._consecutive_failures = 0
-            
-            result = [AccountInfo(
-                account_id=account.account_number,
-                broker=BrokerType.ALPACA,
-                account_type="margin" if account.multiplier > 1 else "cash",
-                buying_power=float(account.buying_power),
-                cash=float(account.cash),
-                portfolio_value=float(account.portfolio_value),
-                equity=float(account.equity),
-                margin_used=float(account.initial_margin or 0),
-                margin_available=float(account.regt_buying_power or 0),
-                day_trades_remaining=account.daytrade_count if hasattr(account, 'daytrade_count') else 3,
-                is_pattern_day_trader=account.pattern_day_trader,
-                currency=account.currency,
-                last_updated=datetime.now()
-            )]
-            
-            # Update cache
-            self._account_cache = result
-            self._account_cache_time = datetime.now()
-            
-            logger.debug(f"Alpaca account: equity=${float(account.equity):,.2f}, buying_power=${float(account.buying_power):,.2f}")
-            
-            return result
-            
-        except asyncio.TimeoutError:
-            logger.warning("get_accounts timed out, returning cached data")
-            self._consecutive_failures += 1
-            return self._account_cache or []
-            
-        except Exception as e:
-            logger.error(f"Error getting Alpaca account: {e}")
-            self._consecutive_failures += 1
-            return self._account_cache or []
+            try:
+                logger.debug("Fetching Alpaca account data...")
+                
+                loop = asyncio.get_event_loop()
+                account = await asyncio.wait_for(
+                    loop.run_in_executor(None, self._trading_client.get_account),
+                    timeout=self.REQUEST_TIMEOUT
+                )
+                
+                self._last_successful_call = datetime.now()
+                self._consecutive_failures = 0
+                
+                # Alpaca returns some fields as strings - convert them
+                multiplier = int(account.multiplier) if account.multiplier else 1
+                
+                result = [AccountInfo(
+                    account_id=account.account_number,
+                    broker=BrokerType.ALPACA,
+                    account_type="margin" if multiplier > 1 else "cash",
+                    buying_power=float(account.buying_power),
+                    cash=float(account.cash),
+                    portfolio_value=float(account.portfolio_value),
+                    equity=float(account.equity),
+                    margin_used=float(account.initial_margin or 0),
+                    margin_available=float(account.regt_buying_power or 0),
+                    day_trades_remaining=int(account.daytrade_count) if hasattr(account, 'daytrade_count') and account.daytrade_count else 3,
+                    is_pattern_day_trader=account.pattern_day_trader,
+                    currency=account.currency,
+                    last_updated=datetime.now()
+                )]
+                
+                # Update cache
+                self._account_cache = result
+                self._account_cache_time = datetime.now()
+                
+                logger.debug(f"Alpaca account: equity=${float(account.equity):,.2f}, buying_power=${float(account.buying_power):,.2f}")
+                
+                return result
+                
+            except asyncio.TimeoutError:
+                logger.warning("get_accounts timed out, returning cached data")
+                self._consecutive_failures += 1
+                return self._account_cache or []
+                
+            except Exception as e:
+                logger.error(f"Error getting Alpaca account: {e}")
+                self._consecutive_failures += 1
+                return self._account_cache or []
     
     async def get_account_info(self, account_id: str) -> AccountInfo:
         """Get Alpaca account info."""
@@ -287,7 +302,7 @@ class AlpacaBroker(BaseBroker):
         if not self._trading_client:
             return []
         
-        # Check cache
+        # Check cache first (outside lock for performance)
         now = datetime.now()
         if self._positions_cache is not None and self._positions_cache_time:
             age = (now - self._positions_cache_time).total_seconds()
@@ -295,51 +310,60 @@ class AlpacaBroker(BaseBroker):
                 logger.debug(f"Using cached positions (age: {age:.1f}s)")
                 return self._positions_cache
         
-        try:
-            logger.debug("Fetching Alpaca positions...")
+        # Use lock to prevent concurrent API calls
+        async with self._api_lock:
+            # Double-check cache after acquiring lock
+            now = datetime.now()
+            if self._positions_cache is not None and self._positions_cache_time:
+                age = (now - self._positions_cache_time).total_seconds()
+                if age < self._positions_cache_ttl:
+                    return self._positions_cache
             
-            loop = asyncio.get_event_loop()
-            positions = await asyncio.wait_for(
-                loop.run_in_executor(None, self._trading_client.get_all_positions),
-                timeout=self.REQUEST_TIMEOUT
-            )
-            
-            self._last_successful_call = datetime.now()
-            
-            result = [
-                Position(
-                    symbol=p.symbol,
-                    quantity=float(p.qty),
-                    avg_cost=float(p.avg_entry_price),
-                    current_price=float(p.current_price),
-                    market_value=float(p.market_value),
-                    unrealized_pnl=float(p.unrealized_pl),
-                    unrealized_pnl_pct=float(p.unrealized_plpc) * 100,
-                    side="long" if float(p.qty) > 0 else "short",
-                    broker=BrokerType.ALPACA,
-                    account_id=account_id,
-                    last_updated=datetime.now()
+            try:
+                logger.debug("Fetching Alpaca positions...")
+                
+                loop = asyncio.get_event_loop()
+                positions = await asyncio.wait_for(
+                    loop.run_in_executor(None, self._trading_client.get_all_positions),
+                    timeout=self.REQUEST_TIMEOUT
                 )
-                for p in positions
-            ]
-            
-            # Update cache
-            self._positions_cache = result
-            self._positions_cache_time = datetime.now()
-            
-            logger.debug(f"Alpaca positions: {len(result)} open positions")
-            for p in result:
-                logger.debug(f"  {p.symbol}: {p.quantity} @ ${p.current_price:.2f} (P&L: ${p.unrealized_pnl:.2f})")
-            
-            return result
-            
-        except asyncio.TimeoutError:
-            logger.warning("get_positions timed out, returning cached data")
-            return self._positions_cache or []
-            
-        except Exception as e:
-            logger.error(f"Error getting positions: {e}")
-            return self._positions_cache or []
+                
+                self._last_successful_call = datetime.now()
+                
+                result = [
+                    Position(
+                        symbol=p.symbol,
+                        quantity=float(p.qty),
+                        avg_cost=float(p.avg_entry_price),
+                        current_price=float(p.current_price),
+                        market_value=float(p.market_value),
+                        unrealized_pnl=float(p.unrealized_pl),
+                        unrealized_pnl_pct=float(p.unrealized_plpc) * 100,
+                        side="long" if float(p.qty) > 0 else "short",
+                        broker=BrokerType.ALPACA,
+                        account_id=account_id,
+                        last_updated=datetime.now()
+                    )
+                    for p in positions
+                ]
+                
+                # Update cache
+                self._positions_cache = result
+                self._positions_cache_time = datetime.now()
+                
+                logger.debug(f"Alpaca positions: {len(result)} open positions")
+                for p in result:
+                    logger.debug(f"  {p.symbol}: {p.quantity} @ ${p.current_price:.2f} (P&L: ${p.unrealized_pnl:.2f})")
+                
+                return result
+                
+            except asyncio.TimeoutError:
+                logger.warning("get_positions timed out, returning cached data")
+                return self._positions_cache or []
+                
+            except Exception as e:
+                logger.error(f"Error getting positions: {e}")
+                return self._positions_cache or []
     
     async def get_position(self, account_id: str, symbol: str) -> Optional[Position]:
         """Get position for a specific symbol."""

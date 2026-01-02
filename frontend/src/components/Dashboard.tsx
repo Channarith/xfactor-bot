@@ -28,6 +28,7 @@ import ForecastingPanel from './ForecastingPanel'
 import VideoPlatformsPanel from './VideoPlatformsPanel'
 import BotRiskPanel from './BotRiskPanel'
 import ForexPanel from './ForexPanel'
+import { useAuth } from '../context/AuthContext'
 import StockAnalyzer from './StockAnalyzer'
 import { useTradingMode } from '../context/TradingModeContext'
 
@@ -253,7 +254,8 @@ export function Dashboard() {
 
 // Inner components that strip the card wrapper
 function BotManagerInner() {
-  return <BotManager />
+  const { token } = useAuth()
+  return <BotManager token={token} />
 }
 
 function PositionsTableInner() {
