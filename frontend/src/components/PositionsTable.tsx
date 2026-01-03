@@ -25,6 +25,20 @@ interface PortfolioSummary {
   position_count: number
 }
 
+interface CompletedTrade {
+  timestamp: string
+  symbol: string
+  side: string
+  quantity: number
+  buy_price: number
+  sell_price: number
+  profit_loss: number
+  profit_loss_pct: number
+  broker: string
+  reasoning: string
+  bot_name: string
+}
+
 // Empty positions - real data comes from broker API when connected
 const emptyPositions: Position[] = []
 
@@ -45,6 +59,7 @@ export function PositionsTable() {
   const { mode, broker } = useTradingMode()
   const [positions, setPositions] = useState<Position[]>(emptyPositions)
   const [summary, setSummary] = useState<PortfolioSummary>(emptySummary)
+  const [completedTrades, setCompletedTrades] = useState<CompletedTrade[]>([])
   const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [sortField, setSortField] = useState<SortField>('unrealized_pnl')
@@ -52,6 +67,7 @@ export function PositionsTable() {
   const [showHelp, setShowHelp] = useState(false)
   const [isLiveData, setIsLiveData] = useState(false)
   const [chartSymbol, setChartSymbol] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'positions' | 'trades'>('positions')
   
   const getModeLabel = () => {
     switch (mode) {
@@ -66,9 +82,10 @@ export function PositionsTable() {
   const fetchPositions = async () => {
     setLoading(true)
     try {
-      const [posRes, summaryRes] = await Promise.all([
+      const [posRes, summaryRes, tradesRes] = await Promise.all([
         fetch('/api/positions/'),
         fetch('/api/positions/summary'),
+        fetch('/api/positions/completed-trades'),
       ])
       
       if (posRes.ok) {
@@ -93,6 +110,11 @@ export function PositionsTable() {
         })
       } else {
         setSummary(emptySummary)
+      }
+      
+      if (tradesRes.ok) {
+        const data = await tradesRes.json()
+        setCompletedTrades(data.trades || [])
       }
     } catch (e) {
       console.error('Failed to fetch positions:', e)
@@ -254,7 +276,7 @@ export function PositionsTable() {
       )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="p-3 rounded-lg bg-secondary/50">
           <div className="text-xs text-muted-foreground">Total Value</div>
           <div className="text-lg font-semibold">{formatCurrency(summary.total_value)}</div>
@@ -264,6 +286,14 @@ export function PositionsTable() {
           <div className={`text-lg font-semibold ${summary.unrealized_pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
             {summary.unrealized_pnl >= 0 ? '+' : ''}{formatCurrency(summary.unrealized_pnl)}
           </div>
+          <div className="text-[10px] text-muted-foreground">Open positions</div>
+        </div>
+        <div className="p-3 rounded-lg bg-secondary/50">
+          <div className="text-xs text-muted-foreground">Realized P&L</div>
+          <div className={`text-lg font-semibold ${summary.realized_pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
+            {summary.realized_pnl >= 0 ? '+' : ''}{formatCurrency(summary.realized_pnl)}
+          </div>
+          <div className="text-[10px] text-muted-foreground">{completedTrades.length} closed trades</div>
         </div>
         <div className="p-3 rounded-lg bg-secondary/50">
           <div className="text-xs text-muted-foreground">Daily P&L</div>
@@ -275,6 +305,42 @@ export function PositionsTable() {
           <div className="text-xs text-muted-foreground">Cash</div>
           <div className="text-lg font-semibold">{formatCurrency(summary.cash)}</div>
         </div>
+      </div>
+      
+      {/* Tab Navigation */}
+      <div className="flex gap-2 border-b border-border">
+        <button
+          onClick={() => setActiveTab('positions')}
+          className={`px-4 py-2 text-sm font-medium transition-colors relative ${
+            activeTab === 'positions' 
+              ? 'text-foreground' 
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Open Positions
+          <span className="ml-2 px-1.5 py-0.5 text-xs rounded bg-secondary">
+            {positions.length}
+          </span>
+          {activeTab === 'positions' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-xfactor-teal" />
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('trades')}
+          className={`px-4 py-2 text-sm font-medium transition-colors relative ${
+            activeTab === 'trades' 
+              ? 'text-foreground' 
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Closed Trades
+          <span className="ml-2 px-1.5 py-0.5 text-xs rounded bg-secondary">
+            {completedTrades.length}
+          </span>
+          {activeTab === 'trades' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-xfactor-teal" />
+          )}
+        </button>
       </div>
 
       {/* Search and Controls */}
@@ -312,92 +378,202 @@ export function PositionsTable() {
       </div>
 
       {/* Positions Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-border text-left text-sm text-muted-foreground">
-              <th className="pb-2">
-                <button onClick={() => toggleSort('symbol')} className="flex items-center gap-1 hover:text-foreground">
-                  Symbol <SortIcon field="symbol" />
-                </button>
-              </th>
-              <th className="pb-2">
-                <button onClick={() => toggleSort('quantity')} className="flex items-center gap-1 hover:text-foreground">
-                  Qty <SortIcon field="quantity" />
-                </button>
-              </th>
-              <th className="pb-2">Avg Cost</th>
-              <th className="pb-2">Price</th>
-              <th className="pb-2">
-                <button onClick={() => toggleSort('market_value')} className="flex items-center gap-1 hover:text-foreground">
-                  Value <SortIcon field="market_value" />
-                </button>
-              </th>
-              <th className="pb-2">
-                <button onClick={() => toggleSort('unrealized_pnl')} className="flex items-center gap-1 hover:text-foreground">
-                  P&L <SortIcon field="unrealized_pnl" />
-                </button>
-              </th>
-              <th className="pb-2">
-                <button onClick={() => toggleSort('unrealized_pnl_pct')} className="flex items-center gap-1 hover:text-foreground">
-                  P&L % <SortIcon field="unrealized_pnl_pct" />
-                </button>
-              </th>
-              <th className="pb-2">Strategy</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredPositions.map((pos) => (
-              <tr key={pos.symbol} className="border-b border-border/50 hover:bg-secondary/30">
-                <td className="py-2 font-medium">
-                  <button 
-                    onClick={() => setChartSymbol(pos.symbol)}
-                    className="flex items-center gap-2 hover:text-xfactor-teal transition-colors"
-                    title="View price chart"
-                  >
-                    {pos.quantity > 0 ? (
-                      <TrendingUp className="h-3 w-3 text-profit" />
-                    ) : (
-                      <TrendingDown className="h-3 w-3 text-loss" />
-                    )}
-                    <LineChart className="h-3 w-3 text-muted-foreground" />
-                    <span className="hover:underline">{pos.symbol}</span>
-                  </button>
-                </td>
-                <td className={`py-2 ${pos.quantity < 0 ? 'text-loss' : ''}`}>
-                  {pos.quantity.toLocaleString()}
-                </td>
-                <td className="py-2">${pos.avg_cost.toFixed(2)}</td>
-                <td className="py-2">${pos.current_price.toFixed(2)}</td>
-                <td className="py-2">{formatCurrency(Math.abs(pos.market_value))}</td>
-                <td className={`py-2 ${pos.unrealized_pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
-                  {pos.unrealized_pnl >= 0 ? '+' : ''}{formatCurrency(pos.unrealized_pnl)}
-                </td>
-                <td className={`py-2 ${pos.unrealized_pnl_pct >= 0 ? 'text-profit' : 'text-loss'}`}>
-                  {pos.unrealized_pnl_pct >= 0 ? '+' : ''}{pos.unrealized_pnl_pct.toFixed(2)}%
-                </td>
-                <td className="py-2">
-                  <span className="px-2 py-0.5 text-xs rounded bg-secondary text-muted-foreground">
-                    {pos.strategy}
-                  </span>
-                </td>
-              </tr>
-            ))}
-            {filteredPositions.length === 0 && (
-              <tr>
-                <td colSpan={8} className="py-4 text-center text-muted-foreground">
-                  {searchQuery ? 'No positions match your search' : 'No open positions'}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Position Count */}
-      <div className="text-xs text-muted-foreground text-right">
-        {filteredPositions.length} of {positions.length} positions
-      </div>
+      {activeTab === 'positions' && (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border text-left text-sm text-muted-foreground">
+                  <th className="pb-2">
+                    <button onClick={() => toggleSort('symbol')} className="flex items-center gap-1 hover:text-foreground">
+                      Symbol <SortIcon field="symbol" />
+                    </button>
+                  </th>
+                  <th className="pb-2">
+                    <button onClick={() => toggleSort('quantity')} className="flex items-center gap-1 hover:text-foreground">
+                      Qty <SortIcon field="quantity" />
+                    </button>
+                  </th>
+                  <th className="pb-2">
+                    <span title="Your purchase price per share">Buy Price</span>
+                  </th>
+                  <th className="pb-2">
+                    <span title="Current market price">Now</span>
+                  </th>
+                  <th className="pb-2">
+                    <button onClick={() => toggleSort('market_value')} className="flex items-center gap-1 hover:text-foreground">
+                      Value <SortIcon field="market_value" />
+                    </button>
+                  </th>
+                  <th className="pb-2">
+                    <button onClick={() => toggleSort('unrealized_pnl')} className="flex items-center gap-1 hover:text-foreground" title="Potential profit/loss if sold now">
+                      If Sold <SortIcon field="unrealized_pnl" />
+                    </button>
+                  </th>
+                  <th className="pb-2">
+                    <button onClick={() => toggleSort('unrealized_pnl_pct')} className="flex items-center gap-1 hover:text-foreground" title="Percent change since purchase">
+                      Change <SortIcon field="unrealized_pnl_pct" />
+                    </button>
+                  </th>
+                  <th className="pb-2">Strategy</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPositions.map((pos) => {
+                  const priceChange = pos.current_price - pos.avg_cost
+                  const isProfit = priceChange >= 0
+                  
+                  return (
+                    <tr key={pos.symbol} className="border-b border-border/50 hover:bg-secondary/30">
+                      <td className="py-2 font-medium">
+                        <button 
+                          onClick={() => setChartSymbol(pos.symbol)}
+                          className="flex items-center gap-2 hover:text-xfactor-teal transition-colors"
+                          title="View price chart"
+                        >
+                          {pos.quantity > 0 ? (
+                            <TrendingUp className="h-3 w-3 text-profit" />
+                          ) : (
+                            <TrendingDown className="h-3 w-3 text-loss" />
+                          )}
+                          <LineChart className="h-3 w-3 text-muted-foreground" />
+                          <span className="hover:underline">{pos.symbol}</span>
+                        </button>
+                      </td>
+                      <td className={`py-2 ${pos.quantity < 0 ? 'text-loss' : ''}`}>
+                        {pos.quantity.toLocaleString()}
+                      </td>
+                      <td className="py-2">
+                        <span className="text-muted-foreground">${pos.avg_cost.toFixed(2)}</span>
+                      </td>
+                      <td className="py-2">
+                        <div className="flex items-center gap-1">
+                          <span>${pos.current_price.toFixed(2)}</span>
+                          <span className={`text-[10px] ${isProfit ? 'text-profit' : 'text-loss'}`}>
+                            ({isProfit ? '↑' : '↓'}${Math.abs(priceChange).toFixed(2)})
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-2">{formatCurrency(Math.abs(pos.market_value))}</td>
+                      <td className={`py-2 font-medium ${pos.unrealized_pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
+                        <div className="flex flex-col">
+                          <span>{pos.unrealized_pnl >= 0 ? '+' : ''}{formatCurrency(pos.unrealized_pnl)}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {pos.unrealized_pnl >= 0 ? 'profit' : 'loss'} if sold
+                          </span>
+                        </div>
+                      </td>
+                      <td className={`py-2 font-medium ${pos.unrealized_pnl_pct >= 0 ? 'text-profit' : 'text-loss'}`}>
+                        <div className="flex items-center gap-1">
+                          {pos.unrealized_pnl_pct >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                          {pos.unrealized_pnl_pct >= 0 ? '+' : ''}{pos.unrealized_pnl_pct.toFixed(2)}%
+                        </div>
+                      </td>
+                      <td className="py-2">
+                        <span className="px-2 py-0.5 text-xs rounded bg-secondary text-muted-foreground">
+                          {pos.strategy}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+                {filteredPositions.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="py-4 text-center text-muted-foreground">
+                      {searchQuery ? 'No positions match your search' : 'No open positions'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="text-xs text-muted-foreground text-right">
+            {filteredPositions.length} of {positions.length} positions
+          </div>
+        </>
+      )}
+      
+      {/* Completed Trades Table */}
+      {activeTab === 'trades' && (
+        <div className="space-y-4">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border text-left text-sm text-muted-foreground">
+                  <th className="pb-2">Date</th>
+                  <th className="pb-2">Symbol</th>
+                  <th className="pb-2">Qty</th>
+                  <th className="pb-2">Buy Price</th>
+                  <th className="pb-2">Sell Price</th>
+                  <th className="pb-2">Profit/Loss</th>
+                  <th className="pb-2">Return</th>
+                  <th className="pb-2">Bot</th>
+                </tr>
+              </thead>
+              <tbody>
+                {completedTrades.map((trade, idx) => (
+                  <tr key={`${trade.symbol}-${idx}`} className="border-b border-border/50 hover:bg-secondary/30 group">
+                    <td className="py-2 text-xs text-muted-foreground">
+                      {new Date(trade.timestamp).toLocaleDateString()}
+                    </td>
+                    <td className="py-2 font-medium">{trade.symbol}</td>
+                    <td className="py-2">{trade.quantity}</td>
+                    <td className="py-2 text-muted-foreground">${trade.buy_price.toFixed(2)}</td>
+                    <td className="py-2">${trade.sell_price.toFixed(2)}</td>
+                    <td className={`py-2 font-medium ${trade.profit_loss >= 0 ? 'text-profit' : 'text-loss'}`}>
+                      {trade.profit_loss >= 0 ? '+' : ''}{formatCurrency(trade.profit_loss)}
+                    </td>
+                    <td className={`py-2 ${trade.profit_loss_pct >= 0 ? 'text-profit' : 'text-loss'}`}>
+                      <div className="flex items-center gap-1">
+                        {trade.profit_loss_pct >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                        {trade.profit_loss_pct >= 0 ? '+' : ''}{trade.profit_loss_pct.toFixed(2)}%
+                      </div>
+                    </td>
+                    <td className="py-2">
+                      <span className="px-2 py-0.5 text-xs rounded bg-secondary text-muted-foreground">
+                        {trade.bot_name}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {completedTrades.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="py-8 text-center text-muted-foreground">
+                      <div className="space-y-2">
+                        <p>No completed trades yet</p>
+                        <p className="text-xs">When bots close positions, they will appear here with profit/loss details</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          
+          {completedTrades.length > 0 && (
+            <div className="p-3 rounded-lg bg-secondary/30">
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <div className="text-xs text-muted-foreground">Total Trades</div>
+                  <div className="text-lg font-semibold">{completedTrades.length}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Win Rate</div>
+                  <div className="text-lg font-semibold text-profit">
+                    {((completedTrades.filter(t => t.profit_loss >= 0).length / completedTrades.length) * 100).toFixed(1)}%
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Total P&L</div>
+                  <div className={`text-lg font-semibold ${summary.realized_pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
+                    {summary.realized_pnl >= 0 ? '+' : ''}{formatCurrency(summary.realized_pnl)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       
       {/* Position Performance Chart Modal */}
       {chartSymbol && (
