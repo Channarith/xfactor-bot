@@ -148,6 +148,44 @@ export function BotManager({ token = '' }: BotManagerProps) {
   const [targetBroker, setTargetBroker] = useState('')  // Empty = use default
   const [multiBrokerMode, setMultiBrokerMode] = useState(false)
   
+  // Symbol autocomplete
+  const [symbolSearch, setSymbolSearch] = useState('')
+  const [symbolSuggestions, setSymbolSuggestions] = useState<Array<{symbol: string, name: string, exchange: string}>>([])
+  const [showSymbolDropdown, setShowSymbolDropdown] = useState(false)
+  
+  // Symbol search with debounce
+  useEffect(() => {
+    if (symbolSearch.length < 1) {
+      setSymbolSuggestions([])
+      return
+    }
+    
+    const timer = setTimeout(async () => {
+      try {
+        const baseUrl = getApiBaseUrl()
+        const res = await fetch(`${baseUrl}/api/screener/symbols/search?q=${encodeURIComponent(symbolSearch)}&limit=10`)
+        if (res.ok) {
+          const data = await res.json()
+          setSymbolSuggestions(data.symbols || [])
+          setShowSymbolDropdown(true)
+        }
+      } catch (e) {
+        console.error('Symbol search error:', e)
+      }
+    }, 200)
+    
+    return () => clearTimeout(timer)
+  }, [symbolSearch])
+  
+  const addSymbol = (symbol: string) => {
+    const current = newBotSymbols.split(',').map(s => s.trim()).filter(Boolean)
+    if (!current.includes(symbol)) {
+      setNewBotSymbols([...current, symbol].join(', '))
+    }
+    setSymbolSearch('')
+    setShowSymbolDropdown(false)
+  }
+  
   // Filtered and sorted bots
   const filteredBots = useMemo(() => {
     let result = [...bots]
@@ -824,12 +862,42 @@ export function BotManager({ token = '' }: BotManagerProps) {
                   12,000+ Symbols
                 </span>
               </label>
+              
+              {/* Symbol Search Autocomplete */}
+              <div className="relative mb-2">
+                <input
+                  type="text"
+                  value={symbolSearch}
+                  onChange={(e) => setSymbolSearch(e.target.value)}
+                  onFocus={() => symbolSuggestions.length > 0 && setShowSymbolDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowSymbolDropdown(false), 200)}
+                  placeholder="🔍 Search 12,000+ symbols..."
+                  className="w-full mt-1 rounded bg-input/50 px-3 py-1.5 text-xs border border-border/50 focus:border-xfactor-teal"
+                />
+                {showSymbolDropdown && symbolSuggestions.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                    {symbolSuggestions.map((s) => (
+                      <button
+                        key={s.symbol}
+                        type="button"
+                        onClick={() => addSymbol(s.symbol)}
+                        className="w-full px-3 py-2 text-left hover:bg-accent flex items-center justify-between text-xs"
+                      >
+                        <span className="font-medium text-foreground">{s.symbol}</span>
+                        <span className="text-muted-foreground truncate ml-2">{s.name}</span>
+                        <span className="text-[10px] text-muted-foreground/60">{s.exchange}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
               <input
                 type="text"
                 value={newBotSymbols}
                 onChange={(e) => setNewBotSymbols(e.target.value)}
                 placeholder="AAPL, MSFT, SOXL, VOO, QQQ..."
-                className="w-full mt-1 rounded bg-input px-3 py-2 text-sm border border-border"
+                className="w-full rounded bg-input px-3 py-2 text-sm border border-border"
               />
               
               {/* ETF Quick Presets */}
