@@ -12,7 +12,8 @@ import {
   Video,
   AlertTriangle,
   CandlestickChart,
-  Crosshair
+  Crosshair,
+  Activity
 } from 'lucide-react'
 import { PortfolioCard } from './PortfolioCard'
 import { PositionsTable } from './PositionsTable'
@@ -31,6 +32,7 @@ import ForexPanel from './ForexPanel'
 import { useAuth } from '../context/AuthContext'
 import StockAnalyzer from './StockAnalyzer'
 import { useTradingMode } from '../context/TradingModeContext'
+import { MomentumDashboard } from './MomentumDashboard'
 
 export function Dashboard() {
   const { broker } = useTradingMode()
@@ -144,6 +146,16 @@ export function Dashboard() {
         defaultExpanded={true}
       >
         <NewsFeed maxItems={100} itemsPerPage={10} />
+      </CollapsiblePanel>
+      
+      {/* Momentum Scanner - NEW v1.2.1 */}
+      <CollapsiblePanel 
+        title="📊 Momentum Scanner" 
+        icon={<Activity className="h-5 w-5" />}
+        badge="12k+"
+        defaultExpanded={true}
+      >
+        <MomentumDashboard />
       </CollapsiblePanel>
       
       {/* Main Content - Always full width (Settings moved to Setup page) */}
