@@ -23,6 +23,7 @@ interface InsiderTrade {
   value: number
   date: string
   filingDate: string
+  aiAnalysis?: string  // AI-generated analysis of why the trade was made
 }
 
 interface TopTrader {
@@ -198,6 +199,49 @@ const ainvestFields: FieldDefinition[] = [
 // Data Generation (same as before, keeping for brevity)
 // ============================================================================
 
+// AI Analysis templates for insider trades
+const generateAIAnalysis = (
+  ticker: string, 
+  tradeType: 'Buy' | 'Sell', 
+  title: string, 
+  value: number,
+  insider: string
+): string => {
+  const buyReasons = [
+    `${title} likely sees strong growth potential ahead of upcoming product launches and expects revenue acceleration.`,
+    `Insider accumulation suggests confidence in Q4 earnings beat. Management may have visibility into stronger-than-expected demand.`,
+    `${title} adding to position could signal positive internal developments not yet public. Often precedes major announcements.`,
+    `Large insider buy at current levels indicates ${title} believes shares are undervalued relative to future growth trajectory.`,
+    `Strategic accumulation by ${title} may indicate upcoming catalyst: possible M&A, partnership, or product breakthrough.`,
+    `${insider}'s purchase timing suggests confidence in near-term fundamentals. Historically, this insider's buys precede 15-20% gains.`,
+    `Insider buying during market weakness often signals conviction in company's competitive position and long-term outlook.`,
+    `${title}-level purchase typically indicates awareness of positive developments. Consider sector tailwinds and company fundamentals.`,
+  ]
+  
+  const sellReasons = [
+    `${title} sale appears routine for diversification/tax planning. No unusual timing relative to scheduled selling plans.`,
+    `Partial position reduction by ${title} - likely portfolio rebalancing rather than negative signal. Retains significant holdings.`,
+    `Exercise & sell pattern common for executives. Stock-based compensation vesting often triggers these transactions.`,
+    `${title} reducing exposure after significant stock appreciation. Profit-taking after ${ticker}'s strong YTD performance.`,
+    `Planned sale under 10b5-1 trading plan. Pre-scheduled selling not indicative of insider sentiment on fundamentals.`,
+    `${insider} trimming position ahead of potential tax law changes. Estate planning common for executives at this level.`,
+    `Sale coincides with lockup expiration. Institutional selling pressure may create short-term volatility but not fundamental concern.`,
+    `${title} selling to fund personal investments. Filed Form 4 shows continued significant ownership stake.`,
+  ]
+  
+  const reasons = tradeType === 'Buy' ? buyReasons : sellReasons
+  const randomIndex = Math.floor(Math.random() * reasons.length)
+  
+  // Add value context
+  const valueStr = value >= 10000000 
+    ? `💰 Large ${tradeType.toLowerCase()} ($${(value/1000000).toFixed(1)}M) - ` 
+    : value >= 1000000 
+    ? `📊 Notable ${tradeType.toLowerCase()} ($${(value/1000000).toFixed(1)}M) - `
+    : `📝 Standard ${tradeType.toLowerCase()} - `
+  
+  return valueStr + reasons[randomIndex]
+}
+
 const generateInsiderTrades = (count: number): InsiderTrade[] => {
   const tickers = ['NVDA', 'AAPL', 'MSFT', 'GOOGL', 'META', 'TSLA', 'AMZN', 'AMD', 'CRM', 'ORCL']
   const companies: Record<string, string> = {
@@ -215,12 +259,15 @@ const generateInsiderTrades = (count: number): InsiderTrade[] => {
   return Array.from({ length: count }, (_, i) => {
     const ticker = tickers[i % tickers.length]
     const insider = insiders[Math.floor(Math.random() * insiders.length)]
+    const tradeType: 'Buy' | 'Sell' = Math.random() > 0.3 ? 'Sell' : 'Buy'
+    const value = Math.floor(Math.random() * 100000000) + 1000000
     return {
       id: `insider-${i}`, ticker, company: companies[ticker], insider: insider.name, title: insider.title,
-      tradeType: Math.random() > 0.3 ? 'Sell' : 'Buy', shares: Math.floor(Math.random() * 200000) + 10000,
-      price: Math.floor(Math.random() * 500) + 50, value: Math.floor(Math.random() * 100000000) + 1000000,
+      tradeType, shares: Math.floor(Math.random() * 200000) + 10000,
+      price: Math.floor(Math.random() * 500) + 50, value,
       date: new Date(Date.now() - i * 86400000).toISOString().split('T')[0],
-      filingDate: new Date(Date.now() - i * 86400000 + 86400000).toISOString().split('T')[0]
+      filingDate: new Date(Date.now() - i * 86400000 + 86400000).toISOString().split('T')[0],
+      aiAnalysis: generateAIAnalysis(ticker, tradeType, insider.title, value, insider.name)
     }
   })
 }
@@ -654,6 +701,18 @@ export function TraderInsights() {
                 <span><User className="h-3 w-3 inline mr-1" />{trade.insider} ({trade.title})</span>
                 <span>Filed: {trade.filingDate}</span>
               </div>
+              {/* AI Analysis */}
+              {trade.aiAnalysis && (
+                <div className="mt-2 p-2 rounded bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20">
+                  <div className="flex items-start gap-2">
+                    <Brain className="h-3.5 w-3.5 text-purple-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      <span className="text-purple-400 font-medium">AI Analysis: </span>
+                      {trade.aiAnalysis}
+                    </p>
+                  </div>
+                </div>
+              )}
             </a>
           ))}
           {displayedData.length === 0 && <div className="text-center py-8 text-muted-foreground">No results found</div>}

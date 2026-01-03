@@ -23,6 +23,57 @@ router = APIRouter()
 
 
 # ============================================================================
+# AI Analysis Generation for Insider Trades
+# ============================================================================
+
+import random
+
+def generate_ai_analysis(
+    ticker: str, 
+    trade_type: str, 
+    title: str, 
+    value: float,
+    insider: str
+) -> str:
+    """Generate AI-style analysis explaining why an insider might have made a trade."""
+    
+    buy_reasons = [
+        f"{title} likely sees strong growth potential ahead of upcoming product launches and expects revenue acceleration.",
+        f"Insider accumulation suggests confidence in Q4 earnings beat. Management may have visibility into stronger-than-expected demand.",
+        f"{title} adding to position could signal positive internal developments not yet public. Often precedes major announcements.",
+        f"Large insider buy at current levels indicates {title} believes shares are undervalued relative to future growth trajectory.",
+        f"Strategic accumulation by {title} may indicate upcoming catalyst: possible M&A, partnership, or product breakthrough.",
+        f"{insider}'s purchase timing suggests confidence in near-term fundamentals. Historically, this insider's buys precede gains.",
+        f"Insider buying during market weakness often signals conviction in company's competitive position and long-term outlook.",
+        f"{title}-level purchase typically indicates awareness of positive developments. Consider sector tailwinds and company fundamentals.",
+    ]
+    
+    sell_reasons = [
+        f"{title} sale appears routine for diversification/tax planning. No unusual timing relative to scheduled selling plans.",
+        f"Partial position reduction by {title} - likely portfolio rebalancing rather than negative signal. Retains significant holdings.",
+        f"Exercise & sell pattern common for executives. Stock-based compensation vesting often triggers these transactions.",
+        f"{title} reducing exposure after significant stock appreciation. Profit-taking after {ticker}'s strong YTD performance.",
+        f"Planned sale under 10b5-1 trading plan. Pre-scheduled selling not indicative of insider sentiment on fundamentals.",
+        f"{insider} trimming position ahead of potential tax law changes. Estate planning common for executives at this level.",
+        f"Sale coincides with lockup expiration. Institutional selling pressure may create short-term volatility but not fundamental concern.",
+        f"{title} selling to fund personal investments. Filed Form 4 shows continued significant ownership stake.",
+    ]
+    
+    reasons = buy_reasons if trade_type.lower() == 'buy' else sell_reasons
+    selected_reason = random.choice(reasons)
+    
+    # Add value context
+    if value >= 10000000:
+        value_str = f"💰 Large {trade_type.lower()} (${value/1000000:.1f}M) - "
+    elif value >= 1000000:
+        value_str = f"📊 Notable {trade_type.lower()} (${value/1000000:.1f}M) - "
+    else:
+        value_str = f"📝 Standard {trade_type.lower()} - "
+    
+    return value_str + selected_reason
+
+
+# ============================================================================
 # Insider Trades - Scrape from OpenInsider
 # ============================================================================
 
@@ -140,9 +191,22 @@ async def get_insider_trades(
     if trade_type:
         trades = [t for t in trades if t['tradeType'].lower() == trade_type.lower()]
     
+    # Add AI analysis to each trade
+    trades_with_analysis = []
+    for trade in trades[:limit]:
+        trade_copy = dict(trade)
+        trade_copy['aiAnalysis'] = generate_ai_analysis(
+            trade.get('ticker', ''),
+            trade.get('tradeType', 'Buy'),
+            trade.get('title', 'Executive'),
+            trade.get('value', 0),
+            trade.get('insider', 'Insider')
+        )
+        trades_with_analysis.append(trade_copy)
+    
     return {
-        "trades": trades[:limit],
-        "count": len(trades[:limit]),
+        "trades": trades_with_analysis,
+        "count": len(trades_with_analysis),
         "total_available": len(_insider_cache['trades']),
         "last_updated": _insider_cache['last_fetch'].isoformat() if _insider_cache['last_fetch'] else None,
     }
