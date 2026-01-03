@@ -13,7 +13,8 @@ import {
   AlertTriangle,
   CandlestickChart,
   Crosshair,
-  Activity
+  Activity,
+  Layers
 } from 'lucide-react'
 import { PortfolioCard } from './PortfolioCard'
 import { PositionsTable } from './PositionsTable'
@@ -33,6 +34,7 @@ import { useAuth } from '../context/AuthContext'
 import StockAnalyzer from './StockAnalyzer'
 import { useTradingMode } from '../context/TradingModeContext'
 import { MomentumDashboard } from './MomentumDashboard'
+import { ETFWidget } from './ETFWidget'
 
 export function Dashboard() {
   const { broker } = useTradingMode()
@@ -156,6 +158,16 @@ export function Dashboard() {
         defaultExpanded={true}
       >
         <MomentumDashboard />
+      </CollapsiblePanel>
+      
+      {/* ETF Overview Widget - NEW v1.2.2 */}
+      <CollapsiblePanel 
+        title="📈 ETF Overview" 
+        icon={<Layers className="h-5 w-5" />}
+        badge="50+"
+        defaultExpanded={true}
+      >
+        <ETFWidget />
       </CollapsiblePanel>
       
       {/* Main Content - Always full width (Settings moved to Setup page) */}

@@ -1018,6 +1018,183 @@ def _create_default_bots(manager: BotManager) -> None:
             max_positions=4,
             trade_frequency_seconds=180,
         ),
+        
+        # =========================================================================
+        # ETF SPECIALISTS (41-45)
+        # =========================================================================
+        
+        # 41. Top S&P 500 ETFs
+        BotConfig(
+            name="🏆 Top S&P 500 ETFs",
+            description="Core holdings - VOO, SPY, IVV tracking S&P 500",
+            instrument_type=InstrumentType.STOCK,
+            symbols=["VOO", "SPY", "IVV", "SPLG", "VTI"],
+            strategies=["Technical", "TrendFollowing"],
+            strategy_weights={
+                "Technical": 0.6,
+                "TrendFollowing": 0.7,
+            },
+            max_position_size=50000,
+            max_positions=5,
+            trade_frequency_seconds=300,
+        ),
+        
+        # 42. Inverse & Leveraged ETF Trader
+        BotConfig(
+            name="📉📈 Inverse/Leveraged ETFs",
+            description="TQQQ, SQQQ, SPXU, UPRO - high volatility plays",
+            instrument_type=InstrumentType.STOCK,
+            symbols=["TQQQ", "SQQQ", "UPRO", "SPXU", "SOXL", "SOXS", "LABU", "LABD"],
+            strategies=["Momentum", "Technical", "MeanReversion"],
+            strategy_weights={
+                "Momentum": 0.8,
+                "Technical": 0.7,
+                "MeanReversion": 0.5,
+            },
+            max_position_size=15000,
+            max_positions=4,
+            trade_frequency_seconds=60,
+        ),
+        
+        # 43. International Developed Markets
+        BotConfig(
+            name="🌍 International Developed Markets",
+            description="EFA, VEA, IEFA - Europe, Japan, Australia",
+            instrument_type=InstrumentType.STOCK,
+            symbols=["EFA", "VEA", "IEFA", "VGK", "EWJ", "EWG", "EWU"],
+            strategies=["TrendFollowing", "Technical"],
+            strategy_weights={
+                "TrendFollowing": 0.7,
+                "Technical": 0.6,
+            },
+            max_position_size=30000,
+            max_positions=5,
+            trade_frequency_seconds=300,
+        ),
+        
+        # 44. Emerging Markets ETFs
+        BotConfig(
+            name="🌏 Emerging Markets ETFs",
+            description="EEM, VWO, IEMG - China, India, Brazil, etc.",
+            instrument_type=InstrumentType.STOCK,
+            symbols=["EEM", "VWO", "IEMG", "FXI", "INDA", "EWZ", "EWT"],
+            strategies=["Momentum", "Technical", "NewsSentiment"],
+            strategy_weights={
+                "Momentum": 0.7,
+                "Technical": 0.6,
+                "NewsSentiment": 0.5,
+            },
+            max_position_size=25000,
+            max_positions=5,
+            trade_frequency_seconds=180,
+        ),
+        
+        # 45. Thematic Growth ETFs
+        BotConfig(
+            name="🚀 Thematic Growth ETFs",
+            description="ARK Innovation, Clean Energy, Genomics, AI",
+            instrument_type=InstrumentType.STOCK,
+            symbols=["ARKK", "ARKG", "ARKF", "ARKW", "ICLN", "QCLN", "BOTZ", "ROBO"],
+            strategies=["Momentum", "TrendFollowing", "NewsSentiment"],
+            strategy_weights={
+                "Momentum": 0.8,
+                "TrendFollowing": 0.6,
+                "NewsSentiment": 0.7,
+            },
+            max_position_size=20000,
+            max_positions=6,
+            trade_frequency_seconds=120,
+        ),
+        
+        # =========================================================================
+        # INTERNATIONAL SPECIALISTS (46-48)
+        # =========================================================================
+        
+        # 46. ADR Blue Chips
+        BotConfig(
+            name="🏢 ADR Blue Chips",
+            description="Top international companies trading on US exchanges",
+            instrument_type=InstrumentType.STOCK,
+            symbols=["TSM", "ASML", "NVO", "SAP", "TM", "UL", "SONY", "BHP"],
+            strategies=["Technical", "TrendFollowing"],
+            strategy_weights={
+                "Technical": 0.7,
+                "TrendFollowing": 0.6,
+            },
+            max_position_size=30000,
+            max_positions=6,
+            trade_frequency_seconds=240,
+        ),
+        
+        # 47. China Tech ADRs
+        BotConfig(
+            name="🇨🇳 China Tech ADRs",
+            description="BABA, JD, PDD, BIDU - Chinese tech giants",
+            instrument_type=InstrumentType.STOCK,
+            symbols=["BABA", "JD", "PDD", "BIDU", "NIO", "XPEV", "LI", "TME"],
+            strategies=["Momentum", "Technical", "NewsSentiment"],
+            strategy_weights={
+                "Momentum": 0.7,
+                "Technical": 0.6,
+                "NewsSentiment": 0.8,
+            },
+            max_position_size=20000,
+            max_positions=5,
+            trade_frequency_seconds=120,
+        ),
+        
+        # 48. European Luxury & Consumer
+        BotConfig(
+            name="🇪🇺 European Luxury Brands",
+            description="LVMH, Ferrari, Hermes - European luxury ADRs",
+            instrument_type=InstrumentType.STOCK,
+            symbols=["LVMUY", "RACE", "HESAY", "PPRUY", "CFRUY", "DEO", "BUD"],
+            strategies=["TrendFollowing", "Technical"],
+            strategy_weights={
+                "TrendFollowing": 0.7,
+                "Technical": 0.6,
+            },
+            max_position_size=25000,
+            max_positions=5,
+            trade_frequency_seconds=300,
+        ),
+        
+        # =========================================================================
+        # BOND & FIXED INCOME ETFs (49-50)
+        # =========================================================================
+        
+        # 49. Bond ETF Rotator
+        BotConfig(
+            name="💵 Bond ETF Rotator",
+            description="AGG, BND, TLT - Interest rate sensitive bond plays",
+            instrument_type=InstrumentType.STOCK,
+            symbols=["AGG", "BND", "TLT", "IEF", "SHY", "LQD", "HYG", "JNK"],
+            strategies=["TrendFollowing", "MeanReversion"],
+            strategy_weights={
+                "TrendFollowing": 0.7,
+                "MeanReversion": 0.6,
+            },
+            max_position_size=40000,
+            max_positions=5,
+            trade_frequency_seconds=600,
+        ),
+        
+        # 50. Volatility ETFs
+        BotConfig(
+            name="📊 Volatility ETF Trader",
+            description="VXX, UVXY, SVXY - VIX-based volatility plays",
+            instrument_type=InstrumentType.STOCK,
+            symbols=["VXX", "UVXY", "SVXY", "VIXY", "VIXM"],
+            strategies=["Momentum", "Technical", "MeanReversion"],
+            strategy_weights={
+                "Momentum": 0.8,
+                "Technical": 0.7,
+                "MeanReversion": 0.6,
+            },
+            max_position_size=10000,
+            max_positions=3,
+            trade_frequency_seconds=60,
+        ),
     ]
     
     for config in default_bots:

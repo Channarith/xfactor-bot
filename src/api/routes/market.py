@@ -442,3 +442,112 @@ async def refresh_all_market_data():
         "earnings": len(_earnings_cache['earnings']),
     }
 
+
+# ============================================================================
+# Real-time Quotes for ETF Widget
+# ============================================================================
+
+# Quote cache with 30s TTL
+_quote_cache: Dict[str, Dict[str, Any]] = {}
+_quote_cache_ttl = 30  # seconds
+
+@router.get("/quotes")
+async def get_quotes(
+    symbols: str = Query(..., description="Comma-separated list of symbols"),
+):
+    """
+    Get real-time quotes for multiple symbols.
+    
+    Used by ETF Widget for Top ETFs, International, and Leveraged ETF data.
+    """
+    import yfinance as yf
+    from concurrent.futures import ThreadPoolExecutor
+    
+    symbol_list = [s.strip().upper() for s in symbols.split(',') if s.strip()]
+    if not symbol_list:
+        return {"quotes": [], "count": 0}
+    
+    # Limit to 20 symbols per request
+    symbol_list = symbol_list[:20]
+    
+    now = datetime.now()
+    quotes = []
+    symbols_to_fetch = []
+    
+    # Check cache first
+    for symbol in symbol_list:
+        cached = _quote_cache.get(symbol)
+        if cached and (now - cached['timestamp']).seconds < _quote_cache_ttl:
+            quotes.append(cached['data'])
+        else:
+            symbols_to_fetch.append(symbol)
+    
+    # Fetch uncached symbols
+    if symbols_to_fetch:
+        try:
+            def fetch_batch(syms):
+                results = []
+                for sym in syms:
+                    try:
+                        ticker = yf.Ticker(sym)
+                        info = ticker.fast_info
+                        hist = ticker.history(period='2d')
+                        
+                        if len(hist) >= 1:
+                            current_price = hist['Close'].iloc[-1]
+                            prev_close = hist['Close'].iloc[-2] if len(hist) >= 2 else current_price
+                            change = current_price - prev_close
+                            change_pct = (change / prev_close * 100) if prev_close > 0 else 0
+                            volume = int(hist['Volume'].iloc[-1]) if len(hist) >= 1 else 0
+                        else:
+                            current_price = getattr(info, 'last_price', 0) or 0
+                            prev_close = getattr(info, 'previous_close', current_price) or current_price
+                            change = current_price - prev_close
+                            change_pct = (change / prev_close * 100) if prev_close > 0 else 0
+                            volume = 0
+                        
+                        results.append({
+                            'symbol': sym,
+                            'name': sym,  # yfinance fast_info doesn't have name
+                            'price': round(current_price, 2),
+                            'change': round(change, 2),
+                            'changePct': round(change_pct, 2),
+                            'volume': volume,
+                            'prevClose': round(prev_close, 2),
+                        })
+                    except Exception as e:
+                        logger.debug(f"Error fetching {sym}: {e}")
+                        results.append({
+                            'symbol': sym,
+                            'name': sym,
+                            'price': 0,
+                            'change': 0,
+                            'changePct': 0,
+                            'volume': 0,
+                            'prevClose': 0,
+                        })
+                return results
+            
+            # Use thread pool for yfinance calls
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                loop = asyncio.get_event_loop()
+                fetched = await loop.run_in_executor(executor, fetch_batch, symbols_to_fetch)
+            
+            # Cache and add to results
+            for quote in fetched:
+                _quote_cache[quote['symbol']] = {
+                    'data': quote,
+                    'timestamp': now,
+                }
+                quotes.append(quote)
+                
+        except Exception as e:
+            logger.error(f"Error batch fetching quotes: {e}")
+    
+    return {
+        "quotes": quotes,
+        "count": len(quotes),
+        "cached": len(symbol_list) - len(symbols_to_fetch),
+        "fetched": len(symbols_to_fetch),
+    }
+
