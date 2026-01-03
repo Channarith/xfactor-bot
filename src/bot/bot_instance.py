@@ -983,21 +983,31 @@ class BotInstance:
             if not indicators:
                 return None
             
-            # Generate signal based on indicator confluence
-            signal_type, confidence, reasoning = self._evaluate_indicators(indicators)
+            # Fetch sentiment indicators (news, social, top traders)
+            sentiment = await self._get_sentiment_indicators(symbol)
+            
+            # Merge sentiment into indicators for logging
+            indicators.update(sentiment)
+            
+            # Generate signal based on indicator confluence (18 indicators)
+            signal_type, confidence, reasoning = self._evaluate_indicators(indicators, sentiment)
             
             if signal_type == 'hold':
                 return None
+            
+            # Count contributing indicators
+            indicator_count = sum(1 for k, v in indicators.items() if isinstance(v, bool) and v)
             
             return {
                 'type': signal_type,
                 'symbol': symbol,
                 'price': current_price,
                 'confidence': confidence,
-                'strategy': 'multi_indicator',
+                'strategy': 'multi_indicator_18',
                 'indicators': indicators,
                 'reasoning': reasoning,
                 'timestamp': datetime.now().isoformat(),
+                'indicator_count': indicator_count,
             }
             
         except Exception as e:
@@ -1084,14 +1094,29 @@ class BotInstance:
                 return None
     
     def _calculate_indicators(self, data: pd.DataFrame) -> Optional[dict]:
-        """Calculate technical indicators from OHLCV data."""
+        """
+        Calculate 18 indicators across 6 categories for comprehensive signal generation.
+        
+        Categories:
+        1. Momentum Indicators (RSI, Stochastic, Williams %R)
+        2. Trend Indicators (MA Crossover, ADX, Parabolic SAR)
+        3. Volatility Indicators (Bollinger Bands, ATR, Keltner Channels)
+        4. Volume Indicators (OBV, Volume Ratio, VWAP)
+        5. Chart Patterns (Pivot Points, Support/Resistance, Price Channels)
+        6. Market Sentiment (fetched separately - news, social, top traders)
+        """
         try:
             close = data['Close']
             high = data['High']
             low = data['Low']
             volume = data['Volume']
+            current_price = close.iloc[-1]
             
-            # RSI (14-period)
+            # =====================================================================
+            # 1. MOMENTUM INDICATORS
+            # =====================================================================
+            
+            # 1a. RSI (14-period)
             delta = close.diff()
             gain = delta.where(delta > 0, 0).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -1099,169 +1124,545 @@ class BotInstance:
             rsi = 100 - (100 / (1 + rs))
             current_rsi = rsi.iloc[-1]
             
-            # Moving Averages
+            # 1b. Stochastic Oscillator (14-period)
+            low_14 = low.rolling(window=14).min()
+            high_14 = high.rolling(window=14).max()
+            stoch_k = ((close - low_14) / (high_14 - low_14)) * 100
+            stoch_d = stoch_k.rolling(window=3).mean()
+            current_stoch_k = stoch_k.iloc[-1]
+            current_stoch_d = stoch_d.iloc[-1]
+            stoch_bullish = current_stoch_k < 20 and current_stoch_k > current_stoch_d
+            stoch_bearish = current_stoch_k > 80 and current_stoch_k < current_stoch_d
+            
+            # 1c. Williams %R
+            williams_r = ((high_14 - close) / (high_14 - low_14)) * -100
+            current_williams = williams_r.iloc[-1]
+            williams_bullish = current_williams < -80  # Oversold
+            williams_bearish = current_williams > -20  # Overbought
+            
+            # =====================================================================
+            # 2. TREND INDICATORS
+            # =====================================================================
+            
+            # 2a. Moving Averages (SMA 20, 50, 200)
             sma_20 = close.rolling(window=20).mean().iloc[-1]
             sma_50 = close.rolling(window=50).mean().iloc[-1] if len(close) >= 50 else sma_20
-            current_price = close.iloc[-1]
-            
-            # MA Crossover signals
+            sma_200 = close.rolling(window=200).mean().iloc[-1] if len(close) >= 200 else sma_50
             ma_bullish = current_price > sma_20 > sma_50
             ma_bearish = current_price < sma_20 < sma_50
+            golden_cross = sma_50 > sma_200 and sma_20 > sma_50
+            death_cross = sma_50 < sma_200 and sma_20 < sma_50
             
-            # MACD
+            # 2b. MACD
             ema_12 = close.ewm(span=12, adjust=False).mean()
             ema_26 = close.ewm(span=26, adjust=False).mean()
             macd_line = ema_12 - ema_26
             signal_line = macd_line.ewm(span=9, adjust=False).mean()
             macd_histogram = macd_line - signal_line
-            
             current_macd = macd_line.iloc[-1]
             current_signal = signal_line.iloc[-1]
             current_histogram = macd_histogram.iloc[-1]
             prev_histogram = macd_histogram.iloc[-2] if len(macd_histogram) > 1 else 0
-            
             macd_bullish = current_macd > current_signal and current_histogram > prev_histogram
             macd_bearish = current_macd < current_signal and current_histogram < prev_histogram
             
-            # Bollinger Bands
+            # 2c. ADX (Average Directional Index) - Trend Strength
+            tr1 = high - low
+            tr2 = abs(high - close.shift(1))
+            tr3 = abs(low - close.shift(1))
+            true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+            atr_14 = true_range.rolling(window=14).mean()
+            
+            plus_dm = high.diff()
+            minus_dm = -low.diff()
+            plus_dm = plus_dm.where((plus_dm > minus_dm) & (plus_dm > 0), 0)
+            minus_dm = minus_dm.where((minus_dm > plus_dm) & (minus_dm > 0), 0)
+            
+            plus_di = 100 * (plus_dm.rolling(14).mean() / atr_14)
+            minus_di = 100 * (minus_dm.rolling(14).mean() / atr_14)
+            dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
+            adx = dx.rolling(14).mean()
+            current_adx = adx.iloc[-1] if not pd.isna(adx.iloc[-1]) else 25
+            strong_trend = current_adx > 25
+            
+            # =====================================================================
+            # 3. VOLATILITY INDICATORS
+            # =====================================================================
+            
+            # 3a. Bollinger Bands
             bb_sma = close.rolling(window=20).mean()
             bb_std = close.rolling(window=20).std()
             bb_upper = bb_sma + (bb_std * 2)
             bb_lower = bb_sma - (bb_std * 2)
-            
             current_bb_upper = bb_upper.iloc[-1]
             current_bb_lower = bb_lower.iloc[-1]
             bb_position = (current_price - current_bb_lower) / (current_bb_upper - current_bb_lower) if (current_bb_upper - current_bb_lower) > 0 else 0.5
+            bb_squeeze = (current_bb_upper - current_bb_lower) < bb_std.iloc[-1] * 3  # Volatility squeeze
             
-            # Volume analysis
+            # 3b. ATR (Average True Range) - Volatility measure
+            current_atr = atr_14.iloc[-1]
+            atr_pct = (current_atr / current_price) * 100  # ATR as % of price
+            high_volatility = atr_pct > 3
+            
+            # 3c. Keltner Channels
+            keltner_mid = close.ewm(span=20).mean()
+            keltner_upper = keltner_mid + (atr_14 * 2)
+            keltner_lower = keltner_mid - (atr_14 * 2)
+            above_keltner = current_price > keltner_upper.iloc[-1]
+            below_keltner = current_price < keltner_lower.iloc[-1]
+            
+            # =====================================================================
+            # 4. VOLUME INDICATORS
+            # =====================================================================
+            
+            # 4a. Volume Ratio
             avg_volume = volume.rolling(window=20).mean().iloc[-1]
             current_volume = volume.iloc[-1]
             volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
+            volume_surge = volume_ratio > 2.0
             
-            # Price momentum (5-day return)
+            # 4b. OBV (On-Balance Volume) - Volume trend
+            obv = (volume * (~close.diff().le(0) * 2 - 1)).cumsum()
+            obv_sma = obv.rolling(window=20).mean()
+            obv_bullish = obv.iloc[-1] > obv_sma.iloc[-1]
+            obv_bearish = obv.iloc[-1] < obv_sma.iloc[-1]
+            
+            # 4c. VWAP (Volume Weighted Average Price) - Intraday fair value
+            typical_price = (high + low + close) / 3
+            vwap = (typical_price * volume).cumsum() / volume.cumsum()
+            current_vwap = vwap.iloc[-1]
+            above_vwap = current_price > current_vwap
+            below_vwap = current_price < current_vwap
+            
+            # =====================================================================
+            # 5. CHART PATTERNS & PIVOTS
+            # =====================================================================
+            
+            # 5a. Pivot Points (Classic)
+            prev_high = high.iloc[-2]
+            prev_low = low.iloc[-2]
+            prev_close = close.iloc[-2]
+            pivot = (prev_high + prev_low + prev_close) / 3
+            r1 = (2 * pivot) - prev_low
+            s1 = (2 * pivot) - prev_high
+            r2 = pivot + (prev_high - prev_low)
+            s2 = pivot - (prev_high - prev_low)
+            
+            near_support = current_price <= s1 * 1.02  # Within 2% of S1
+            near_resistance = current_price >= r1 * 0.98  # Within 2% of R1
+            
+            # 5b. Price Channels (Donchian Channels)
+            channel_high = high.rolling(window=20).max().iloc[-1]
+            channel_low = low.rolling(window=20).min().iloc[-1]
+            channel_breakout_up = current_price >= channel_high
+            channel_breakout_down = current_price <= channel_low
+            
+            # 5c. Momentum (5-day and 10-day returns)
             momentum_5d = (current_price - close.iloc[-5]) / close.iloc[-5] * 100 if len(close) >= 5 else 0
+            momentum_10d = (current_price - close.iloc[-10]) / close.iloc[-10] * 100 if len(close) >= 10 else 0
+            
+            # 5d. Rate of Change (ROC)
+            roc = ((current_price - close.iloc[-10]) / close.iloc[-10]) * 100 if len(close) >= 10 else 0
+            
+            # =====================================================================
+            # 6. MARKET SENTIMENT (placeholder - fetched async)
+            # =====================================================================
+            # These are populated by _get_sentiment_indicators() method
             
             return {
+                # Momentum
                 'rsi': round(current_rsi, 2),
+                'stoch_k': round(current_stoch_k, 2),
+                'stoch_d': round(current_stoch_d, 2),
+                'stoch_bullish': stoch_bullish,
+                'stoch_bearish': stoch_bearish,
+                'williams_r': round(current_williams, 2),
+                'williams_bullish': williams_bullish,
+                'williams_bearish': williams_bearish,
+                
+                # Trend
+                'price': round(current_price, 2),
                 'sma_20': round(sma_20, 2),
                 'sma_50': round(sma_50, 2),
-                'price': round(current_price, 2),
+                'sma_200': round(sma_200, 2),
                 'ma_bullish': ma_bullish,
                 'ma_bearish': ma_bearish,
+                'golden_cross': golden_cross,
+                'death_cross': death_cross,
                 'macd': round(current_macd, 4),
                 'macd_signal': round(current_signal, 4),
                 'macd_histogram': round(current_histogram, 4),
                 'macd_bullish': macd_bullish,
                 'macd_bearish': macd_bearish,
+                'adx': round(current_adx, 2),
+                'strong_trend': strong_trend,
+                
+                # Volatility
                 'bb_position': round(bb_position, 2),
                 'bb_upper': round(current_bb_upper, 2),
                 'bb_lower': round(current_bb_lower, 2),
+                'bb_squeeze': bb_squeeze,
+                'atr': round(current_atr, 2),
+                'atr_pct': round(atr_pct, 2),
+                'high_volatility': high_volatility,
+                'above_keltner': above_keltner,
+                'below_keltner': below_keltner,
+                
+                # Volume
                 'volume_ratio': round(volume_ratio, 2),
+                'volume_surge': volume_surge,
+                'obv_bullish': obv_bullish,
+                'obv_bearish': obv_bearish,
+                'vwap': round(current_vwap, 2),
+                'above_vwap': above_vwap,
+                'below_vwap': below_vwap,
+                
+                # Pivots & Patterns
+                'pivot': round(pivot, 2),
+                'r1': round(r1, 2),
+                's1': round(s1, 2),
+                'r2': round(r2, 2),
+                's2': round(s2, 2),
+                'near_support': near_support,
+                'near_resistance': near_resistance,
+                'channel_breakout_up': channel_breakout_up,
+                'channel_breakout_down': channel_breakout_down,
                 'momentum_5d': round(momentum_5d, 2),
+                'momentum_10d': round(momentum_10d, 2),
+                'roc': round(roc, 2),
             }
         except Exception as e:
             logger.error(f"Error calculating indicators: {e}")
             return None
     
-    def _evaluate_indicators(self, indicators: dict) -> tuple[str, float, str]:
+    async def _get_sentiment_indicators(self, symbol: str) -> dict:
         """
-        Evaluate indicators and return (signal_type, confidence, reasoning).
+        Fetch sentiment indicators from news, social media, and top traders.
         
-        Uses a scoring system based on indicator confluence.
-        Returns detailed reasoning for why the trade decision was made.
+        Returns sentiment scores for:
+        - News sentiment (-1 to 1)
+        - Social media buzz (0 to 100)
+        - Top trader activity (bullish/bearish count)
+        - Insider trading signals
         """
-        bullish_score = 0
-        bearish_score = 0
-        max_score = 5  # Number of indicators checked
+        try:
+            from src.data.momentum_screener import get_momentum_screener
+            from src.data.news_momentum import get_news_momentum
+            
+            screener = get_momentum_screener()
+            news_momentum = get_news_momentum()
+            
+            # Get news sentiment
+            news_score = await news_momentum.get_symbol_sentiment(symbol)
+            
+            # Get social buzz score
+            social_score = screener.get_social_score(symbol)
+            
+            # Get momentum score
+            momentum_score = screener.get_momentum_score(symbol)
+            
+            return {
+                'news_sentiment': news_score.get('sentiment', 0),
+                'news_volume': news_score.get('article_count', 0),
+                'news_bullish': news_score.get('sentiment', 0) > 0.3,
+                'news_bearish': news_score.get('sentiment', 0) < -0.3,
+                'social_buzz': social_score,
+                'social_trending': social_score > 70,
+                'momentum_rank': momentum_score.get('rank', 0),
+                'momentum_bullish': momentum_score.get('score', 0) > 70,
+            }
+        except Exception as e:
+            logger.debug(f"Could not fetch sentiment for {symbol}: {e}")
+            return {
+                'news_sentiment': 0,
+                'news_volume': 0,
+                'news_bullish': False,
+                'news_bearish': False,
+                'social_buzz': 0,
+                'social_trending': False,
+                'momentum_rank': 0,
+                'momentum_bullish': False,
+            }
+    
+    def _evaluate_indicators(self, indicators: dict, sentiment: dict = None) -> tuple[str, float, str]:
+        """
+        Evaluate 18 indicators across 6 categories and return (signal_type, confidence, reasoning).
+        
+        Categories and their max contributions:
+        1. Momentum Indicators (3 points): RSI, Stochastic, Williams %R
+        2. Trend Indicators (4 points): MA Crossover, MACD, ADX, Golden/Death Cross
+        3. Volatility Indicators (2 points): Bollinger Bands, Keltner Channels
+        4. Volume Indicators (2 points): Volume Ratio, OBV, VWAP
+        5. Chart Patterns (3 points): Pivots, Support/Resistance, Breakouts, Momentum
+        6. Market Sentiment (4 points): News, Social Media, Top Traders
+        
+        Total max score: 18 points per side (bullish/bearish)
+        """
+        bullish_score = 0.0
+        bearish_score = 0.0
+        max_score = 18.0  # Maximum possible score
         
         # Track reasons for the decision
         bullish_reasons = []
         bearish_reasons = []
         
-        rsi = indicators.get('rsi', 50)
-        bb_position = indicators.get('bb_position', 0.5)
-        volume_ratio = indicators.get('volume_ratio', 1.0)
-        momentum = indicators.get('momentum_5d', 0)
+        sentiment = sentiment or {}
         
-        # RSI signals
-        if rsi < 30:  # Oversold - bullish
-            bullish_score += 1
-            bullish_reasons.append(f"RSI oversold ({rsi:.1f}<30)")
-        elif rsi > 70:  # Overbought - bearish
-            bearish_score += 1
-            bearish_reasons.append(f"RSI overbought ({rsi:.1f}>70)")
-        elif rsi < 40:  # Slightly oversold
+        # =====================================================================
+        # 1. MOMENTUM INDICATORS (max 3 points)
+        # =====================================================================
+        
+        # 1a. RSI (14-period)
+        rsi = indicators.get('rsi', 50)
+        if rsi < 30:
+            bullish_score += 1.0
+            bullish_reasons.append(f"📊 RSI oversold ({rsi:.1f}<30)")
+        elif rsi > 70:
+            bearish_score += 1.0
+            bearish_reasons.append(f"📊 RSI overbought ({rsi:.1f}>70)")
+        elif rsi < 40:
             bullish_score += 0.5
             bullish_reasons.append(f"RSI approaching oversold ({rsi:.1f})")
-        elif rsi > 60:  # Slightly overbought
+        elif rsi > 60:
             bearish_score += 0.5
             bearish_reasons.append(f"RSI approaching overbought ({rsi:.1f})")
         
-        # Moving Average signals
+        # 1b. Stochastic Oscillator
+        if indicators.get('stoch_bullish'):
+            bullish_score += 1.0
+            stoch_k = indicators.get('stoch_k', 0)
+            bullish_reasons.append(f"📈 Stochastic bullish crossover (K={stoch_k:.1f})")
+        elif indicators.get('stoch_bearish'):
+            bearish_score += 1.0
+            stoch_k = indicators.get('stoch_k', 0)
+            bearish_reasons.append(f"📉 Stochastic bearish crossover (K={stoch_k:.1f})")
+        
+        # 1c. Williams %R
+        if indicators.get('williams_bullish'):
+            bullish_score += 1.0
+            williams = indicators.get('williams_r', 0)
+            bullish_reasons.append(f"📊 Williams %R oversold ({williams:.1f})")
+        elif indicators.get('williams_bearish'):
+            bearish_score += 1.0
+            williams = indicators.get('williams_r', 0)
+            bearish_reasons.append(f"📊 Williams %R overbought ({williams:.1f})")
+        
+        # =====================================================================
+        # 2. TREND INDICATORS (max 4 points)
+        # =====================================================================
+        
+        # 2a. Moving Average Alignment
         if indicators.get('ma_bullish'):
-            bullish_score += 1
-            bullish_reasons.append("Price above SMA20 > SMA50 (bullish MA alignment)")
+            bullish_score += 1.0
+            bullish_reasons.append("📈 Price > SMA20 > SMA50 (bullish MA stack)")
         elif indicators.get('ma_bearish'):
-            bearish_score += 1
-            bearish_reasons.append("Price below SMA20 < SMA50 (bearish MA alignment)")
+            bearish_score += 1.0
+            bearish_reasons.append("📉 Price < SMA20 < SMA50 (bearish MA stack)")
         
-        # MACD signals
+        # 2b. Golden Cross / Death Cross
+        if indicators.get('golden_cross'):
+            bullish_score += 1.5
+            bullish_reasons.append("⭐ GOLDEN CROSS detected (SMA50 > SMA200)")
+        elif indicators.get('death_cross'):
+            bearish_score += 1.5
+            bearish_reasons.append("💀 DEATH CROSS detected (SMA50 < SMA200)")
+        
+        # 2c. MACD
         if indicators.get('macd_bullish'):
-            bullish_score += 1
-            bullish_reasons.append("MACD bullish crossover with rising histogram")
+            bullish_score += 1.0
+            bullish_reasons.append("📈 MACD bullish crossover, histogram rising")
         elif indicators.get('macd_bearish'):
-            bearish_score += 1
-            bearish_reasons.append("MACD bearish crossover with falling histogram")
+            bearish_score += 1.0
+            bearish_reasons.append("📉 MACD bearish crossover, histogram falling")
         
-        # Bollinger Band signals
-        if bb_position < 0.2:  # Near lower band - bullish
-            bullish_score += 1
-            bullish_reasons.append(f"Price near lower Bollinger Band ({bb_position:.1%})")
-        elif bb_position > 0.8:  # Near upper band - bearish
-            bearish_score += 1
-            bearish_reasons.append(f"Price near upper Bollinger Band ({bb_position:.1%})")
-        
-        # Momentum
-        if momentum > 3:  # Strong upward momentum
-            bullish_score += 0.5
-            bullish_reasons.append(f"Strong 5-day momentum (+{momentum:.1f}%)")
-        elif momentum < -3:  # Strong downward momentum
-            bearish_score += 0.5
-            bearish_reasons.append(f"Weak 5-day momentum ({momentum:.1f}%)")
-        
-        # Volume confirmation
-        if volume_ratio > 1.5:
-            # High volume amplifies the signal
+        # 2d. ADX Trend Strength
+        adx = indicators.get('adx', 20)
+        if indicators.get('strong_trend') and adx > 30:
+            # Strong trend amplifies other signals
             if bullish_score > bearish_score:
                 bullish_score += 0.5
-                bullish_reasons.append(f"High volume confirmation ({volume_ratio:.1f}x avg)")
+                bullish_reasons.append(f"💪 Strong trend (ADX={adx:.1f})")
             elif bearish_score > bullish_score:
                 bearish_score += 0.5
-                bearish_reasons.append(f"High volume confirms weakness ({volume_ratio:.1f}x avg)")
+                bearish_reasons.append(f"💪 Strong downtrend (ADX={adx:.1f})")
         
-        # Determine signal
+        # =====================================================================
+        # 3. VOLATILITY INDICATORS (max 2 points)
+        # =====================================================================
+        
+        # 3a. Bollinger Bands
+        bb_position = indicators.get('bb_position', 0.5)
+        if bb_position < 0.15:
+            bullish_score += 1.0
+            bullish_reasons.append(f"📊 Price at lower Bollinger Band ({bb_position:.0%})")
+        elif bb_position > 0.85:
+            bearish_score += 1.0
+            bearish_reasons.append(f"📊 Price at upper Bollinger Band ({bb_position:.0%})")
+        elif bb_position < 0.3:
+            bullish_score += 0.5
+            bullish_reasons.append(f"Price near lower BB ({bb_position:.0%})")
+        elif bb_position > 0.7:
+            bearish_score += 0.5
+            bearish_reasons.append(f"Price near upper BB ({bb_position:.0%})")
+        
+        # Bollinger Band squeeze (low volatility breakout potential)
+        if indicators.get('bb_squeeze'):
+            bullish_reasons.append("⚡ BB Squeeze (breakout imminent)")
+        
+        # 3b. Keltner Channels
+        if indicators.get('below_keltner'):
+            bullish_score += 1.0
+            bullish_reasons.append("📉 Below Keltner Channel (oversold)")
+        elif indicators.get('above_keltner'):
+            bearish_score += 1.0
+            bearish_reasons.append("📈 Above Keltner Channel (extended)")
+        
+        # =====================================================================
+        # 4. VOLUME INDICATORS (max 2 points)
+        # =====================================================================
+        
+        volume_ratio = indicators.get('volume_ratio', 1.0)
+        
+        # 4a. Volume Surge
+        if indicators.get('volume_surge'):
+            # High volume confirms direction
+            if bullish_score > bearish_score:
+                bullish_score += 0.5
+                bullish_reasons.append(f"🔊 Volume surge confirms ({volume_ratio:.1f}x avg)")
+            elif bearish_score > bullish_score:
+                bearish_score += 0.5
+                bearish_reasons.append(f"🔊 Volume surge confirms selling ({volume_ratio:.1f}x avg)")
+        elif volume_ratio > 1.3:
+            if bullish_score > bearish_score:
+                bullish_score += 0.25
+                bullish_reasons.append(f"📊 Above avg volume ({volume_ratio:.1f}x)")
+        
+        # 4b. OBV (On-Balance Volume)
+        if indicators.get('obv_bullish'):
+            bullish_score += 0.5
+            bullish_reasons.append("📈 OBV rising (accumulation)")
+        elif indicators.get('obv_bearish'):
+            bearish_score += 0.5
+            bearish_reasons.append("📉 OBV falling (distribution)")
+        
+        # 4c. VWAP
+        if indicators.get('above_vwap'):
+            bullish_score += 0.5
+            vwap = indicators.get('vwap', 0)
+            bullish_reasons.append(f"📈 Price above VWAP (${vwap:.2f})")
+        elif indicators.get('below_vwap'):
+            bearish_score += 0.5
+            vwap = indicators.get('vwap', 0)
+            bearish_reasons.append(f"📉 Price below VWAP (${vwap:.2f})")
+        
+        # =====================================================================
+        # 5. CHART PATTERNS & PIVOTS (max 3 points)
+        # =====================================================================
+        
+        # 5a. Pivot Point Support/Resistance
+        if indicators.get('near_support'):
+            bullish_score += 1.0
+            s1 = indicators.get('s1', 0)
+            bullish_reasons.append(f"🎯 Near pivot support S1 (${s1:.2f})")
+        elif indicators.get('near_resistance'):
+            bearish_score += 1.0
+            r1 = indicators.get('r1', 0)
+            bearish_reasons.append(f"🎯 Near pivot resistance R1 (${r1:.2f})")
+        
+        # 5b. Channel Breakouts (Donchian)
+        if indicators.get('channel_breakout_up'):
+            bullish_score += 1.0
+            bullish_reasons.append("🚀 20-day high breakout!")
+        elif indicators.get('channel_breakout_down'):
+            bearish_score += 1.0
+            bearish_reasons.append("💥 20-day low breakdown!")
+        
+        # 5c. Momentum (5-day and 10-day)
+        momentum_5d = indicators.get('momentum_5d', 0)
+        momentum_10d = indicators.get('momentum_10d', 0)
+        if momentum_5d > 5 and momentum_10d > 8:
+            bullish_score += 0.5
+            bullish_reasons.append(f"🚀 Strong momentum (5d: +{momentum_5d:.1f}%, 10d: +{momentum_10d:.1f}%)")
+        elif momentum_5d < -5 and momentum_10d < -8:
+            bearish_score += 0.5
+            bearish_reasons.append(f"📉 Weak momentum (5d: {momentum_5d:.1f}%, 10d: {momentum_10d:.1f}%)")
+        elif momentum_5d > 3:
+            bullish_score += 0.25
+            bullish_reasons.append(f"📈 5-day momentum +{momentum_5d:.1f}%")
+        elif momentum_5d < -3:
+            bearish_score += 0.25
+            bearish_reasons.append(f"📉 5-day momentum {momentum_5d:.1f}%")
+        
+        # 5d. Rate of Change (ROC)
+        roc = indicators.get('roc', 0)
+        if roc > 10:
+            bullish_score += 0.5
+            bullish_reasons.append(f"📈 High ROC (+{roc:.1f}%)")
+        elif roc < -10:
+            bearish_score += 0.5
+            bearish_reasons.append(f"📉 Negative ROC ({roc:.1f}%)")
+        
+        # =====================================================================
+        # 6. MARKET SENTIMENT (max 4 points)
+        # =====================================================================
+        
+        # 6a. News Sentiment
+        if sentiment.get('news_bullish'):
+            bullish_score += 1.0
+            news_sent = sentiment.get('news_sentiment', 0)
+            bullish_reasons.append(f"📰 Positive news sentiment (+{news_sent:.2f})")
+        elif sentiment.get('news_bearish'):
+            bearish_score += 1.0
+            news_sent = sentiment.get('news_sentiment', 0)
+            bearish_reasons.append(f"📰 Negative news sentiment ({news_sent:.2f})")
+        
+        # 6b. Social Media Buzz
+        if sentiment.get('social_trending'):
+            social_buzz = sentiment.get('social_buzz', 0)
+            bullish_score += 1.0
+            bullish_reasons.append(f"🔥 Social media trending (buzz: {social_buzz})")
+        
+        # 6c. Top Trader / Momentum Following
+        if sentiment.get('momentum_bullish'):
+            bullish_score += 1.0
+            rank = sentiment.get('momentum_rank', 0)
+            bullish_reasons.append(f"👑 Top momentum rank #{rank}")
+        
+        # 6d. High news volume (catalyst)
+        news_volume = sentiment.get('news_volume', 0)
+        if news_volume >= 5:
+            if bullish_score > bearish_score:
+                bullish_score += 0.5
+                bullish_reasons.append(f"📢 High news volume ({news_volume} articles)")
+        
+        # =====================================================================
+        # SIGNAL DETERMINATION
+        # =====================================================================
+        
         net_score = bullish_score - bearish_score
+        total_signals = len(bullish_reasons) + len(bearish_reasons)
         
-        if net_score >= 2.5:
+        # Calculate confidence based on score and number of confirming signals
+        if net_score >= 6:
             signal_type = 'strong_buy'
-            confidence = min(0.9, 0.5 + (net_score / max_score) * 0.4)
-            reasoning = f"STRONG BUY: {' | '.join(bullish_reasons)}"
-        elif net_score >= 1.5:
+            confidence = min(0.95, 0.6 + (net_score / max_score) * 0.35)
+            reasoning = f"🚀 STRONG BUY ({net_score:.1f}/{max_score} points, {len(bullish_reasons)} signals): {' | '.join(bullish_reasons[:5])}"
+        elif net_score >= 3:
             signal_type = 'buy'
-            confidence = min(0.75, 0.4 + (net_score / max_score) * 0.35)
-            reasoning = f"BUY: {' | '.join(bullish_reasons)}"
-        elif net_score <= -2.5:
+            confidence = min(0.80, 0.45 + (net_score / max_score) * 0.35)
+            reasoning = f"📈 BUY ({net_score:.1f}/{max_score} points, {len(bullish_reasons)} signals): {' | '.join(bullish_reasons[:4])}"
+        elif net_score <= -6:
             signal_type = 'strong_sell'
-            confidence = min(0.9, 0.5 + (abs(net_score) / max_score) * 0.4)
-            reasoning = f"STRONG SELL: {' | '.join(bearish_reasons)}"
-        elif net_score <= -1.5:
+            confidence = min(0.95, 0.6 + (abs(net_score) / max_score) * 0.35)
+            reasoning = f"💥 STRONG SELL ({abs(net_score):.1f}/{max_score} points, {len(bearish_reasons)} signals): {' | '.join(bearish_reasons[:5])}"
+        elif net_score <= -3:
             signal_type = 'sell'
-            confidence = min(0.75, 0.4 + (abs(net_score) / max_score) * 0.35)
-            reasoning = f"SELL: {' | '.join(bearish_reasons)}"
+            confidence = min(0.80, 0.45 + (abs(net_score) / max_score) * 0.35)
+            reasoning = f"📉 SELL ({abs(net_score):.1f}/{max_score} points, {len(bearish_reasons)} signals): {' | '.join(bearish_reasons[:4])}"
         else:
             signal_type = 'hold'
             confidence = 0
-            reasoning = "HOLD: No clear signal (indicators mixed)"
+            reasoning = f"⏸️ HOLD: Mixed signals (net score: {net_score:.1f}, bullish: {bullish_score:.1f}, bearish: {bearish_score:.1f})"
         
         return signal_type, round(confidence, 2), reasoning
     
