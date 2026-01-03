@@ -76,6 +76,20 @@ class CreateBotRequest(BaseModel):
     # Futures settings (if instrument_type is futures)
     futures_contracts: list[str] = Field(default_factory=list)
     futures_use_micro: bool = True
+    
+    # Multi-broker settings
+    broker_type: Optional[str] = Field(
+        default=None,
+        description="Specific broker to use (alpaca, ibkr, schwab, tradier). None = use default."
+    )
+    failover_brokers: list[str] = Field(
+        default_factory=list,
+        description="Backup brokers in priority order if primary fails"
+    )
+    multi_broker: bool = Field(
+        default=False,
+        description="If True, execute trades on ALL connected brokers simultaneously"
+    )
 
 
 class UpdateBotRequest(BaseModel):
@@ -390,6 +404,10 @@ async def create_bot(
         options_dte_max=request.options_dte_max,
         futures_contracts=request.futures_contracts,
         futures_use_micro=request.futures_use_micro,
+        # Multi-broker settings
+        broker_type=request.broker_type,
+        failover_brokers=request.failover_brokers,
+        multi_broker=request.multi_broker,
     )
     
     bot = manager.create_bot(config, request.bot_id)

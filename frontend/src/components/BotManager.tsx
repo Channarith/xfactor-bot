@@ -144,6 +144,10 @@ export function BotManager({ token = '' }: BotManagerProps) {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [instrumentType, setInstrumentType] = useState('stock')
   
+  // Multi-broker settings
+  const [targetBroker, setTargetBroker] = useState('')  // Empty = use default
+  const [multiBrokerMode, setMultiBrokerMode] = useState(false)
+  
   // Filtered and sorted bots
   const filteredBots = useMemo(() => {
     let result = [...bots]
@@ -276,6 +280,9 @@ export function BotManager({ token = '' }: BotManagerProps) {
           strategies: newBotStrategies,
           ai_strategy_prompt: newBotAIPrompt,
           instrument_type: instrumentType,
+          // Multi-broker settings
+          broker_type: targetBroker || null,
+          multi_broker: multiBrokerMode,
         }),
       })
       
@@ -1047,8 +1054,10 @@ export function BotManager({ token = '' }: BotManagerProps) {
                     <div>
                       <label className="text-[10px] text-muted-foreground">Target Broker</label>
                       <select
-                        defaultValue=""
-                        className="w-full mt-1 rounded bg-input px-2 py-1 text-xs border border-border"
+                        value={targetBroker}
+                        onChange={(e) => setTargetBroker(e.target.value)}
+                        disabled={multiBrokerMode}
+                        className="w-full mt-1 rounded bg-input px-2 py-1 text-xs border border-border disabled:opacity-50"
                       >
                         <option value="">Use Default Broker</option>
                         <option value="alpaca">Alpaca</option>
@@ -1059,11 +1068,22 @@ export function BotManager({ token = '' }: BotManagerProps) {
                       <p className="text-[9px] text-muted-foreground mt-0.5">Route orders to specific broker</p>
                     </div>
                     <div>
-                      <label className="text-[10px] text-muted-foreground flex items-center gap-1">
-                        <input type="checkbox" className="h-3 w-3" />
+                      <label className="text-[10px] text-muted-foreground flex items-center gap-2 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          className="h-3 w-3"
+                          checked={multiBrokerMode}
+                          onChange={(e) => {
+                            setMultiBrokerMode(e.target.checked)
+                            if (e.target.checked) setTargetBroker('')  // Clear target when enabling multi
+                          }}
+                        />
                         Multi-Broker Mode
                       </label>
                       <p className="text-[9px] text-muted-foreground mt-0.5">Execute on ALL connected brokers simultaneously</p>
+                      {multiBrokerMode && (
+                        <p className="text-[9px] text-green-400 mt-1">✓ Bot will trade on all connected brokers</p>
+                      )}
                     </div>
                   </div>
                 </div>
