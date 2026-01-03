@@ -362,6 +362,21 @@ class BotConfig:
 
 
 @dataclass
+class TradeRecord:
+    """Record of a completed trade with reasoning."""
+    timestamp: str
+    symbol: str
+    side: str  # buy or sell
+    quantity: int
+    price: float
+    order_id: str
+    broker: str
+    reasoning: str
+    confidence: float
+    indicators: dict
+
+
+@dataclass
 class BotStats:
     """Runtime statistics for a bot."""
     trades_today: int = 0
@@ -379,6 +394,7 @@ class BotStats:
     orders_submitted: int = 0
     orders_filled: int = 0
     orders_rejected: int = 0
+    trade_history: List[TradeRecord] = field(default_factory=list)  # Track all trades with reasons
 
 
 class BotInstance:
@@ -769,14 +785,20 @@ class BotInstance:
                 price = signal.get('price', 0)
                 confidence = signal.get('confidence', 0)
                 
+                reasoning = signal.get('reasoning', 'No reasoning provided')
+                
                 self._log_activity("signal", f"{symbol}: {signal_type.upper()} @ ${price:.2f} (confidence: {confidence:.1%})", {
                     "symbol": symbol,
                     "signal_type": signal_type,
                     "price": price,
                     "confidence": confidence,
                     "indicators": signal.get('indicators', {}),
+                    "reasoning": reasoning,
                     "broker": broker.name,
                 })
+                
+                # Log the AI reasoning
+                logger.info(f"[Bot {self.id}] 🤖 Trade Reasoning for {symbol}: {reasoning}")
                 
                 # Determine action based on signal
                 if signal_type in ('strong_buy', 'buy') and current_qty <= 0:
@@ -810,14 +832,30 @@ class BotInstance:
                             self.stats.orders_filled += 1
                             self.stats.last_trade_time = datetime.utcnow()
                             
+                            # Track trade with reasoning
+                            trade_record = TradeRecord(
+                                timestamp=datetime.utcnow().isoformat(),
+                                symbol=symbol,
+                                side="buy",
+                                quantity=quantity,
+                                price=price,
+                                order_id=order.order_id,
+                                broker=broker.name,
+                                reasoning=reasoning,
+                                confidence=confidence,
+                                indicators=signal.get('indicators', {}),
+                            )
+                            self.stats.trade_history.append(trade_record)
+                            
                             self._log_activity("order_filled", f"BUY {quantity} {symbol} - Order {order.order_id} via {broker.name}", {
                                 "order_id": order.order_id,
                                 "symbol": symbol,
                                 "side": "buy",
                                 "quantity": quantity,
                                 "broker": broker.name,
+                                "reasoning": reasoning,
                             })
-                            self._emit("on_trade", {"symbol": symbol, "side": "buy", "quantity": quantity, "order_id": order.order_id, "broker": broker.name})
+                            self._emit("on_trade", {"symbol": symbol, "side": "buy", "quantity": quantity, "order_id": order.order_id, "broker": broker.name, "reasoning": reasoning})
                         except Exception as e:
                             self.stats.orders_rejected += 1
                             self.stats.errors_count += 1
@@ -835,6 +873,7 @@ class BotInstance:
                         "side": "sell",
                         "quantity": abs(current_qty),
                         "broker": broker.name,
+                        "reasoning": reasoning,
                     })
                     
                     # Sell existing position
@@ -851,14 +890,30 @@ class BotInstance:
                         self.stats.orders_filled += 1
                         self.stats.last_trade_time = datetime.utcnow()
                         
+                        # Track trade with reasoning
+                        trade_record = TradeRecord(
+                            timestamp=datetime.utcnow().isoformat(),
+                            symbol=symbol,
+                            side="sell",
+                            quantity=abs(current_qty),
+                            price=price,
+                            order_id=order.order_id,
+                            broker=broker.name,
+                            reasoning=reasoning,
+                            confidence=confidence,
+                            indicators=signal.get('indicators', {}),
+                        )
+                        self.stats.trade_history.append(trade_record)
+                        
                         self._log_activity("order_filled", f"SELL {abs(current_qty)} {symbol} - Order {order.order_id} via {broker.name}", {
                             "order_id": order.order_id,
                             "symbol": symbol,
                             "side": "sell",
                             "quantity": abs(current_qty),
                             "broker": broker.name,
+                            "reasoning": reasoning,
                         })
-                        self._emit("on_trade", {"symbol": symbol, "side": "sell", "quantity": abs(current_qty), "order_id": order.order_id, "broker": broker.name})
+                        self._emit("on_trade", {"symbol": symbol, "side": "sell", "quantity": abs(current_qty), "order_id": order.order_id, "broker": broker.name, "reasoning": reasoning})
                     except Exception as e:
                         self.stats.orders_rejected += 1
                         self.stats.errors_count += 1
@@ -929,7 +984,7 @@ class BotInstance:
                 return None
             
             # Generate signal based on indicator confluence
-            signal_type, confidence = self._evaluate_indicators(indicators)
+            signal_type, confidence, reasoning = self._evaluate_indicators(indicators)
             
             if signal_type == 'hold':
                 return None
@@ -941,6 +996,8 @@ class BotInstance:
                 'confidence': confidence,
                 'strategy': 'multi_indicator',
                 'indicators': indicators,
+                'reasoning': reasoning,
+                'timestamp': datetime.now().isoformat(),
             }
             
         except Exception as e:
@@ -1106,15 +1163,20 @@ class BotInstance:
             logger.error(f"Error calculating indicators: {e}")
             return None
     
-    def _evaluate_indicators(self, indicators: dict) -> tuple[str, float]:
+    def _evaluate_indicators(self, indicators: dict) -> tuple[str, float, str]:
         """
-        Evaluate indicators and return (signal_type, confidence).
+        Evaluate indicators and return (signal_type, confidence, reasoning).
         
         Uses a scoring system based on indicator confluence.
+        Returns detailed reasoning for why the trade decision was made.
         """
         bullish_score = 0
         bearish_score = 0
         max_score = 5  # Number of indicators checked
+        
+        # Track reasons for the decision
+        bullish_reasons = []
+        bearish_reasons = []
         
         rsi = indicators.get('rsi', 50)
         bb_position = indicators.get('bb_position', 0.5)
@@ -1124,44 +1186,58 @@ class BotInstance:
         # RSI signals
         if rsi < 30:  # Oversold - bullish
             bullish_score += 1
+            bullish_reasons.append(f"RSI oversold ({rsi:.1f}<30)")
         elif rsi > 70:  # Overbought - bearish
             bearish_score += 1
+            bearish_reasons.append(f"RSI overbought ({rsi:.1f}>70)")
         elif rsi < 40:  # Slightly oversold
             bullish_score += 0.5
+            bullish_reasons.append(f"RSI approaching oversold ({rsi:.1f})")
         elif rsi > 60:  # Slightly overbought
             bearish_score += 0.5
+            bearish_reasons.append(f"RSI approaching overbought ({rsi:.1f})")
         
         # Moving Average signals
         if indicators.get('ma_bullish'):
             bullish_score += 1
+            bullish_reasons.append("Price above SMA20 > SMA50 (bullish MA alignment)")
         elif indicators.get('ma_bearish'):
             bearish_score += 1
+            bearish_reasons.append("Price below SMA20 < SMA50 (bearish MA alignment)")
         
         # MACD signals
         if indicators.get('macd_bullish'):
             bullish_score += 1
+            bullish_reasons.append("MACD bullish crossover with rising histogram")
         elif indicators.get('macd_bearish'):
             bearish_score += 1
+            bearish_reasons.append("MACD bearish crossover with falling histogram")
         
         # Bollinger Band signals
         if bb_position < 0.2:  # Near lower band - bullish
             bullish_score += 1
+            bullish_reasons.append(f"Price near lower Bollinger Band ({bb_position:.1%})")
         elif bb_position > 0.8:  # Near upper band - bearish
             bearish_score += 1
+            bearish_reasons.append(f"Price near upper Bollinger Band ({bb_position:.1%})")
         
         # Momentum
         if momentum > 3:  # Strong upward momentum
             bullish_score += 0.5
+            bullish_reasons.append(f"Strong 5-day momentum (+{momentum:.1f}%)")
         elif momentum < -3:  # Strong downward momentum
             bearish_score += 0.5
+            bearish_reasons.append(f"Weak 5-day momentum ({momentum:.1f}%)")
         
         # Volume confirmation
         if volume_ratio > 1.5:
             # High volume amplifies the signal
             if bullish_score > bearish_score:
                 bullish_score += 0.5
+                bullish_reasons.append(f"High volume confirmation ({volume_ratio:.1f}x avg)")
             elif bearish_score > bullish_score:
                 bearish_score += 0.5
+                bearish_reasons.append(f"High volume confirms weakness ({volume_ratio:.1f}x avg)")
         
         # Determine signal
         net_score = bullish_score - bearish_score
@@ -1169,20 +1245,25 @@ class BotInstance:
         if net_score >= 2.5:
             signal_type = 'strong_buy'
             confidence = min(0.9, 0.5 + (net_score / max_score) * 0.4)
+            reasoning = f"STRONG BUY: {' | '.join(bullish_reasons)}"
         elif net_score >= 1.5:
             signal_type = 'buy'
             confidence = min(0.75, 0.4 + (net_score / max_score) * 0.35)
+            reasoning = f"BUY: {' | '.join(bullish_reasons)}"
         elif net_score <= -2.5:
             signal_type = 'strong_sell'
             confidence = min(0.9, 0.5 + (abs(net_score) / max_score) * 0.4)
+            reasoning = f"STRONG SELL: {' | '.join(bearish_reasons)}"
         elif net_score <= -1.5:
             signal_type = 'sell'
             confidence = min(0.75, 0.4 + (abs(net_score) / max_score) * 0.35)
+            reasoning = f"SELL: {' | '.join(bearish_reasons)}"
         else:
             signal_type = 'hold'
             confidence = 0
+            reasoning = "HOLD: No clear signal (indicators mixed)"
         
-        return signal_type, round(confidence, 2)
+        return signal_type, round(confidence, 2), reasoning
     
     def update_config(self, updates: dict) -> None:
         """Update bot configuration (while running or stopped)."""
@@ -1219,6 +1300,20 @@ class BotInstance:
                 "orders_filled": self.stats.orders_filled,
                 "orders_rejected": self.stats.orders_rejected,
                 "last_trade_time": self.stats.last_trade_time.isoformat() if self.stats.last_trade_time else None,
+                "trade_history": [
+                    {
+                        "timestamp": t.timestamp,
+                        "symbol": t.symbol,
+                        "side": t.side,
+                        "quantity": t.quantity,
+                        "price": t.price,
+                        "order_id": t.order_id,
+                        "broker": t.broker,
+                        "reasoning": t.reasoning,
+                        "confidence": t.confidence,
+                    }
+                    for t in self.stats.trade_history[-20:]  # Last 20 trades
+                ],
             },
         }
     

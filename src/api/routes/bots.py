@@ -218,6 +218,71 @@ async def clear_activity_log(admin: AdminUser = Depends(get_admin_user)):
     return {"success": True, "message": "Activity log cleared"}
 
 
+@router.get("/trades")
+async def get_all_trade_history(
+    limit: int = Query(100, ge=1, le=500),
+):
+    """
+    Get trade history for all bots with reasoning.
+    
+    Returns all trades made by bots including:
+    - Symbol, side, quantity, price
+    - Bot ID and broker used
+    - AI reasoning for why the trade was made
+    - Confidence score and indicators
+    """
+    manager = get_bot_manager()
+    bots = manager.get_all_bots()
+    
+    all_trades = []
+    for bot in bots:
+        status = bot.get_status()
+        trade_history = status.get("stats", {}).get("trade_history", [])
+        for trade in trade_history:
+            trade_with_bot = dict(trade)
+            trade_with_bot["bot_id"] = bot.id
+            trade_with_bot["bot_name"] = bot.config.name
+            all_trades.append(trade_with_bot)
+    
+    # Sort by timestamp descending (newest first)
+    all_trades.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+    
+    return {
+        "trades": all_trades[:limit],
+        "count": len(all_trades[:limit]),
+        "total_trades": len(all_trades),
+    }
+
+
+@router.get("/trades/{bot_id}")
+async def get_bot_trade_history(
+    bot_id: str,
+    limit: int = Query(50, ge=1, le=200),
+):
+    """
+    Get trade history for a specific bot with reasoning.
+    
+    Returns detailed trade records including AI reasoning
+    for each buy/sell decision.
+    """
+    manager = get_bot_manager()
+    bot = manager.get_bot(bot_id)
+    
+    if not bot:
+        raise HTTPException(status_code=404, detail="Bot not found")
+    
+    status = bot.get_status()
+    trade_history = status.get("stats", {}).get("trade_history", [])
+    
+    return {
+        "bot_id": bot_id,
+        "bot_name": bot.config.name,
+        "trades": trade_history[-limit:] if trade_history else [],
+        "count": len(trade_history[-limit:]) if trade_history else 0,
+        "total_trades": len(trade_history) if trade_history else 0,
+    }
+
+
 @router.get("/strategies")
 async def get_available_strategies():
     """Get all available trading strategies."""
