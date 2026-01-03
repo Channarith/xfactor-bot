@@ -490,6 +490,170 @@ class SocialSentimentEngine:
     def on_new_post(self, callback: Callable[[SocialPost], None]) -> None:
         """Register callback for new posts."""
         self._callbacks.append(callback)
+    
+    # =========================================================================
+    # MOMENTUM INTEGRATION METHODS
+    # =========================================================================
+    
+    async def get_top_trending(self, count: int = 12) -> List[dict]:
+        """
+        Get top trending symbols by mention count.
+        
+        Returns symbols with highest social media mentions in last 24h.
+        """
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(hours=24)
+        
+        # Count mentions per symbol
+        mention_counts: Dict[str, int] = defaultdict(int)
+        sentiment_totals: Dict[str, float] = defaultdict(float)
+        
+        for post in self._posts:
+            if post.timestamp >= cutoff:
+                for symbol in post.symbols_mentioned:
+                    mention_counts[symbol] += 1
+                    sentiment_totals[symbol] += post.sentiment_score
+        
+        # Build trending list
+        trending = []
+        for symbol, count_val in mention_counts.items():
+            avg_sentiment = sentiment_totals[symbol] / count_val if count_val > 0 else 0
+            trending.append({
+                "symbol": symbol,
+                "mentions": count_val,
+                "avg_sentiment": round(avg_sentiment, 2),
+                "buzz_score": min(count_val * 5, 100),  # Scale to 0-100
+            })
+        
+        # Sort by mentions
+        trending.sort(key=lambda x: x["mentions"], reverse=True)
+        
+        return trending[:count]
+    
+    async def get_viral_stocks(self, min_buzz_score: float = 80) -> List[dict]:
+        """
+        Get stocks with viral buzz (high mention velocity).
+        
+        Viral = rapid increase in mentions compared to baseline.
+        """
+        now = datetime.now(timezone.utc)
+        recent_cutoff = now - timedelta(hours=6)
+        baseline_cutoff = now - timedelta(hours=24)
+        
+        # Count recent vs baseline mentions
+        recent_counts: Dict[str, int] = defaultdict(int)
+        baseline_counts: Dict[str, int] = defaultdict(int)
+        
+        for post in self._posts:
+            for symbol in post.symbols_mentioned:
+                if post.timestamp >= recent_cutoff:
+                    recent_counts[symbol] += 1
+                elif post.timestamp >= baseline_cutoff:
+                    baseline_counts[symbol] += 1
+        
+        viral = []
+        for symbol in set(recent_counts.keys()) | set(baseline_counts.keys()):
+            recent = recent_counts[symbol]
+            baseline = max(baseline_counts[symbol], 1)  # Avoid division by zero
+            
+            # Viral ratio: how many times more mentions vs baseline
+            viral_ratio = recent / baseline
+            
+            # Calculate viral score
+            viral_score = min(viral_ratio * 20, 100)
+            
+            if viral_score >= min_buzz_score:
+                viral.append({
+                    "symbol": symbol,
+                    "recent_mentions": recent,
+                    "baseline_mentions": baseline_counts[symbol],
+                    "viral_ratio": round(viral_ratio, 2),
+                    "viral_score": round(viral_score, 1),
+                })
+        
+        viral.sort(key=lambda x: x["viral_score"], reverse=True)
+        return viral
+    
+    async def get_influencer_picks(self, min_followers: int = 10000) -> List[dict]:
+        """
+        Get stocks mentioned by high-follower accounts.
+        """
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(hours=48)
+        
+        influencer_picks: Dict[str, List[dict]] = defaultdict(list)
+        
+        for post in self._posts:
+            if post.timestamp >= cutoff and post.is_influencer and post.followers >= min_followers:
+                for symbol in post.symbols_mentioned:
+                    influencer_picks[symbol].append({
+                        "author": post.author,
+                        "followers": post.followers,
+                        "sentiment": post.sentiment_score,
+                        "source": post.source.value,
+                    })
+        
+        results = []
+        for symbol, picks in influencer_picks.items():
+            total_reach = sum(p["followers"] for p in picks)
+            avg_sentiment = sum(p["sentiment"] for p in picks) / len(picks) if picks else 0
+            
+            results.append({
+                "symbol": symbol,
+                "influencer_count": len(picks),
+                "total_reach": total_reach,
+                "avg_sentiment": round(avg_sentiment, 2),
+                "influencer_score": min(len(picks) * 20, 100),
+                "top_influencers": picks[:5],
+            })
+        
+        results.sort(key=lambda x: x["total_reach"], reverse=True)
+        return results
+    
+    async def get_symbol_sentiment(self, symbol: str) -> Optional[dict]:
+        """Get aggregated sentiment data for a specific symbol."""
+        symbol = symbol.upper()
+        symbol_posts = [p for p in self._posts if symbol in p.symbols_mentioned]
+        
+        if not symbol_posts:
+            return None
+        
+        now = datetime.now(timezone.utc)
+        cutoff_24h = now - timedelta(hours=24)
+        recent_posts = [p for p in symbol_posts if p.timestamp >= cutoff_24h]
+        
+        if not recent_posts:
+            return None
+        
+        mentions = len(recent_posts)
+        avg_sentiment = sum(p.sentiment_score for p in recent_posts) / mentions
+        influencer_mentions = sum(1 for p in recent_posts if p.is_influencer)
+        total_engagement = sum(p.likes + p.shares + p.comments for p in recent_posts)
+        
+        return {
+            "symbol": symbol,
+            "mentions_24h": mentions,
+            "avg_sentiment": avg_sentiment,
+            "buzz_score": min(mentions * 5, 100),
+            "viral_score": min((mentions / max(len(symbol_posts) / 24, 1)) * 20, 100),
+            "influencer_score": min(influencer_mentions * 20, 100),
+            "total_engagement": total_engagement,
+        }
+    
+    async def get_momentum_scores(self) -> Dict[str, dict]:
+        """Get momentum scores for all tracked symbols."""
+        scores = {}
+        
+        all_symbols = set()
+        for post in self._posts:
+            all_symbols.update(post.symbols_mentioned)
+        
+        for symbol in all_symbols:
+            data = await self.get_symbol_sentiment(symbol)
+            if data:
+                scores[symbol] = data
+        
+        return scores
 
 
 # Singleton instance
@@ -502,4 +666,10 @@ def get_social_sentiment() -> SocialSentimentEngine:
     if _sentiment_engine is None:
         _sentiment_engine = SocialSentimentEngine()
     return _sentiment_engine
+
+
+# Alias for momentum screener compatibility
+def get_social_sentiment_engine() -> SocialSentimentEngine:
+    """Alias for get_social_sentiment()."""
+    return get_social_sentiment()
 

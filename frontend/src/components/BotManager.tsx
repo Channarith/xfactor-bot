@@ -672,6 +672,109 @@ export function BotManager({ token = '' }: BotManagerProps) {
         )}
       </div>
       
+      {/* Momentum Bots Quick Create */}
+      {showCreateForm && (
+        <div className="mt-4 p-3 border border-xfactor-teal/30 rounded-lg bg-xfactor-teal/5">
+          <h3 className="text-sm font-medium mb-2 flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-xfactor-teal" />
+            Momentum Bots (Auto-Select Stocks)
+          </h3>
+          <p className="text-[10px] text-muted-foreground mb-3">
+            These bots auto-select from 12,000+ stocks using momentum rankings. No manual symbol input needed.
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const baseUrl = getApiBaseUrl()
+                  const response = await fetch(`${baseUrl}/api/momentum/bots/create/sector_rotation`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+                  })
+                  if (response.ok) {
+                    setShowCreateForm(false)
+                    fetchBots()
+                  }
+                } catch (e) { console.error(e) }
+              }}
+              className="p-2 rounded-lg bg-card border border-border hover:border-xfactor-teal/50 hover:bg-xfactor-teal/10 transition-all text-left"
+            >
+              <div className="text-lg">🔄</div>
+              <div className="text-xs font-medium mt-1">Sector Rotation</div>
+              <div className="text-[10px] text-muted-foreground">Top stocks from hot sectors</div>
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const baseUrl = getApiBaseUrl()
+                  const response = await fetch(`${baseUrl}/api/momentum/bots/create/social_momentum`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+                  })
+                  if (response.ok) {
+                    setShowCreateForm(false)
+                    fetchBots()
+                  }
+                } catch (e) { console.error(e) }
+              }}
+              className="p-2 rounded-lg bg-card border border-border hover:border-xfactor-teal/50 hover:bg-xfactor-teal/10 transition-all text-left"
+            >
+              <div className="text-lg">📱</div>
+              <div className="text-xs font-medium mt-1">Social Momentum</div>
+              <div className="text-[10px] text-muted-foreground">Viral & trending stocks</div>
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const baseUrl = getApiBaseUrl()
+                  const response = await fetch(`${baseUrl}/api/momentum/bots/create/news_momentum`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+                  })
+                  if (response.ok) {
+                    setShowCreateForm(false)
+                    fetchBots()
+                  }
+                } catch (e) { console.error(e) }
+              }}
+              className="p-2 rounded-lg bg-card border border-border hover:border-xfactor-teal/50 hover:bg-xfactor-teal/10 transition-all text-left"
+            >
+              <div className="text-lg">📰</div>
+              <div className="text-xs font-medium mt-1">News Momentum</div>
+              <div className="text-[10px] text-muted-foreground">News-driven trades</div>
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const baseUrl = getApiBaseUrl()
+                  const response = await fetch(`${baseUrl}/api/momentum/bots/create/composite_momentum`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+                  })
+                  if (response.ok) {
+                    setShowCreateForm(false)
+                    fetchBots()
+                  }
+                } catch (e) { console.error(e) }
+              }}
+              className="p-2 rounded-lg bg-card border border-border hover:border-xfactor-teal/50 hover:bg-xfactor-teal/10 transition-all text-left"
+            >
+              <div className="text-lg">🎯</div>
+              <div className="text-xs font-medium mt-1">Composite</div>
+              <div className="text-[10px] text-muted-foreground">All signals aligned</div>
+            </button>
+          </div>
+          <div className="mt-2 text-[10px] text-muted-foreground flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+            Scans: Hot 100 (15m) • Active 1000 (1h) • Full Universe (2x/day)
+          </div>
+        </div>
+      )}
+      
       {/* Create Bot Form */}
       {showCreateForm ? (
         <div className="mt-4 p-4 border border-border/50 rounded-lg bg-card/50">

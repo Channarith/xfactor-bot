@@ -332,3 +332,186 @@ class TradingScheduler:
         
         return target
 
+
+# ============================================================================
+# MOMENTUM SCAN SCHEDULER
+# ============================================================================
+
+class MomentumScanScheduler:
+    """
+    Dedicated scheduler for momentum universe scanning.
+    
+    Tiered refresh strategy:
+    - Hot 100: Every 15 minutes during market hours
+    - Active 1000: Every 60 minutes during market hours
+    - Full Universe: 5:00 AM and 5:00 PM ET
+    """
+    
+    # Scan times for full universe (ET)
+    FULL_SCAN_TIMES = [
+        time(5, 0),   # 5:00 AM pre-market
+        time(17, 0),  # 5:00 PM after-hours
+    ]
+    
+    def __init__(self):
+        self._running = False
+        self._task: Optional[asyncio.Task] = None
+        self._last_hot_scan: Optional[datetime] = None
+        self._last_active_scan: Optional[datetime] = None
+        self._last_full_scan: Optional[datetime] = None
+        
+        logger.info("MomentumScanScheduler initialized")
+    
+    def start(self) -> None:
+        """Start the momentum scan scheduler."""
+        if self._running:
+            return
+        
+        self._running = True
+        self._task = asyncio.create_task(self._scan_loop())
+        logger.info("MomentumScanScheduler started")
+    
+    def stop(self) -> None:
+        """Stop the scheduler."""
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            self._task = None
+        logger.info("MomentumScanScheduler stopped")
+    
+    async def _scan_loop(self) -> None:
+        """Main scanning loop."""
+        while self._running:
+            try:
+                now = datetime.now(ET)
+                
+                # Check if market day (not weekend/holiday)
+                is_market_day = now.weekday() < 5 and now.strftime("%Y-%m-%d") not in MARKET_HOLIDAYS
+                
+                if is_market_day:
+                    await self._check_and_run_scans(now)
+                
+                # Sleep for 1 minute between checks
+                await asyncio.sleep(60)
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Momentum scan loop error: {e}")
+                await asyncio.sleep(60)
+    
+    async def _check_and_run_scans(self, now: datetime) -> None:
+        """Check which scans need to run and execute them."""
+        from src.data.universe_scanner import get_universe_scanner
+        
+        scanner = get_universe_scanner()
+        current_time = now.time()
+        is_market_hours = MARKET_OPEN <= current_time <= MARKET_CLOSE
+        
+        # Hot 100: Every 15 minutes during market hours
+        if is_market_hours:
+            if self._should_run_hot_scan(now):
+                logger.info("Triggering Hot 100 scan")
+                asyncio.create_task(self._run_hot_scan(scanner))
+                self._last_hot_scan = now
+        
+        # Active 1000: Every 60 minutes during market hours
+        if is_market_hours:
+            if self._should_run_active_scan(now):
+                logger.info("Triggering Active 1000 scan")
+                asyncio.create_task(self._run_active_scan(scanner))
+                self._last_active_scan = now
+        
+        # Full Universe: At scheduled times
+        if self._should_run_full_scan(now):
+            logger.info("Triggering Full Universe scan")
+            asyncio.create_task(self._run_full_scan(scanner))
+            self._last_full_scan = now
+    
+    def _should_run_hot_scan(self, now: datetime) -> bool:
+        """Check if hot 100 scan should run."""
+        if self._last_hot_scan is None:
+            return True
+        return (now - self._last_hot_scan) >= timedelta(minutes=15)
+    
+    def _should_run_active_scan(self, now: datetime) -> bool:
+        """Check if active 1000 scan should run."""
+        if self._last_active_scan is None:
+            return True
+        return (now - self._last_active_scan) >= timedelta(minutes=60)
+    
+    def _should_run_full_scan(self, now: datetime) -> bool:
+        """Check if full universe scan should run."""
+        current_time = now.time()
+        
+        for scan_time in self.FULL_SCAN_TIMES:
+            # Within 5 minutes of scheduled time
+            if self._is_near_time(current_time, scan_time, tolerance_seconds=300):
+                # Haven't scanned in the last hour
+                if self._last_full_scan is None:
+                    return True
+                if (now - self._last_full_scan) >= timedelta(hours=1):
+                    return True
+        
+        return False
+    
+    def _is_near_time(self, current: time, target: time, tolerance_seconds: int) -> bool:
+        """Check if current time is near target time."""
+        current_seconds = current.hour * 3600 + current.minute * 60 + current.second
+        target_seconds = target.hour * 3600 + target.minute * 60 + target.second
+        return abs(current_seconds - target_seconds) <= tolerance_seconds
+    
+    async def _run_hot_scan(self, scanner) -> None:
+        """Run hot 100 scan and refresh rankings."""
+        try:
+            await scanner.scan_hot_100()
+            await self._refresh_rankings()
+        except Exception as e:
+            logger.error(f"Hot scan failed: {e}")
+    
+    async def _run_active_scan(self, scanner) -> None:
+        """Run active 1000 scan and refresh rankings."""
+        try:
+            await scanner.scan_active_1000()
+            await self._refresh_rankings()
+        except Exception as e:
+            logger.error(f"Active scan failed: {e}")
+    
+    async def _run_full_scan(self, scanner) -> None:
+        """Run full universe scan and refresh rankings."""
+        try:
+            await scanner.scan_full_universe()
+            await self._refresh_rankings()
+        except Exception as e:
+            logger.error(f"Full scan failed: {e}")
+    
+    async def _refresh_rankings(self) -> None:
+        """Refresh momentum rankings after scan."""
+        try:
+            from src.data.momentum_screener import get_momentum_screener
+            screener = get_momentum_screener()
+            await screener.refresh_rankings()
+        except Exception as e:
+            logger.error(f"Rankings refresh failed: {e}")
+    
+    def get_status(self) -> dict:
+        """Get scheduler status."""
+        return {
+            "running": self._running,
+            "last_hot_scan": self._last_hot_scan.isoformat() if self._last_hot_scan else None,
+            "last_active_scan": self._last_active_scan.isoformat() if self._last_active_scan else None,
+            "last_full_scan": self._last_full_scan.isoformat() if self._last_full_scan else None,
+        }
+
+
+# Global momentum scan scheduler
+_momentum_scheduler: Optional[MomentumScanScheduler] = None
+
+
+def get_momentum_scan_scheduler() -> MomentumScanScheduler:
+    """Get the global momentum scan scheduler."""
+    global _momentum_scheduler
+    if _momentum_scheduler is None:
+        _momentum_scheduler = MomentumScanScheduler()
+    return _momentum_scheduler
+

@@ -104,6 +104,33 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '1.2.1',
+    date: 'January 3, 2026',
+    changes: [
+      '📊 Full Momentum Suite',
+      '• Tiered Universe Scanner: Hot 100 (15m), Active 1000 (1h), Full 12k+ (2x/day)',
+      '• 25 sector/sub-sector definitions with ETF proxies',
+      '• Unified MomentumScore combining price, volume, social, news',
+      '🔥 4 Momentum Bot Templates',
+      '• Sector Rotation Bot: Rotates into top stocks from hottest sectors',
+      '• Social Momentum Bot: Trades viral/trending stocks from social buzz',
+      '• News Momentum Bot: News-driven catalyst trades',
+      '• Composite Momentum Bot: Only trades when all signals align',
+      '📈 Momentum Dashboard',
+      '• Leaderboard: Top stocks by composite momentum score',
+      '• Sector heatmap with momentum rankings',
+      '• Social trending feed with buzz scores',
+      '• News momentum with catalyst detection',
+      '🔄 Background Scanning',
+      '• MomentumScanScheduler for automated tiered scanning',
+      '• Scans during market hours with configurable intervals',
+      '• Full universe scans pre-market and after-hours',
+      '🎯 API Endpoints',
+      '• /api/momentum/* for all momentum data',
+      '• /api/momentum/bots/create/{template} for one-click bot creation',
+    ]
+  },
+  {
     version: '1.2.0',
     date: 'January 3, 2026',
     changes: [
