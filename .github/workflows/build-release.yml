@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v1.1.8)'
+        description: 'Version tag (e.g., v1.1.9)'
         required: false
-        default: 'v1.1.8'
+        default: 'v1.1.9'
 
 permissions:
   contents: write  # Required to create releases
@@ -91,7 +91,7 @@ jobs:
           sleep 5
           # Retry up to 3 times
           for i in 1 2 3; do
-            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_1.1.8_aarch64.dmg" && break
+            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_1.1.9_aarch64.dmg" && break
             echo "Attempt $i failed, retrying in 5s..."
             sleep 5
           done
@@ -181,7 +181,7 @@ jobs:
           sleep 5
           # Retry up to 3 times
           for i in 1 2 3; do
-            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_1.1.8_x64_legacy.dmg" && break
+            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_1.1.9_x64_legacy.dmg" && break
             echo "Attempt $i failed, retrying in 5s..."
             sleep 5
           done
@@ -273,7 +273,7 @@ jobs:
           sleep 5
           # Retry up to 3 times
           for i in 1 2 3; do
-            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_1.1.8_x64_modern.dmg" && break
+            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_1.1.9_x64_modern.dmg" && break
             echo "Attempt $i failed, retrying in 5s..."
             sleep 5
           done

@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v1.1.8)'
+        description: 'Version tag (e.g., v1.1.9)'
         required: false
-        default: 'v1.1.8'
+        default: 'v1.1.9'
 
 permissions:
   contents: write
@@ -103,8 +103,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.event.inputs.version || 'v1.1.8' }}
-          name: "XFactor Bot ${{ github.event.inputs.version || 'v1.1.8' }} - Legacy Mac Hotfix"
+          tag_name: ${{ github.event.inputs.version || 'v1.1.9' }}
+          name: "XFactor Bot ${{ github.event.inputs.version || 'v1.1.9' }} - Legacy Mac Hotfix"
           draft: false
           prerelease: false
           files: |

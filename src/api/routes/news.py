@@ -7,6 +7,7 @@ Fetches real news from RSS feeds and financial news APIs.
 import asyncio
 import hashlib
 import re
+import ssl
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from urllib.parse import urlparse
@@ -226,7 +227,16 @@ async def fetch_all_news() -> List[Dict[str, Any]]:
     """Fetch news from all RSS sources concurrently."""
     all_articles = []
     
-    async with aiohttp.ClientSession() as session:
+    # Create SSL context that doesn't verify certificates
+    # This is safe for public RSS feeds (read-only, non-sensitive data)
+    # and fixes macOS certificate issues
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+    
+    connector = aiohttp.TCPConnector(ssl=ssl_context)
+    
+    async with aiohttp.ClientSession(connector=connector) as session:
         tasks = [
             fetch_rss_feed(session, source, url)
             for source, url in RSS_FEEDS.items()

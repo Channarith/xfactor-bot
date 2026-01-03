@@ -19,6 +19,7 @@ Get API keys: https://app.alpaca.markets/
 """
 
 import asyncio
+import threading
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 import httpx
@@ -83,8 +84,9 @@ class AlpacaBroker(BaseBroker):
         self._consecutive_failures = 0
         self._max_consecutive_failures = 5
         
-        # Async lock to prevent concurrent API calls (connection pool exhaustion)
-        self._api_lock = asyncio.Lock()
+        # Thread-safe lock to prevent concurrent API calls (connection pool exhaustion)
+        # Using threading.Lock instead of asyncio.Lock because bots run in different event loops
+        self._api_lock = threading.Lock()
         
         logger.debug(f"AlpacaBroker initialized: paper={paper}, base_url={self.base_url}")
     
@@ -225,8 +227,9 @@ class AlpacaBroker(BaseBroker):
                 logger.debug(f"Using cached account data (age: {age:.1f}s)")
                 return self._account_cache
         
-        # Use lock to prevent concurrent API calls (connection pool exhaustion)
-        async with self._api_lock:
+        # Use thread lock to prevent concurrent API calls (connection pool exhaustion)
+        # threading.Lock works across different event loops unlike asyncio.Lock
+        with self._api_lock:
             # Double-check cache after acquiring lock
             now = datetime.now()
             if self._account_cache and self._account_cache_time:
@@ -237,11 +240,8 @@ class AlpacaBroker(BaseBroker):
             try:
                 logger.debug("Fetching Alpaca account data...")
                 
-                loop = asyncio.get_event_loop()
-                account = await asyncio.wait_for(
-                    loop.run_in_executor(None, self._trading_client.get_account),
-                    timeout=self.REQUEST_TIMEOUT
-                )
+                # Synchronous call since we're in a thread lock
+                account = self._trading_client.get_account()
                 
                 self._last_successful_call = datetime.now()
                 self._consecutive_failures = 0
@@ -272,11 +272,6 @@ class AlpacaBroker(BaseBroker):
                 logger.debug(f"Alpaca account: equity=${float(account.equity):,.2f}, buying_power=${float(account.buying_power):,.2f}")
                 
                 return result
-                
-            except asyncio.TimeoutError:
-                logger.warning("get_accounts timed out, returning cached data")
-                self._consecutive_failures += 1
-                return self._account_cache or []
                 
             except Exception as e:
                 logger.error(f"Error getting Alpaca account: {e}")
@@ -310,8 +305,8 @@ class AlpacaBroker(BaseBroker):
                 logger.debug(f"Using cached positions (age: {age:.1f}s)")
                 return self._positions_cache
         
-        # Use lock to prevent concurrent API calls
-        async with self._api_lock:
+        # Use thread lock to prevent concurrent API calls
+        with self._api_lock:
             # Double-check cache after acquiring lock
             now = datetime.now()
             if self._positions_cache is not None and self._positions_cache_time:
@@ -322,11 +317,8 @@ class AlpacaBroker(BaseBroker):
             try:
                 logger.debug("Fetching Alpaca positions...")
                 
-                loop = asyncio.get_event_loop()
-                positions = await asyncio.wait_for(
-                    loop.run_in_executor(None, self._trading_client.get_all_positions),
-                    timeout=self.REQUEST_TIMEOUT
-                )
+                # Synchronous call since we're in a thread lock
+                positions = self._trading_client.get_all_positions()
                 
                 self._last_successful_call = datetime.now()
                 
@@ -356,10 +348,6 @@ class AlpacaBroker(BaseBroker):
                     logger.debug(f"  {p.symbol}: {p.quantity} @ ${p.current_price:.2f} (P&L: ${p.unrealized_pnl:.2f})")
                 
                 return result
-                
-            except asyncio.TimeoutError:
-                logger.warning("get_positions timed out, returning cached data")
-                return self._positions_cache or []
                 
             except Exception as e:
                 logger.error(f"Error getting positions: {e}")

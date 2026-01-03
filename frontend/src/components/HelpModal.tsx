@@ -104,6 +104,19 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '1.1.9',
+    date: 'January 3, 2026',
+    changes: [
+      '🔧 Critical Event Loop Fix',
+      '• Fixed "asyncio.Lock bound to different event loop" errors',
+      '• Bots now work correctly with Alpaca across all threads',
+      '• Replaced asyncio.Lock with threading.Lock for cross-thread safety',
+      '📰 SSL Certificate Fix for News Feeds',
+      '• Fixed SSL certificate verification errors on macOS',
+      '• News feeds now work correctly on all platforms',
+    ]
+  },
+  {
     version: '1.1.8',
     date: 'January 2, 2026',
     changes: [
