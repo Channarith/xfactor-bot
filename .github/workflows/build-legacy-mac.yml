@@ -88,7 +88,7 @@ jobs:
           
           # Retry logic for DMG creation
           for i in 1 2 3; do
-            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_1.2.1_x64_legacy.dmg" && break
+            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_1.2.2_x64_legacy.dmg" && break
             echo "Attempt $i failed, retrying..."
             sleep 5
           done

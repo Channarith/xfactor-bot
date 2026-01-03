@@ -22,7 +22,7 @@ RUN npm run build
 FROM python:3.11-slim
 
 LABEL name="XFactor Bot"
-LABEL version="1.2.1"
+LABEL version="1.2.2"
 LABEL description="AI-Powered Automated Trading Bot"
 
 WORKDIR /app

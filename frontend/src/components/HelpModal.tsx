@@ -104,6 +104,24 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '1.2.2',
+    date: 'January 3, 2026',
+    changes: [
+      '🔗 Multi-Broker UI Integration',
+      '• Target Broker dropdown: Route orders to specific broker',
+      '• Multi-Broker Mode checkbox: Execute on ALL connected brokers',
+      '• Broker settings now properly saved with bot creation',
+      '🔍 Symbol Autocomplete Search',
+      '• Search 12,000+ symbols with instant autocomplete',
+      '• Shows symbol, company name, and exchange',
+      '• Click to add symbol to bot watchlist',
+      '📊 Momentum Dashboard Added to Main Dashboard',
+      '• New "Momentum Scanner" panel on main dashboard',
+      '• Leaderboard, Sectors, Social, and News tabs',
+      '• Scan status indicators with manual trigger buttons',
+    ]
+  },
+  {
     version: '1.2.1',
     date: 'January 3, 2026',
     changes: [
