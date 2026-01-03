@@ -8,7 +8,7 @@ Versions:
 """
 
 # Application version - keep in sync with frontend/package.json
-APP_VERSION = "1.1.9"
+APP_VERSION = "1.2.0"
 
 import os
 import asyncio
@@ -158,7 +158,7 @@ def create_app() -> FastAPI:
     )
     
     # Include routers
-    from src.api.routes import config, positions, orders, risk, news, admin, bots, ai, integrations, commodities, crypto, fees, symbols, seasonal, optimizer, performance, agentic_tuning, tradingview, strategies, forex, forecasting, bot_risk, video_sentiment, stock_analysis, compliance, market
+    from src.api.routes import config, positions, orders, risk, news, admin, bots, ai, integrations, commodities, crypto, fees, symbols, seasonal, optimizer, performance, agentic_tuning, tradingview, strategies, forex, forecasting, bot_risk, video_sentiment, stock_analysis, compliance, market, screener
     
     app.include_router(config.router, prefix="/api/config", tags=["Config"])
     app.include_router(positions.router, prefix="/api/positions", tags=["Positions"])
@@ -186,6 +186,7 @@ def create_app() -> FastAPI:
     app.include_router(stock_analysis.router, prefix="/api", tags=["Stock Analysis"])  # Comprehensive stock analysis with overlays
     app.include_router(market.router, prefix="/api/market", tags=["Market Data"])  # Insider trades, earnings, screener signals
     app.include_router(compliance.router, prefix="/api", tags=["Compliance"])  # Trading compliance (PDT, Good Faith, etc.)
+    app.include_router(screener.router, prefix="/api/screener", tags=["Screener"])  # Symbol universe & growth screener
     
     @app.get("/api")
     async def api_root():

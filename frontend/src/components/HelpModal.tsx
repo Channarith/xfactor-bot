@@ -104,6 +104,33 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '1.2.0',
+    date: 'January 3, 2026',
+    changes: [
+      '🔗 Multi-Broker Bot Routing',
+      '• Assign bots to specific brokers (Alpaca, IBKR, etc.)',
+      '• Multi-broker mode: execute on ALL connected brokers simultaneously',
+      '• Failover broker support: automatic fallback if primary disconnects',
+      '🚀 Background Service & Auto-Start',
+      '• Standalone bot service runs independently of desktop app',
+      '• macOS launchd integration for auto-start on login',
+      '• Bots continue running even after closing the app',
+      '• python scripts/install_service.py to install',
+      '📊 12,000+ Symbol Universe',
+      '• Full NASDAQ, NYSE, and AMEX symbol database',
+      '• Fast symbol search with autocomplete',
+      '• ETF categories: Leveraged, Vanguard, iShares, Sector, Commodities, Crypto',
+      '📈 Growth Screener',
+      '• Find top growth stocks by timeframe (1m, 1d, 1w, 1M)',
+      '• Volume surge detection and momentum scoring',
+      '• /api/screener/top-growth endpoint',
+      '🏷️ Quick ETF Presets in Bot Creation',
+      '• One-click add: Leveraged (SOXL, TQQQ), Vanguard (VOO, VTI)',
+      '• iShares (IVV, IWM), Sector (XLK, XLF), Commodities (GLD, USO)',
+      '• Crypto ETFs (IBIT, FBTC, GBTC)',
+    ]
+  },
+  {
     version: '1.1.9',
     date: 'January 3, 2026',
     changes: [

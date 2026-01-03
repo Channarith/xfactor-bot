@@ -8,7 +8,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional, Any, Callable
+from typing import Optional, Any, Callable, List
 import uuid
 
 import pandas as pd
@@ -281,6 +281,13 @@ class BotConfig:
     enable_momentum_bursts: bool = False  # Chase momentum moves
     leverage_multiplier: float = 1.0  # Position size multiplier
     
+    # =========================================================================
+    # Multi-broker routing settings
+    # =========================================================================
+    broker_type: Optional[str] = None  # Specific broker (e.g., "alpaca", "ibkr"), None = use default
+    failover_brokers: List[str] = field(default_factory=list)  # Backup brokers in priority order
+    multi_broker: bool = False  # If True, execute trades on ALL connected brokers simultaneously
+    
     def to_dict(self) -> dict:
         return {
             "name": self.name,
@@ -340,6 +347,10 @@ class BotConfig:
             "scalp_stop_ticks": self.scalp_stop_ticks,
             "enable_momentum_bursts": self.enable_momentum_bursts,
             "leverage_multiplier": self.leverage_multiplier,
+            # Multi-broker routing
+            "broker_type": self.broker_type,
+            "failover_brokers": self.failover_brokers,
+            "multi_broker": self.multi_broker,
         }
     
     @classmethod
@@ -590,7 +601,7 @@ class BotInstance:
     async def _trading_cycle(self) -> None:
         """Execute one trading cycle - analyze signals and execute trades."""
         from src.brokers.registry import get_broker_registry
-        from src.brokers.base import OrderSide, OrderType
+        from src.brokers.base import OrderSide, OrderType, BrokerType
         
         cycle_start = datetime.utcnow()
         self.stats.cycles_completed += 1
@@ -600,6 +611,8 @@ class BotInstance:
             "symbols": self.config.symbols,
             "strategies": self.config.strategies[:3],  # First 3
             "paper_trading": self.config.use_paper_trading,
+            "broker_type": self.config.broker_type,
+            "multi_broker": self.config.multi_broker,
         })
         
         registry = get_broker_registry()
@@ -611,25 +624,95 @@ class BotInstance:
             })
             return
         
-        # Get the default broker for trading
-        broker = registry.get_default_broker()
-        if not broker:
-            self._log_activity("no_broker", "No default broker available")
-            return
-            
-        if not broker.is_connected:
-            self._log_activity("broker_disconnected", f"Broker {broker.name} is not connected")
+        # Get list of brokers to use based on configuration
+        brokers_to_use = await self._get_brokers_for_trading(registry)
+        
+        if not brokers_to_use:
+            self._log_activity("no_broker", "No suitable broker available for trading")
             return
         
-        self._log_activity("broker_connected", f"Using broker: {broker.name}", {
-            "broker_type": type(broker).__name__,
-        })
+        # Execute trading cycle on each broker
+        for broker in brokers_to_use:
+            if not broker.is_connected:
+                self._log_activity("broker_disconnected", f"Broker {broker.name} is not connected, skipping")
+                continue
+            
+            self._log_activity("broker_connected", f"Using broker: {broker.name}", {
+                "broker_type": type(broker).__name__,
+            })
+            
+            # Execute trades on this broker
+            await self._execute_trades_on_broker(broker)
+    
+    async def _get_brokers_for_trading(self, registry) -> list:
+        """
+        Get list of brokers to use based on bot configuration.
+        
+        Supports:
+        - Specific broker assignment (config.broker_type)
+        - Multi-broker mode (execute on all connected brokers)
+        - Failover brokers (try backup if primary fails)
+        """
+        from src.brokers.base import BrokerType
+        
+        brokers = []
+        
+        # Multi-broker mode: use all connected brokers
+        if self.config.multi_broker:
+            for broker_type in registry.connected_brokers:
+                broker = registry.get_broker(broker_type)
+                if broker and broker.is_connected:
+                    brokers.append(broker)
+            self._log_activity("multi_broker", f"Using {len(brokers)} brokers in multi-broker mode", {
+                "brokers": [b.name for b in brokers],
+            })
+            return brokers
+        
+        # Specific broker assigned
+        if self.config.broker_type:
+            try:
+                broker_type = BrokerType(self.config.broker_type)
+                broker = registry.get_broker(broker_type)
+                if broker and broker.is_connected:
+                    brokers.append(broker)
+                    return brokers
+                else:
+                    self._log_activity("broker_unavailable", f"Assigned broker {self.config.broker_type} not available")
+                    
+                    # Try failover brokers
+                    for failover_type_str in self.config.failover_brokers:
+                        try:
+                            failover_type = BrokerType(failover_type_str)
+                            failover_broker = registry.get_broker(failover_type)
+                            if failover_broker and failover_broker.is_connected:
+                                self._log_activity("failover", f"Using failover broker: {failover_type_str}")
+                                brokers.append(failover_broker)
+                                return brokers
+                        except ValueError:
+                            continue
+                    
+                    self._log_activity("no_failover", "No failover brokers available")
+            except ValueError:
+                self._log_activity("invalid_broker", f"Invalid broker type: {self.config.broker_type}")
+        
+        # Fall back to default broker
+        default_broker = registry.get_default_broker()
+        if default_broker and default_broker.is_connected:
+            brokers.append(default_broker)
+        
+        return brokers
+    
+    async def _execute_trades_on_broker(self, broker) -> None:
+        """Execute the trading logic on a specific broker."""
+        from src.brokers.base import OrderSide, OrderType
+        
+        cycle_start = datetime.utcnow()
         
         # Get account info for position sizing
         try:
             accounts = await broker.get_accounts()
             if not accounts:
-                self._log_activity("no_accounts", "No accounts returned from broker")
+                self._log_activity("no_accounts", f"No accounts returned from broker {broker.name}")
                 return
             account = accounts[0]
             account_id = account.account_id
@@ -639,16 +722,17 @@ class BotInstance:
             self._log_activity("account_info", f"Account: {account_id}", {
                 "buying_power": buying_power,
                 "portfolio_value": portfolio_value,
+                "broker": broker.name,
             })
         except Exception as e:
-            self._log_activity("error", f"Failed to get account info: {e}", {"exception": str(e)})
+            self._log_activity("error", f"Failed to get account info from {broker.name}: {e}", {"exception": str(e)})
             self.stats.errors_count += 1
             return
         
         # Note: Paper trading mode still executes trades - just on a paper/simulated account
         # The broker itself handles whether it's a paper or live account
         mode = "PAPER" if self.config.use_paper_trading else "LIVE"
-        self._log_activity("trading_mode", f"Trading mode: {mode}")
+        self._log_activity("trading_mode", f"Trading mode: {mode} on {broker.name}")
         
         symbols_analyzed = 0
         signals_generated = 0
@@ -656,7 +740,7 @@ class BotInstance:
         for symbol in self.config.symbols:
             try:
                 symbols_analyzed += 1
-                self._log_activity("analyzing", f"Analyzing {symbol}", {"symbol": symbol})
+                self._log_activity("analyzing", f"Analyzing {symbol}", {"symbol": symbol, "broker": broker.name})
                 
                 # Get current position for this symbol
                 try:
@@ -691,6 +775,7 @@ class BotInstance:
                     "price": price,
                     "confidence": confidence,
                     "indicators": signal.get('indicators', {}),
+                    "broker": broker.name,
                 })
                 
                 # Determine action based on signal
@@ -703,11 +788,12 @@ class BotInstance:
                     quantity = int(max_position / price) if price > 0 else 0
                     
                     if quantity > 0:
-                        self._log_activity("order_intent", f"BUY {quantity} {symbol} @ market", {
+                        self._log_activity("order_intent", f"BUY {quantity} {symbol} @ market via {broker.name}", {
                             "symbol": symbol,
                             "side": "buy",
                             "quantity": quantity,
                             "estimated_value": quantity * price,
+                            "broker": broker.name,
                         })
                         
                         # Execute buy order
@@ -724,28 +810,31 @@ class BotInstance:
                             self.stats.orders_filled += 1
                             self.stats.last_trade_time = datetime.utcnow()
                             
-                            self._log_activity("order_filled", f"BUY {quantity} {symbol} - Order {order.order_id}", {
+                            self._log_activity("order_filled", f"BUY {quantity} {symbol} - Order {order.order_id} via {broker.name}", {
                                 "order_id": order.order_id,
                                 "symbol": symbol,
                                 "side": "buy",
                                 "quantity": quantity,
+                                "broker": broker.name,
                             })
-                            self._emit("on_trade", {"symbol": symbol, "side": "buy", "quantity": quantity, "order_id": order.order_id})
+                            self._emit("on_trade", {"symbol": symbol, "side": "buy", "quantity": quantity, "order_id": order.order_id, "broker": broker.name})
                         except Exception as e:
                             self.stats.orders_rejected += 1
                             self.stats.errors_count += 1
-                            self._log_activity("order_rejected", f"Order failed for {symbol}: {e}", {
+                            self._log_activity("order_rejected", f"Order failed for {symbol} on {broker.name}: {e}", {
                                 "symbol": symbol,
                                 "error": str(e),
+                                "broker": broker.name,
                             })
                     else:
                         self._log_activity("skip_order", f"Quantity would be 0 for {symbol} (price={price})")
                 
                 elif signal_type in ('strong_sell', 'sell') and current_qty > 0:
-                    self._log_activity("order_intent", f"SELL {abs(current_qty)} {symbol} @ market", {
+                    self._log_activity("order_intent", f"SELL {abs(current_qty)} {symbol} @ market via {broker.name}", {
                         "symbol": symbol,
                         "side": "sell",
                         "quantity": abs(current_qty),
+                        "broker": broker.name,
                     })
                     
                     # Sell existing position
@@ -762,19 +851,21 @@ class BotInstance:
                         self.stats.orders_filled += 1
                         self.stats.last_trade_time = datetime.utcnow()
                         
-                        self._log_activity("order_filled", f"SELL {abs(current_qty)} {symbol} - Order {order.order_id}", {
+                        self._log_activity("order_filled", f"SELL {abs(current_qty)} {symbol} - Order {order.order_id} via {broker.name}", {
                             "order_id": order.order_id,
                             "symbol": symbol,
                             "side": "sell",
                             "quantity": abs(current_qty),
+                            "broker": broker.name,
                         })
-                        self._emit("on_trade", {"symbol": symbol, "side": "sell", "quantity": abs(current_qty), "order_id": order.order_id})
+                        self._emit("on_trade", {"symbol": symbol, "side": "sell", "quantity": abs(current_qty), "order_id": order.order_id, "broker": broker.name})
                     except Exception as e:
                         self.stats.orders_rejected += 1
                         self.stats.errors_count += 1
-                        self._log_activity("order_rejected", f"Order failed for {symbol}: {e}", {
+                        self._log_activity("order_rejected", f"Order failed for {symbol} on {broker.name}: {e}", {
                             "symbol": symbol,
                             "error": str(e),
+                            "broker": broker.name,
                         })
                 else:
                     # Signal doesn't match position state
@@ -785,19 +876,21 @@ class BotInstance:
                 
             except Exception as e:
                 self.stats.errors_count += 1
-                self._log_activity("error", f"Error processing {symbol}: {e}", {
+                self._log_activity("error", f"Error processing {symbol} on {broker.name}: {e}", {
                     "symbol": symbol,
                     "exception": str(e),
+                    "broker": broker.name,
                 })
         
-        self.stats.symbols_analyzed = symbols_analyzed
+        self.stats.symbols_analyzed += symbols_analyzed
         cycle_duration = (datetime.utcnow() - cycle_start).total_seconds()
         
-        self._log_activity("cycle_complete", f"Cycle #{self.stats.cycles_completed} complete", {
+        self._log_activity("broker_cycle_complete", f"Completed trading on {broker.name}", {
             "symbols_analyzed": symbols_analyzed,
             "signals_generated": signals_generated,
             "duration_seconds": round(cycle_duration, 2),
             "trades_today": self.stats.trades_today,
+            "broker": broker.name,
         })
     
     async def _generate_signal(self, symbol: str) -> Optional[dict]:

@@ -711,18 +711,98 @@ export function BotManager({ token = '' }: BotManagerProps) {
               <label className="text-xs text-muted-foreground flex items-center gap-2">
                 Symbols (comma-separated)
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-xfactor-teal/20 text-xfactor-teal">
-                  40+ Global Exchanges
+                  12,000+ Symbols
                 </span>
               </label>
               <input
                 type="text"
                 value={newBotSymbols}
                 onChange={(e) => setNewBotSymbols(e.target.value)}
-                placeholder="AAPL, MSFT, 7203.T, HSBA.L, 9988.HK, TSM, SAP.DE..."
+                placeholder="AAPL, MSFT, SOXL, VOO, QQQ..."
                 className="w-full mt-1 rounded bg-input px-3 py-2 text-sm border border-border"
               />
+              
+              {/* ETF Quick Presets */}
+              <div className="mt-2">
+                <p className="text-[10px] text-muted-foreground mb-1">📊 Quick Add ETFs:</p>
+                <div className="flex flex-wrap gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setNewBotSymbols(prev => {
+                      const current = prev.split(',').map(s => s.trim()).filter(Boolean)
+                      const leveraged = ['SOXL', 'TQQQ', 'UPRO', 'SPXL', 'TECL', 'FNGU']
+                      const combined = [...new Set([...current, ...leveraged])]
+                      return combined.join(', ')
+                    })}
+                    className="px-2 py-1 text-[10px] rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30"
+                  >
+                    🔥 Leveraged
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewBotSymbols(prev => {
+                      const current = prev.split(',').map(s => s.trim()).filter(Boolean)
+                      const vanguard = ['VOO', 'VTI', 'VGT', 'VUG', 'VTV', 'VIG']
+                      const combined = [...new Set([...current, ...vanguard])]
+                      return combined.join(', ')
+                    })}
+                    className="px-2 py-1 text-[10px] rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30"
+                  >
+                    📈 Vanguard
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewBotSymbols(prev => {
+                      const current = prev.split(',').map(s => s.trim()).filter(Boolean)
+                      const ishares = ['IVV', 'IWM', 'IWF', 'EFA', 'EEM', 'AGG']
+                      const combined = [...new Set([...current, ...ishares])]
+                      return combined.join(', ')
+                    })}
+                    className="px-2 py-1 text-[10px] rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 border border-purple-500/30"
+                  >
+                    💎 iShares
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewBotSymbols(prev => {
+                      const current = prev.split(',').map(s => s.trim()).filter(Boolean)
+                      const sectors = ['XLK', 'XLF', 'XLE', 'XLV', 'XLI', 'XLY']
+                      const combined = [...new Set([...current, ...sectors])]
+                      return combined.join(', ')
+                    })}
+                    className="px-2 py-1 text-[10px] rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 border border-green-500/30"
+                  >
+                    🏭 Sectors
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewBotSymbols(prev => {
+                      const current = prev.split(',').map(s => s.trim()).filter(Boolean)
+                      const commodities = ['GLD', 'SLV', 'USO', 'UNG', 'GDX', 'URA']
+                      const combined = [...new Set([...current, ...commodities])]
+                      return combined.join(', ')
+                    })}
+                    className="px-2 py-1 text-[10px] rounded bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 border border-yellow-500/30"
+                  >
+                    🛢️ Commodities
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewBotSymbols(prev => {
+                      const current = prev.split(',').map(s => s.trim()).filter(Boolean)
+                      const crypto = ['IBIT', 'FBTC', 'GBTC', 'ETHE', 'BITO', 'COIN']
+                      const combined = [...new Set([...current, ...crypto])]
+                      return combined.join(', ')
+                    })}
+                    className="px-2 py-1 text-[10px] rounded bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 border border-orange-500/30"
+                  >
+                    ₿ Crypto ETFs
+                  </button>
+                </div>
+              </div>
+              
               <p className="text-[10px] text-muted-foreground mt-1">
-                🌍 <strong>Any stock worldwide</strong> - Use exchange suffix for international: .L (London), .T (Tokyo), .HK (Hong Kong), .DE (Germany), .SS (Shanghai), .AX (Australia), .TO (Toronto), etc.
+                🌍 <strong>Any stock worldwide</strong> - Use exchange suffix for international: .L (London), .T (Tokyo), .HK (Hong Kong), .DE (Germany), etc.
               </p>
             </div>
             
@@ -854,6 +934,34 @@ export function BotManager({ token = '' }: BotManagerProps) {
                       defaultValue={2}
                       className="w-full mt-1 rounded bg-input px-2 py-1 text-xs border border-border"
                     />
+                  </div>
+                </div>
+                
+                {/* Multi-Broker Settings */}
+                <div className="pt-2 border-t border-border/50">
+                  <p className="text-[10px] font-medium text-muted-foreground mb-2">🔗 Broker Routing</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] text-muted-foreground">Target Broker</label>
+                      <select
+                        defaultValue=""
+                        className="w-full mt-1 rounded bg-input px-2 py-1 text-xs border border-border"
+                      >
+                        <option value="">Use Default Broker</option>
+                        <option value="alpaca">Alpaca</option>
+                        <option value="ibkr">Interactive Brokers</option>
+                        <option value="tradier">Tradier</option>
+                        <option value="schwab">Schwab</option>
+                      </select>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">Route orders to specific broker</p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                        <input type="checkbox" className="h-3 w-3" />
+                        Multi-Broker Mode
+                      </label>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">Execute on ALL connected brokers simultaneously</p>
+                    </div>
                   </div>
                 </div>
               </div>
