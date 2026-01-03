@@ -11,6 +11,7 @@ from enum import Enum
 from typing import Optional, Any, Callable, List
 import uuid
 
+import numpy as np
 import pandas as pd
 from loguru import logger
 
@@ -1331,9 +1332,364 @@ class BotInstance:
                 'momentum_10d': round(momentum_10d, 2),
                 'roc': round(roc, 2),
             }
+            
+            # =====================================================================
+            # 7. CHART PATTERNS (detect classic patterns)
+            # =====================================================================
+            chart_patterns = self._detect_chart_patterns(data)
+            result.update(chart_patterns)
+            
+            return result
+            
         except Exception as e:
             logger.error(f"Error calculating indicators: {e}")
             return None
+    
+    def _detect_chart_patterns(self, data: pd.DataFrame) -> dict:
+        """
+        Detect classic chart patterns in price data.
+        
+        Bullish Patterns:
+        - Inverted Head & Shoulders
+        - Falling Wedge
+        - Bullish Flag
+        - Cup and Handle
+        - Double Bottom
+        - Ascending Triangle
+        
+        Bearish Patterns:
+        - Head & Shoulders
+        - Rising Wedge
+        - Bearish Flag
+        - Double Top
+        - Descending Triangle
+        - Expanding Triangle
+        
+        Neutral Patterns (breakout direction unknown):
+        - Pennant
+        - Symmetrical Triangle
+        """
+        try:
+            close = data['Close'].values
+            high = data['High'].values
+            low = data['Low'].values
+            n = len(close)
+            
+            if n < 20:
+                return self._empty_patterns()
+            
+            patterns = {
+                'pattern_detected': False,
+                'pattern_name': None,
+                'pattern_type': None,  # 'bullish', 'bearish', 'neutral'
+                'pattern_confidence': 0,
+                'pattern_description': None,
+            }
+            
+            detected = []
+            
+            # Find local highs and lows (pivots)
+            highs, lows = self._find_pivots(high, low, close)
+            
+            # =====================================================================
+            # BULLISH PATTERNS
+            # =====================================================================
+            
+            # 1. Double Bottom (W pattern)
+            if len(lows) >= 2:
+                last_lows = lows[-2:]
+                if abs(last_lows[0][1] - last_lows[1][1]) / last_lows[0][1] < 0.03:  # Within 3%
+                    if last_lows[1][0] - last_lows[0][0] >= 5:  # At least 5 bars apart
+                        neckline = max(close[last_lows[0][0]:last_lows[1][0]])
+                        if close[-1] > neckline:
+                            detected.append({
+                                'name': 'Double Bottom',
+                                'type': 'bullish',
+                                'confidence': 0.75,
+                                'description': f'W-pattern with neckline break at ${neckline:.2f}'
+                            })
+            
+            # 2. Inverted Head and Shoulders
+            if len(lows) >= 3:
+                last_lows = lows[-3:]
+                head = last_lows[1][1]  # Middle should be lowest
+                left_shoulder = last_lows[0][1]
+                right_shoulder = last_lows[2][1]
+                
+                if head < left_shoulder and head < right_shoulder:
+                    if abs(left_shoulder - right_shoulder) / left_shoulder < 0.05:  # Shoulders within 5%
+                        neckline = (high[last_lows[0][0]] + high[last_lows[2][0]]) / 2
+                        if close[-1] > neckline:
+                            detected.append({
+                                'name': 'Inverted Head & Shoulders',
+                                'type': 'bullish',
+                                'confidence': 0.85,
+                                'description': f'Classic reversal pattern, neckline at ${neckline:.2f}'
+                            })
+            
+            # 3. Falling Wedge (bullish)
+            if n >= 15:
+                upper_trend = self._calculate_trendline(high[-15:], 'upper')
+                lower_trend = self._calculate_trendline(low[-15:], 'lower')
+                
+                if upper_trend['slope'] < 0 and lower_trend['slope'] < 0:
+                    if upper_trend['slope'] < lower_trend['slope']:  # Converging downward
+                        if close[-1] > upper_trend['end_value']:
+                            detected.append({
+                                'name': 'Falling Wedge Breakout',
+                                'type': 'bullish',
+                                'confidence': 0.80,
+                                'description': 'Bullish breakout from falling wedge'
+                            })
+            
+            # 4. Bullish Flag
+            if n >= 10:
+                # Strong uptrend before flag (pole)
+                pole_start = -15 if n >= 15 else -n
+                pole_move = (close[-10] - close[pole_start]) / close[pole_start] * 100
+                
+                if pole_move > 5:  # At least 5% upward pole
+                    # Flag consolidation (lower highs and lows but shallow)
+                    recent_range = (max(high[-5:]) - min(low[-5:])) / close[-5] * 100
+                    if recent_range < 3 and close[-1] > close[-2]:  # Tight consolidation breaking up
+                        detected.append({
+                            'name': 'Bullish Flag',
+                            'type': 'bullish',
+                            'confidence': 0.70,
+                            'description': f'Flag after {pole_move:.1f}% rally, breaking out'
+                        })
+            
+            # 5. Ascending Triangle
+            if len(highs) >= 3 and len(lows) >= 3:
+                recent_highs = [h[1] for h in highs[-3:]]
+                recent_lows = [l[1] for l in lows[-3:]]
+                
+                # Flat top, rising bottom
+                high_range = (max(recent_highs) - min(recent_highs)) / max(recent_highs)
+                low_trend = recent_lows[-1] > recent_lows[0]
+                
+                if high_range < 0.02 and low_trend:  # Flat resistance, rising support
+                    resistance = max(recent_highs)
+                    if close[-1] > resistance:
+                        detected.append({
+                            'name': 'Ascending Triangle Breakout',
+                            'type': 'bullish',
+                            'confidence': 0.75,
+                            'description': f'Breakout above ${resistance:.2f} resistance'
+                        })
+            
+            # 6. Cup and Handle
+            if n >= 30:
+                mid_point = n // 2
+                left_high = max(high[:mid_point])
+                cup_low = min(low[mid_point-5:mid_point+5])
+                right_high = max(high[mid_point:])
+                
+                if abs(left_high - right_high) / left_high < 0.05:  # Similar highs
+                    if cup_low < left_high * 0.85:  # Cup depth at least 15%
+                        # Handle is recent small pullback
+                        handle_pullback = (max(high[-10:-3]) - close[-1]) / max(high[-10:-3])
+                        if 0.02 < handle_pullback < 0.10:
+                            detected.append({
+                                'name': 'Cup and Handle',
+                                'type': 'bullish',
+                                'confidence': 0.80,
+                                'description': f'Classic accumulation pattern forming'
+                            })
+            
+            # =====================================================================
+            # BEARISH PATTERNS
+            # =====================================================================
+            
+            # 7. Double Top (M pattern)
+            if len(highs) >= 2:
+                last_highs = highs[-2:]
+                if abs(last_highs[0][1] - last_highs[1][1]) / last_highs[0][1] < 0.03:
+                    if last_highs[1][0] - last_highs[0][0] >= 5:
+                        neckline = min(close[last_highs[0][0]:last_highs[1][0]])
+                        if close[-1] < neckline:
+                            detected.append({
+                                'name': 'Double Top',
+                                'type': 'bearish',
+                                'confidence': 0.75,
+                                'description': f'M-pattern with neckline break at ${neckline:.2f}'
+                            })
+            
+            # 8. Head and Shoulders
+            if len(highs) >= 3:
+                last_highs = highs[-3:]
+                head = last_highs[1][1]
+                left_shoulder = last_highs[0][1]
+                right_shoulder = last_highs[2][1]
+                
+                if head > left_shoulder and head > right_shoulder:
+                    if abs(left_shoulder - right_shoulder) / left_shoulder < 0.05:
+                        neckline = (low[last_highs[0][0]] + low[last_highs[2][0]]) / 2
+                        if close[-1] < neckline:
+                            detected.append({
+                                'name': 'Head & Shoulders',
+                                'type': 'bearish',
+                                'confidence': 0.85,
+                                'description': f'Classic reversal, neckline broken at ${neckline:.2f}'
+                            })
+            
+            # 9. Rising Wedge (bearish)
+            if n >= 15:
+                upper_trend = self._calculate_trendline(high[-15:], 'upper')
+                lower_trend = self._calculate_trendline(low[-15:], 'lower')
+                
+                if upper_trend['slope'] > 0 and lower_trend['slope'] > 0:
+                    if upper_trend['slope'] < lower_trend['slope']:  # Converging upward
+                        if close[-1] < lower_trend['end_value']:
+                            detected.append({
+                                'name': 'Rising Wedge Breakdown',
+                                'type': 'bearish',
+                                'confidence': 0.80,
+                                'description': 'Bearish breakdown from rising wedge'
+                            })
+            
+            # 10. Bearish Flag
+            if n >= 10:
+                pole_start = -15 if n >= 15 else -n
+                pole_move = (close[-10] - close[pole_start]) / close[pole_start] * 100
+                
+                if pole_move < -5:  # At least 5% downward pole
+                    recent_range = (max(high[-5:]) - min(low[-5:])) / close[-5] * 100
+                    if recent_range < 3 and close[-1] < close[-2]:
+                        detected.append({
+                            'name': 'Bearish Flag',
+                            'type': 'bearish',
+                            'confidence': 0.70,
+                            'description': f'Flag after {abs(pole_move):.1f}% drop, breaking down'
+                        })
+            
+            # 11. Descending Triangle
+            if len(highs) >= 3 and len(lows) >= 3:
+                recent_highs = [h[1] for h in highs[-3:]]
+                recent_lows = [l[1] for l in lows[-3:]]
+                
+                low_range = (max(recent_lows) - min(recent_lows)) / max(recent_lows)
+                high_trend = recent_highs[-1] < recent_highs[0]
+                
+                if low_range < 0.02 and high_trend:  # Flat support, falling resistance
+                    support = min(recent_lows)
+                    if close[-1] < support:
+                        detected.append({
+                            'name': 'Descending Triangle Breakdown',
+                            'type': 'bearish',
+                            'confidence': 0.75,
+                            'description': f'Breakdown below ${support:.2f} support'
+                        })
+            
+            # 12. Expanding Triangle (bearish - indicates instability)
+            if len(highs) >= 3 and len(lows) >= 3:
+                recent_highs = [h[1] for h in highs[-3:]]
+                recent_lows = [l[1] for l in lows[-3:]]
+                
+                highs_expanding = recent_highs[-1] > recent_highs[0]
+                lows_expanding = recent_lows[-1] < recent_lows[0]
+                
+                if highs_expanding and lows_expanding:
+                    detected.append({
+                        'name': 'Expanding Triangle',
+                        'type': 'bearish',
+                        'confidence': 0.65,
+                        'description': 'Volatility expansion pattern (often bearish)'
+                    })
+            
+            # =====================================================================
+            # NEUTRAL PATTERNS (breakout direction unknown)
+            # =====================================================================
+            
+            # 13. Symmetrical Triangle
+            if len(highs) >= 3 and len(lows) >= 3:
+                recent_highs = [h[1] for h in highs[-3:]]
+                recent_lows = [l[1] for l in lows[-3:]]
+                
+                highs_falling = recent_highs[-1] < recent_highs[0]
+                lows_rising = recent_lows[-1] > recent_lows[0]
+                
+                if highs_falling and lows_rising:
+                    apex = (recent_highs[-1] + recent_lows[-1]) / 2
+                    detected.append({
+                        'name': 'Symmetrical Triangle',
+                        'type': 'neutral',
+                        'confidence': 0.60,
+                        'description': f'Converging pattern, apex near ${apex:.2f}'
+                    })
+            
+            # 14. Pennant
+            if n >= 8:
+                # Sharp move followed by tight consolidation
+                pre_move = abs(close[-8] - close[-5]) / close[-8] * 100
+                recent_range = (max(high[-4:]) - min(low[-4:])) / close[-4] * 100
+                
+                if pre_move > 4 and recent_range < 2:
+                    direction = 'bullish' if close[-5] > close[-8] else 'bearish'
+                    detected.append({
+                        'name': 'Pennant',
+                        'type': direction,
+                        'confidence': 0.65,
+                        'description': f'Tight pennant after {pre_move:.1f}% move'
+                    })
+            
+            # Select highest confidence pattern
+            if detected:
+                best = max(detected, key=lambda x: x['confidence'])
+                patterns['pattern_detected'] = True
+                patterns['pattern_name'] = best['name']
+                patterns['pattern_type'] = best['type']
+                patterns['pattern_confidence'] = best['confidence']
+                patterns['pattern_description'] = best['description']
+                patterns['all_patterns'] = detected
+            
+            return patterns
+            
+        except Exception as e:
+            logger.debug(f"Pattern detection error: {e}")
+            return self._empty_patterns()
+    
+    def _empty_patterns(self) -> dict:
+        """Return empty pattern dict."""
+        return {
+            'pattern_detected': False,
+            'pattern_name': None,
+            'pattern_type': None,
+            'pattern_confidence': 0,
+            'pattern_description': None,
+            'all_patterns': [],
+        }
+    
+    def _find_pivots(self, high: np.ndarray, low: np.ndarray, close: np.ndarray, window: int = 3) -> tuple:
+        """Find local high and low pivot points."""
+        highs = []
+        lows = []
+        n = len(close)
+        
+        for i in range(window, n - window):
+            # Local high
+            if high[i] == max(high[i-window:i+window+1]):
+                highs.append((i, high[i]))
+            # Local low
+            if low[i] == min(low[i-window:i+window+1]):
+                lows.append((i, low[i]))
+        
+        return highs, lows
+    
+    def _calculate_trendline(self, prices: np.ndarray, line_type: str) -> dict:
+        """Calculate simple trendline slope and values."""
+        import numpy as np
+        n = len(prices)
+        x = np.arange(n)
+        
+        # Simple linear regression
+        slope = (prices[-1] - prices[0]) / n if n > 0 else 0
+        
+        return {
+            'slope': slope,
+            'start_value': prices[0],
+            'end_value': prices[-1],
+        }
     
     async def _get_sentiment_indicators(self, symbol: str) -> dict:
         """
@@ -1386,21 +1742,22 @@ class BotInstance:
     
     def _evaluate_indicators(self, indicators: dict, sentiment: dict = None) -> tuple[str, float, str]:
         """
-        Evaluate 18 indicators across 6 categories and return (signal_type, confidence, reasoning).
+        Evaluate 22+ indicators across 7 categories and return (signal_type, confidence, reasoning).
         
         Categories and their max contributions:
         1. Momentum Indicators (3 points): RSI, Stochastic, Williams %R
         2. Trend Indicators (4 points): MA Crossover, MACD, ADX, Golden/Death Cross
         3. Volatility Indicators (2 points): Bollinger Bands, Keltner Channels
         4. Volume Indicators (2 points): Volume Ratio, OBV, VWAP
-        5. Chart Patterns (3 points): Pivots, Support/Resistance, Breakouts, Momentum
+        5. Technical Patterns (3 points): Pivots, Support/Resistance, Breakouts, Momentum
         6. Market Sentiment (4 points): News, Social Media, Top Traders
+        7. Chart Patterns (4 points): H&S, Wedges, Flags, Triangles, Double Top/Bottom, Pennants
         
-        Total max score: 18 points per side (bullish/bearish)
+        Total max score: 22 points per side (bullish/bearish)
         """
         bullish_score = 0.0
         bearish_score = 0.0
-        max_score = 18.0  # Maximum possible score
+        max_score = 22.0  # Maximum possible score (updated for chart patterns)
         
         # Track reasons for the decision
         bullish_reasons = []
@@ -1634,6 +1991,47 @@ class BotInstance:
             if bullish_score > bearish_score:
                 bullish_score += 0.5
                 bullish_reasons.append(f"📢 High news volume ({news_volume} articles)")
+        
+        # =====================================================================
+        # 7. CHART PATTERNS (max 4 points)
+        # =====================================================================
+        
+        if indicators.get('pattern_detected'):
+            pattern_name = indicators.get('pattern_name', '')
+            pattern_type = indicators.get('pattern_type', '')
+            pattern_confidence = indicators.get('pattern_confidence', 0)
+            pattern_desc = indicators.get('pattern_description', '')
+            
+            # Score based on pattern confidence and type
+            pattern_score = pattern_confidence * 3  # Max ~2.5 points per pattern
+            
+            if pattern_type == 'bullish':
+                bullish_score += pattern_score
+                bullish_reasons.append(f"📐 {pattern_name}: {pattern_desc}")
+            elif pattern_type == 'bearish':
+                bearish_score += pattern_score
+                bearish_reasons.append(f"📐 {pattern_name}: {pattern_desc}")
+            elif pattern_type == 'neutral':
+                # Neutral patterns add to momentum direction
+                if bullish_score > bearish_score:
+                    bullish_score += pattern_score * 0.5
+                    bullish_reasons.append(f"📐 {pattern_name} (momentum bias)")
+                elif bearish_score > bullish_score:
+                    bearish_score += pattern_score * 0.5
+                    bearish_reasons.append(f"📐 {pattern_name} (momentum bias)")
+            
+            # Check for multiple patterns
+            all_patterns = indicators.get('all_patterns', [])
+            if len(all_patterns) > 1:
+                bullish_patterns = [p for p in all_patterns if p['type'] == 'bullish']
+                bearish_patterns = [p for p in all_patterns if p['type'] == 'bearish']
+                
+                if len(bullish_patterns) >= 2:
+                    bullish_score += 1.0
+                    bullish_reasons.append(f"🎯 Multiple bullish patterns ({len(bullish_patterns)})")
+                if len(bearish_patterns) >= 2:
+                    bearish_score += 1.0
+                    bearish_reasons.append(f"🎯 Multiple bearish patterns ({len(bearish_patterns)})")
         
         # =====================================================================
         # SIGNAL DETERMINATION
