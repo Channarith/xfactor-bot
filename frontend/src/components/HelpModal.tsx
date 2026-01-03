@@ -104,6 +104,36 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '1.2.3',
+    date: 'January 4, 2026',
+    changes: [
+      '📊 22+ Indicators Across 7 Categories',
+      '• Momentum: RSI, Stochastic Oscillator, Williams %R',
+      '• Trend: MA Stack (20/50/200), Golden/Death Cross, MACD, ADX',
+      '• Volatility: Bollinger Bands + Squeeze, Keltner Channels, ATR',
+      '• Volume: Volume Ratio, OBV, VWAP above/below',
+      '• Technical: Pivot Points (S1/S2, R1/R2), Donchian Channels, ROC',
+      '• Sentiment: News sentiment, Social buzz, Top trader momentum',
+      '📐 14 Chart Pattern Recognition (NEW)',
+      '• Bullish: Double Bottom, Inverted H&S, Falling Wedge, Bullish Flag, Ascending Triangle, Cup & Handle',
+      '• Bearish: Double Top, Head & Shoulders, Rising Wedge, Bearish Flag, Descending Triangle, Expanding Triangle',
+      '• Neutral: Symmetrical Triangle, Pennant',
+      '💰 Enhanced Positions Display',
+      '• Open Positions tab with Buy Price vs Current Price comparison',
+      '• "If Sold" column showing potential profit/loss',
+      '• Percent change since purchase with trend icons',
+      '• NEW: Closed Trades tab with full P&L history',
+      '• Trade statistics: Win rate, Total realized P&L',
+      '📝 Trade Reasoning Tracking',
+      '• Every trade logs detailed reasoning (which indicators triggered)',
+      '• API endpoints: /api/bots/trades, /api/positions/completed-trades',
+      '🔢 Scoring System Update',
+      '• Max 22 points per side (bullish/bearish)',
+      '• Strong Buy/Sell threshold: ≥6 points',
+      '• Buy/Sell threshold: ≥3 points',
+    ],
+  },
+  {
     version: '1.2.2',
     date: 'January 3, 2026',
     changes: [

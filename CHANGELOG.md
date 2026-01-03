@@ -5,6 +5,73 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-01-04
+
+### 📊 Comprehensive Indicator System (22+ Indicators)
+
+#### 7 Indicator Categories
+1. **Momentum Indicators (3)**: RSI (14-period), Stochastic Oscillator (%K/%D), Williams %R
+2. **Trend Indicators (4)**: MA Stack (SMA 20/50/200), Golden/Death Cross, MACD with histogram, ADX trend strength
+3. **Volatility Indicators (2)**: Bollinger Bands + Squeeze detection, Keltner Channels, ATR
+4. **Volume Indicators (3)**: Volume Ratio/Surge, OBV (On-Balance Volume), VWAP above/below
+5. **Technical Patterns (4)**: Pivot Points (S1/S2, R1/R2), Donchian Channels, Momentum (5d/10d), ROC
+6. **Market Sentiment (4)**: News sentiment, Social media buzz, Top trader momentum, News volume
+7. **Chart Patterns (14)**: Classic pattern recognition with confidence scoring
+
+### 📐 Chart Pattern Recognition (14 Patterns)
+
+#### Bullish Patterns
+- Double Bottom (W-pattern with neckline break)
+- Inverted Head & Shoulders (classic reversal)
+- Falling Wedge Breakout
+- Bullish Flag (continuation after rally)
+- Ascending Triangle Breakout
+- Cup and Handle (accumulation)
+
+#### Bearish Patterns
+- Double Top (M-pattern with neckline break)
+- Head & Shoulders (distribution)
+- Rising Wedge Breakdown
+- Bearish Flag (continuation after decline)
+- Descending Triangle Breakdown
+- Expanding Triangle (instability)
+
+#### Neutral Patterns
+- Symmetrical Triangle (converging)
+- Pennant (tight consolidation)
+
+### 💰 Enhanced Positions Display
+
+#### Open Positions Tab
+- Buy Price vs Current Price comparison
+- Price change indicator (↑$5.32 or ↓$2.10)
+- "If Sold" column showing potential profit/loss
+- Percent change since purchase with trend icons
+
+#### Closed Trades Tab (NEW)
+- Full trade history with buy/sell prices
+- Profit/Loss in dollars and percentage
+- Bot that made the trade
+- Trade statistics: Win rate, Total realized P&L
+
+### 📝 Trade Reasoning System
+
+- Every trade logs detailed reasoning (which indicators triggered)
+- Reasoning includes specific values (RSI=28, MACD bullish crossover, etc.)
+- API endpoints for trade history:
+  - `GET /api/bots/trades` - All trades with reasoning
+  - `GET /api/positions/completed-trades` - Closed positions with P&L
+
+### 🔢 Updated Scoring System
+
+- Max 22 points per side (bullish/bearish)
+- Strong Buy/Sell: net score ≥ 6 points
+- Buy/Sell: net score ≥ 3 points
+- Hold: mixed signals (under 3)
+- Confidence scales with indicator confluence
+
+---
+
 ## [1.1.8] - 2026-01-02
 
 ### 🦙 Alpaca Connection Fix
