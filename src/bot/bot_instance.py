@@ -1020,7 +1020,12 @@ class BotInstance:
     
     async def _get_cached_market_data(self, symbol: str) -> Optional[pd.DataFrame]:
         """
-        Get market data with caching to prevent yfinance thread exhaustion.
+        Get market data with caching and automatic provider failover.
+        
+        Uses MarketDataManager which tries multiple providers:
+        1. yfinance (primary)
+        2. Yahoo Finance direct HTTP (fallback)
+        3. Alpha Vantage (if configured)
         
         Multiple bots requesting the same symbol will share cached data.
         """
@@ -1040,9 +1045,9 @@ class BotInstance:
                         return None
                     return entry["data"]
         
-        # Initialize semaphore if needed (limit concurrent yfinance calls)
+        # Initialize semaphore if needed (limit concurrent calls)
         if _yfinance_semaphore is None:
-            _yfinance_semaphore = asyncio.Semaphore(3)  # Max 3 concurrent yfinance requests
+            _yfinance_semaphore = asyncio.Semaphore(3)  # Max 3 concurrent requests
         
         # Fetch with semaphore to limit concurrency
         async with _yfinance_semaphore:
@@ -1054,17 +1059,49 @@ class BotInstance:
                     if age < _market_data_cache_ttl:
                         return entry.get("data")
             
+            # Try using market data manager with failover
+            try:
+                from src.data.market_data_providers import get_market_data_manager
+                
+                manager = get_market_data_manager()
+                bars = await manager.get_history(symbol, period="60d", interval="1d")
+                
+                if bars:
+                    # Convert bars to DataFrame format expected by indicators
+                    df = pd.DataFrame([
+                        {
+                            'Open': b.open,
+                            'High': b.high,
+                            'Low': b.low,
+                            'Close': b.close,
+                            'Volume': b.volume,
+                        }
+                        for b in bars
+                    ])
+                    df.index = pd.to_datetime([b.timestamp for b in bars])
+                    
+                    with _market_data_lock:
+                        _market_data_cache[cache_key] = {
+                            "data": df,
+                            "timestamp": datetime.now(),
+                            "error": None,
+                        }
+                    
+                    return df
+                    
+            except Exception as e:
+                logger.debug(f"Market data manager failed for {symbol}: {e}")
+            
+            # Fallback: Try yfinance directly
             try:
                 import yfinance as yf
                 
-                # Run in executor to not block event loop
                 loop = asyncio.get_event_loop()
                 hist = await asyncio.wait_for(
                     loop.run_in_executor(None, lambda: yf.Ticker(symbol).history(period="60d", interval="1d")),
-                    timeout=15  # 15 second timeout
+                    timeout=15
                 )
                 
-                # Cache the result
                 with _market_data_lock:
                     _market_data_cache[cache_key] = {
                         "data": hist if not hist.empty else None,
@@ -1075,7 +1112,7 @@ class BotInstance:
                 return hist if not hist.empty else None
                 
             except asyncio.TimeoutError:
-                logger.warning(f"yfinance timeout for {symbol}")
+                logger.warning(f"Market data timeout for {symbol}")
                 with _market_data_lock:
                     _market_data_cache[cache_key] = {
                         "data": None,
@@ -1085,7 +1122,7 @@ class BotInstance:
                 return None
                 
             except Exception as e:
-                logger.warning(f"yfinance error for {symbol}: {e}")
+                logger.warning(f"Market data error for {symbol}: {e}")
                 with _market_data_lock:
                     _market_data_cache[cache_key] = {
                         "data": None,

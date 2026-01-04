@@ -415,6 +415,9 @@ ALL_SECTORS: Dict[str, SectorDefinition] = {
     **CRYPTO_SECTORS,
 }
 
+# Alias for backwards compatibility
+SECTORS = ALL_SECTORS
+
 
 # ============================================================================
 # UTILITY FUNCTIONS

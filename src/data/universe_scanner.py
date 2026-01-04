@@ -351,34 +351,45 @@ class UniverseScanner:
             status.is_running = False
     
     async def _get_hot_list(self) -> List[str]:
-        """Get symbols for hot 100 scan."""
-        hot_symbols = set()
+        """Get symbols for hot 100 scan - reliable core symbols."""
+        # Start with a reliable core set of highly liquid symbols
+        core_symbols = [
+            # Major indices
+            "SPY", "QQQ", "IWM", "DIA",
+            # Mega-cap tech
+            "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
+            # Semiconductors
+            "AMD", "INTC", "AVGO", "MU", "QCOM",
+            # Other large tech
+            "NFLX", "CRM", "ORCL", "ADBE", "CSCO",
+            # Financials
+            "JPM", "BAC", "GS", "C", "WFC",
+            # Healthcare
+            "JNJ", "UNH", "PFE", "ABBV", "MRK",
+            # Energy
+            "XOM", "CVX", "COP", "SLB", "OXY",
+            # Consumer
+            "WMT", "COST", "HD", "NKE", "MCD",
+            # Industrials
+            "CAT", "BA", "GE", "UPS", "HON",
+            # Leveraged ETFs
+            "SOXL", "TQQQ", "UPRO", "SOXS", "SQQQ",
+            # Sector ETFs
+            "XLK", "XLF", "XLE", "XLV", "XLI",
+        ]
+        
+        hot_symbols = set(core_symbols)
         
         # Include previous top movers
         hot_symbols.update(self._previous_hot)
         
-        # Add major indices and ETFs (always scan these)
-        hot_symbols.update([
-            "SPY", "QQQ", "IWM", "DIA", "VTI",
-            "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
-            "AMD", "INTC", "AVGO", "NFLX", "CRM",
-            "JPM", "BAC", "GS", "V", "MA",
-            "XOM", "CVX", "COP",
-            "JNJ", "UNH", "PFE",
-            "SOXL", "TQQQ", "UPRO",
-        ])
-        
-        # If we have previous active 1000 results, add top movers from there
+        # If we have previous active results, add top movers from there
         if self._active_1000:
             top_movers = sorted(self._active_1000, key=lambda x: abs(x.price_change_pct), reverse=True)
-            hot_symbols.update(r.symbol for r in top_movers[:50])
+            hot_symbols.update(r.symbol for r in top_movers[:30])
         
-        # If we have full universe results, add top momentum
-        if self._full_universe:
-            top_momentum = sorted(self._full_universe, key=lambda x: x.momentum_score, reverse=True)
-            hot_symbols.update(r.symbol for r in top_momentum[:30])
-        
-        return list(hot_symbols)
+        # Limit to 100 to keep scans fast
+        return list(hot_symbols)[:100]
     
     async def _get_active_symbols(self, count: int) -> List[str]:
         """Get most active symbols by volume and movement."""
@@ -423,33 +434,83 @@ class UniverseScanner:
             return []
     
     async def _scan_batch(self, symbols: List[str], tier: str) -> List[ScanResult]:
-        """Scan a batch of symbols."""
-        if not yf or not pd:
-            logger.error("yfinance/pandas not available")
-            return []
+        """Scan a batch of symbols using market data manager with failover."""
+        from src.data.market_data_providers import get_market_data_manager
         
+        results = []
+        manager = get_market_data_manager()
+        
+        # Process in smaller sub-batches
+        sub_batch_size = 10
+        
+        for i in range(0, len(symbols), sub_batch_size):
+            sub_batch = symbols[i:i + sub_batch_size]
+            
+            try:
+                # Get quotes using failover-enabled manager
+                quotes = await manager.get_quotes(sub_batch, use_cache=False)
+                
+                for quote in quotes:
+                    try:
+                        # Calculate momentum score from quote data
+                        momentum_score = self._calculate_quote_momentum(quote)
+                        
+                        results.append(ScanResult(
+                            symbol=quote.symbol,
+                            tier=tier,
+                            current_price=quote.price,
+                            previous_close=quote.prev_close,
+                            price_change=quote.change,
+                            price_change_pct=quote.change_pct,
+                            volume=quote.volume,
+                            avg_volume=quote.volume,  # Would need history for true avg
+                            volume_ratio=1.0,
+                            momentum_score=momentum_score,
+                            timestamp=datetime.now().isoformat(),
+                        ))
+                    except Exception as e:
+                        logger.debug(f"Error processing {quote.symbol}: {e}")
+                
+            except Exception as e:
+                logger.debug(f"Sub-batch scan error: {e}")
+                
+                # Fallback to yfinance if manager fails
+                if yf and pd:
+                    try:
+                        results.extend(await self._scan_batch_yfinance(sub_batch, tier))
+                    except Exception:
+                        pass
+            
+            # Small delay between sub-batches
+            await asyncio.sleep(0.1)
+        
+        return results
+    
+    async def _scan_batch_yfinance(self, symbols: List[str], tier: str) -> List[ScanResult]:
+        """Fallback: Scan using yfinance directly."""
         results = []
         
         try:
-            # Download data for batch
             symbol_str = " ".join(symbols)
             loop = asyncio.get_event_loop()
             
-            data = await loop.run_in_executor(
-                None,
-                lambda: yf.download(
-                    symbol_str,
-                    period="5d",
-                    interval="1d",
-                    progress=False,
-                    threads=True,
-                )
+            data = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: yf.download(
+                        symbol_str,
+                        period="5d",
+                        interval="1d",
+                        progress=False,
+                        threads=False,
+                    )
+                ),
+                timeout=30
             )
             
             if data.empty:
                 return results
             
-            # Handle single vs multiple symbols
             if len(symbols) == 1:
                 data.columns = pd.MultiIndex.from_product([data.columns, symbols])
             
@@ -458,13 +519,45 @@ class UniverseScanner:
                     result = self._process_symbol_data(symbol, data, tier)
                     if result:
                         results.append(result)
-                except Exception as e:
-                    logger.debug(f"Error processing {symbol}: {e}")
-            
+                except Exception:
+                    pass
+                    
         except Exception as e:
-            logger.error(f"Batch scan error: {e}")
+            logger.debug(f"yfinance fallback error: {e}")
         
         return results
+    
+    def _calculate_quote_momentum(self, quote) -> float:
+        """Calculate momentum score from a single quote."""
+        score = 50.0  # Base score
+        
+        # Price change contribution (up to 25 points)
+        if quote.change_pct > 5:
+            score += 25
+        elif quote.change_pct > 2:
+            score += 15
+        elif quote.change_pct > 0:
+            score += 5
+        elif quote.change_pct < -5:
+            score -= 15
+        elif quote.change_pct < -2:
+            score -= 10
+        
+        # Intraday range contribution (up to 15 points)
+        if quote.high > 0 and quote.low > 0:
+            intraday_range = ((quote.high - quote.low) / quote.low) * 100
+            if intraday_range > 5:
+                score += 15
+            elif intraday_range > 2:
+                score += 8
+        
+        # Price vs prev close (up to 10 points)
+        if quote.price > quote.prev_close:
+            score += 10
+        elif quote.price < quote.prev_close:
+            score -= 5
+        
+        return max(0, min(100, score))
     
     async def _scan_batched(
         self,

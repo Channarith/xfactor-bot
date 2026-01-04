@@ -25,6 +25,7 @@ __all__ = [
     "UniverseScanner",
     "get_universe_scanner",
     "ScanTier",
+    "SECTORS",
     "ALL_SECTORS",
     "SECTOR_SYMBOLS",
     "get_sector",

@@ -387,6 +387,7 @@ export function TraderInsights() {
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
   const [itemsPerPage, setItemsPerPage] = useState(10)
   const [isUsingMockData, setIsUsingMockData] = useState(false)
+  const [mockDataTabs, setMockDataTabs] = useState<Set<TabType>>(new Set())
   
   // Data states
   const [insiderTrades, setInsiderTrades] = useState<InsiderTrade[]>([])
@@ -433,64 +434,118 @@ export function TraderInsights() {
         setLastUpdate(new Date())
         setLoading(false)
         setIsUsingMockData(true)
+        setMockDataTabs(new Set(['insiders', 'traders', 'finviz', 'movingavg', 'earnings', 'press', 'ainvest']))
       }, 500)
       return
     }
     
-    // In paper/live mode, try to fetch real data from APIs
-    let usedMock = false
+    // In paper/live mode, fetch ALL data from real APIs
+    const fetchPromises: Promise<void>[] = []
     
-    try {
-      // Try to fetch insider trades from API
-      const insiderRes = await fetch('/api/market/insider-trades')
-      if (insiderRes.ok) {
-        const data = await insiderRes.json()
-        if (data.trades && data.trades.length > 0) {
-          setInsiderTrades(data.trades)
-        } else {
-          setInsiderTrades(generateInsiderTrades(maxItems))
-          usedMock = true
-        }
-      } else {
-        setInsiderTrades(generateInsiderTrades(maxItems))
-        usedMock = true
-      }
-    } catch {
-      setInsiderTrades(generateInsiderTrades(maxItems))
-      usedMock = true
-    }
+    // 1. Insider Trades (OpenInsider scraping)
+    fetchPromises.push(
+      fetch('/api/market/insider-trades')
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.trades?.length > 0) {
+            setInsiderTrades(data.trades)
+          }
+        })
+        .catch(() => {})
+    )
     
-    try {
-      // Try to fetch earnings calendar
-      const earningsRes = await fetch('/api/market/earnings-calendar')
-      if (earningsRes.ok) {
-        const data = await earningsRes.json()
-        if (data.earnings && data.earnings.length > 0) {
-          setEarnings(data.earnings)
-        } else {
-          setEarnings(generateEarningsReports(maxItems))
-          usedMock = true
-        }
-      } else {
-        setEarnings(generateEarningsReports(maxItems))
-        usedMock = true
-      }
-    } catch {
-      setEarnings(generateEarningsReports(maxItems))
-      usedMock = true
-    }
+    // 2. Earnings Calendar
+    fetchPromises.push(
+      fetch('/api/market/earnings-calendar')
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.earnings?.length > 0) {
+            setEarnings(data.earnings)
+          }
+        })
+        .catch(() => {})
+    )
     
-    // These don't have real APIs yet, always use mock
-    setTopTraders(generateTopTraders(maxItems))
-    setFinvizSignals(generateFinvizSignals(maxItems))
-    setMaSignals(generateMovingAverageSignals(maxItems))
-    setPressReleases(generatePressReleases(maxItems))
-    setAinvestSignals(generateAInvestSignals(maxItems))
-    usedMock = true
+    // 3. Screener Signals (Finviz-style)
+    fetchPromises.push(
+      fetch('/api/market/screener-signals')
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.signals?.length > 0) {
+            setFinvizSignals(data.signals.map((s: FinvizSignal, i: number) => ({
+              ...s,
+              id: s.id || `signal-${i}`,
+              volume: typeof s.volume === 'number' ? formatVolume(s.volume as unknown as number) : s.volume,
+            })))
+          }
+        })
+        .catch(() => {})
+    )
     
-    setIsUsingMockData(usedMock)
+    // 4. Moving Average Signals
+    fetchPromises.push(
+      fetch('/api/market/ma-signals')
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.signals?.length > 0) {
+            setMaSignals(data.signals.map((s: MovingAverageSignal, i: number) => ({
+              ...s,
+              id: s.id || `ma-${i}`,
+            })))
+          }
+        })
+        .catch(() => {})
+    )
+    
+    // 5. Top Traders (institutional holdings + whale activity)
+    fetchPromises.push(
+      fetch('/api/market/top-traders')
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.traders?.length > 0) {
+            setTopTraders(data.traders)
+          }
+        })
+        .catch(() => {})
+    )
+    
+    // 6. Press Releases (from news API)
+    fetchPromises.push(
+      fetch('/api/market/press-releases')
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.releases?.length > 0) {
+            setPressReleases(data.releases)
+          }
+        })
+        .catch(() => {})
+    )
+    
+    // 7. AI Invest Signals (from bot analysis)
+    fetchPromises.push(
+      fetch('/api/market/ai-signals')
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.signals?.length > 0) {
+            setAinvestSignals(data.signals)
+          }
+        })
+        .catch(() => {})
+    )
+    
+    await Promise.all(fetchPromises)
+    
+    setMockDataTabs(new Set()) // No mock data in paper/live mode
+    setIsUsingMockData(false)
     setLastUpdate(new Date())
     setLoading(false)
+  }
+  
+  const formatVolume = (vol: number): string => {
+    if (vol >= 1e9) return `${(vol / 1e9).toFixed(1)}B`
+    if (vol >= 1e6) return `${(vol / 1e6).toFixed(1)}M`
+    if (vol >= 1e3) return `${(vol / 1e3).toFixed(0)}K`
+    return vol.toString()
   }
 
   const getCurrentFilter = () => {
@@ -630,10 +685,15 @@ export function TraderInsights() {
               <span className="text-[10px] opacity-70">({tab.count})</span>
             </button>
           ))}
-          {isUsingMockData && (
+          {mode === 'demo' ? (
             <span className="ml-2 px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded text-[10px] font-medium flex items-center gap-1">
               <AlertCircle className="h-3 w-3" />
-              {mode === 'demo' ? 'DEMO DATA' : 'SIMULATED'}
+              DEMO DATA
+            </span>
+          ) : (
+            <span className="ml-2 px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded text-[10px] font-medium flex items-center gap-1">
+              <TrendingUp className="h-3 w-3" />
+              LIVE DATA
             </span>
           )}
         </div>
