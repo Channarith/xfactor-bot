@@ -74,8 +74,16 @@ async def get_all_positions() -> Dict[str, Any]:
 
 
 @router.get("/summary")
-async def get_portfolio_summary() -> Dict[str, Any]:
-    """Get portfolio summary from connected brokers."""
+async def get_portfolio_summary(
+    broker: Optional[str] = None,  # Filter by specific broker (e.g., "ibkr", "alpaca")
+) -> Dict[str, Any]:
+    """
+    Get portfolio summary from connected brokers.
+    
+    Args:
+        broker: Optional broker filter. If provided, only shows that broker's data.
+                Valid values: "ibkr", "alpaca", "schwab", "tradier", or "all" (default)
+    """
     registry = get_broker_registry()
     
     total_value = 0.0
@@ -85,16 +93,21 @@ async def get_portfolio_summary() -> Dict[str, Any]:
     position_count = 0
     buying_power = 0.0
     broker_details = []
+    selected_broker = broker.lower() if broker and broker != "all" else None
     
-    logger.debug(f"Portfolio summary: connected brokers = {registry.connected_brokers}")
+    logger.debug(f"Portfolio summary: connected brokers = {registry.connected_brokers}, filter = {selected_broker}")
     
-    # Aggregate data from all connected brokers
+    # Aggregate data from connected brokers (filtered if specified)
     for broker_type in registry.connected_brokers:
-        broker = registry.get_broker(broker_type)
-        if broker and broker.is_connected:
+        # Skip if filtering by specific broker
+        if selected_broker and broker_type.value.lower() != selected_broker:
+            continue
+            
+        broker_instance = registry.get_broker(broker_type)
+        if broker_instance and broker_instance.is_connected:
             try:
                 logger.debug(f"Fetching accounts from {broker_type.value}...")
-                accounts = await broker.get_accounts()
+                accounts = await broker_instance.get_accounts()
                 logger.debug(f"Got {len(accounts)} accounts from {broker_type.value}")
                 
                 for account in accounts:
@@ -115,7 +128,7 @@ async def get_portfolio_summary() -> Dict[str, Any]:
                 # Get positions for unrealized P&L
                 if accounts:
                     account_id = accounts[0].account_id
-                    positions = await broker.get_positions(account_id)
+                    positions = await broker_instance.get_positions(account_id)
                     position_count += len(positions)
                     for pos in positions:
                         unrealized_pnl += pos.unrealized_pnl
@@ -136,6 +149,7 @@ async def get_portfolio_summary() -> Dict[str, Any]:
         "position_count": position_count,
         "connected_brokers": [b.value for b in registry.connected_brokers],
         "broker_details": broker_details,
+        "selected_broker": selected_broker or "all",
     }
 
 

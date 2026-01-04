@@ -39,6 +39,10 @@ import { ETFWidget } from './ETFWidget'
 export function Dashboard() {
   const { broker } = useTradingMode()
   
+  // Broker selector state
+  const [selectedBroker, setSelectedBroker] = useState<string>('all')
+  const [connectedBrokers, setConnectedBrokers] = useState<Array<{broker: string, equity: number}>>([])
+  
   // Portfolio data - will be populated when broker is connected
   const [portfolioData, setPortfolioData] = useState({
     totalValue: 0,
@@ -48,11 +52,12 @@ export function Dashboard() {
     exposure: 0,
   })
   
-  // Fetch portfolio summary
+  // Fetch portfolio summary with broker filter
   useEffect(() => {
     const fetchPortfolio = async () => {
       try {
-        const res = await fetch('/api/positions/summary')
+        const brokerParam = selectedBroker !== 'all' ? `?broker=${selectedBroker}` : ''
+        const res = await fetch(`/api/positions/summary${brokerParam}`)
         if (res.ok) {
           const data = await res.json()
           // Use API data if available, otherwise fall back to broker context
@@ -66,6 +71,14 @@ export function Dashboard() {
             openPositions: data.position_count || 0,
             exposure: data.positions_value || 0,
           })
+          
+          // Update connected brokers list (for the selector)
+          if (data.broker_details && data.broker_details.length > 0) {
+            setConnectedBrokers(data.broker_details.map((b: {broker: string, equity: number}) => ({
+              broker: b.broker,
+              equity: b.equity,
+            })))
+          }
         } else if (broker.isConnected && broker.portfolioValue) {
           // Fallback to broker context if API fails
           setPortfolioData({
@@ -94,16 +107,60 @@ export function Dashboard() {
     fetchPortfolio()
     const interval = setInterval(fetchPortfolio, 15000)
     return () => clearInterval(interval)
-  }, [broker.isConnected, broker.portfolioValue])
+  }, [broker.isConnected, broker.portfolioValue, selectedBroker])
+  
+  // Get broker display name
+  const getBrokerLabel = (brokerId: string) => {
+    const labels: Record<string, string> = {
+      'all': 'All Brokers',
+      'ibkr': 'IBKR',
+      'alpaca': 'Alpaca',
+      'schwab': 'Schwab',
+      'tradier': 'Tradier',
+    }
+    return labels[brokerId] || brokerId.toUpperCase()
+  }
 
   return (
     <div className="space-y-4">
+      {/* Broker Selector - Only show if multiple brokers connected */}
+      {connectedBrokers.length > 1 && (
+        <div className="flex items-center gap-3 p-3 bg-secondary/30 rounded-lg border border-border">
+          <span className="text-sm text-muted-foreground">View Portfolio:</span>
+          <select
+            value={selectedBroker}
+            onChange={(e) => setSelectedBroker(e.target.value)}
+            className="bg-input border border-border rounded-md px-3 py-1.5 text-sm font-medium cursor-pointer hover:border-primary transition-colors"
+          >
+            <option value="all">
+              All Brokers (${connectedBrokers.reduce((sum, b) => sum + b.equity, 0).toLocaleString()})
+            </option>
+            {connectedBrokers.map((b) => (
+              <option key={b.broker} value={b.broker}>
+                {getBrokerLabel(b.broker)} (${b.equity.toLocaleString()})
+              </option>
+            ))}
+          </select>
+          {selectedBroker !== 'all' && (
+            <span className="text-xs text-muted-foreground">
+              Showing only {getBrokerLabel(selectedBroker)} data
+            </span>
+          )}
+        </div>
+      )}
+      
       {/* Top Stats - Always visible */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <PortfolioCard
           title="Portfolio Value"
           value={`$${portfolioData.totalValue.toLocaleString()}`}
-          subtitle={portfolioData.totalValue > 0 ? "Live from broker" : "Connect broker to see data"}
+          subtitle={
+            portfolioData.totalValue > 0 
+              ? selectedBroker === 'all' && connectedBrokers.length > 1
+                ? `Combined from ${connectedBrokers.length} brokers`
+                : `Live from ${getBrokerLabel(selectedBroker)}`
+              : "Connect broker to see data"
+          }
           trend={portfolioData.totalValue > 0 ? "up" : "neutral"}
         />
         <PortfolioCard
