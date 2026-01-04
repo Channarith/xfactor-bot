@@ -56,11 +56,12 @@ export function ETFWidget({ onAddSymbol }: { onAddSymbol?: (symbol: string) => v
   const [loading, setLoading] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
-  const getCurrentCategories = () => {
+  const getCurrentCategories = (): Record<string, string[]> => {
     switch (activeTab) {
       case 'top': return ETF_CATEGORIES
       case 'international': return INTERNATIONAL_ETFS
       case 'leveraged': return LEVERAGED_ETFS
+      default: return ETF_CATEGORIES
     }
   }
 
@@ -111,14 +112,14 @@ export function ETFWidget({ onAddSymbol }: { onAddSymbol?: (symbol: string) => v
 
   useEffect(() => {
     const categories = getCurrentCategories()
-    const symbols = categories[selectedCategory as keyof typeof categories] || []
+    const symbols = categories[selectedCategory] || []
     if (symbols.length > 0) {
       fetchETFData(symbols)
     }
   }, [selectedCategory, activeTab])
 
   const categories = getCurrentCategories()
-  const currentSymbols = categories[selectedCategory as keyof typeof categories] || []
+  const currentSymbols: string[] = categories[selectedCategory] || []
 
   return (
     <div className="space-y-3">
