@@ -554,6 +554,26 @@ export function BrokerConfig() {
                       </ol>
                     </div>
                     
+                    {/* Auto-connect setup - CRITICAL for daily reconnection */}
+                    <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
+                      <h4 className="font-medium text-green-400 mb-2">🔄 Auto-Reconnect Daily (Recommended)</h4>
+                      <p className="text-sm text-muted-foreground mb-2">
+                        To avoid clicking "Accept" every time TWS restarts, configure these settings:
+                      </p>
+                      <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
+                        <li>In TWS: <strong className="text-green-300">Edit → Global Configuration → API → Settings</strong></li>
+                        <li>✅ Find and check: <strong className="text-green-300">"Bypass Order Precautions for API Orders"</strong></li>
+                        <li>In <strong className="text-green-300">Precautions</strong> tab, uncheck all popup warnings</li>
+                        <li>Add <strong className="text-green-300">127.0.0.1</strong> to Trusted IPs (this auto-accepts connections from localhost)</li>
+                        <li>Enable <strong className="text-green-300">"Auto Logoff Timer"</strong> and set to restart (not logout)</li>
+                        <li>Click <strong className="text-green-300">Apply</strong> then <strong className="text-green-300">OK</strong></li>
+                      </ol>
+                      <div className="mt-3 p-2 bg-green-600/20 rounded text-xs text-green-300">
+                        <strong>💡 Tip:</strong> Adding 127.0.0.1 to Trusted IPs is the key - TWS will automatically 
+                        accept connections from trusted IPs without showing the popup.
+                      </div>
+                    </div>
+                    
                     <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm">
                       <div className="flex items-start gap-2">
                         <span className="text-amber-400">⚠️</span>

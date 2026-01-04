@@ -442,6 +442,9 @@ export function TraderInsights() {
     // In paper/live mode, fetch ALL data from real APIs
     const fetchPromises: Promise<void>[] = []
     
+    // Track which tabs got real data
+    const realDataTabs = new Set<TabType>()
+    
     // 1. Insider Trades (OpenInsider scraping)
     fetchPromises.push(
       fetch('/api/market/insider-trades')
@@ -449,9 +452,14 @@ export function TraderInsights() {
         .then(data => {
           if (data?.trades?.length > 0) {
             setInsiderTrades(data.trades)
+            realDataTabs.add('insiders')
+          } else {
+            setInsiderTrades(generateInsiderTrades(maxItems))
           }
         })
-        .catch(() => {})
+        .catch(() => {
+          setInsiderTrades(generateInsiderTrades(maxItems))
+        })
     )
     
     // 2. Earnings Calendar
@@ -461,9 +469,14 @@ export function TraderInsights() {
         .then(data => {
           if (data?.earnings?.length > 0) {
             setEarnings(data.earnings)
+            realDataTabs.add('earnings')
+          } else {
+            setEarnings(generateEarningsReports(maxItems))
           }
         })
-        .catch(() => {})
+        .catch(() => {
+          setEarnings(generateEarningsReports(maxItems))
+        })
     )
     
     // 3. Screener Signals (Finviz-style)
@@ -477,9 +490,14 @@ export function TraderInsights() {
               id: s.id || `signal-${i}`,
               volume: typeof s.volume === 'number' ? formatVolume(s.volume as unknown as number) : s.volume,
             })))
+            realDataTabs.add('finviz')
+          } else {
+            setFinvizSignals(generateFinvizSignals(maxItems))
           }
         })
-        .catch(() => {})
+        .catch(() => {
+          setFinvizSignals(generateFinvizSignals(maxItems))
+        })
     )
     
     // 4. Moving Average Signals
@@ -492,9 +510,14 @@ export function TraderInsights() {
               ...s,
               id: s.id || `ma-${i}`,
             })))
+            realDataTabs.add('movingavg')
+          } else {
+            setMaSignals(generateMovingAverageSignals(maxItems))
           }
         })
-        .catch(() => {})
+        .catch(() => {
+          setMaSignals(generateMovingAverageSignals(maxItems))
+        })
     )
     
     // 5. Top Traders (institutional holdings + whale activity)
@@ -504,9 +527,15 @@ export function TraderInsights() {
         .then(data => {
           if (data?.traders?.length > 0) {
             setTopTraders(data.traders)
+            realDataTabs.add('traders')
+          } else {
+            // Fallback to generated data if API returns empty
+            setTopTraders(generateTopTraders(maxItems))
           }
         })
-        .catch(() => {})
+        .catch(() => {
+          setTopTraders(generateTopTraders(maxItems))
+        })
     )
     
     // 6. Press Releases (from news API)
@@ -516,9 +545,14 @@ export function TraderInsights() {
         .then(data => {
           if (data?.releases?.length > 0) {
             setPressReleases(data.releases)
+            realDataTabs.add('press')
+          } else {
+            setPressReleases(generatePressReleases(maxItems))
           }
         })
-        .catch(() => {})
+        .catch(() => {
+          setPressReleases(generatePressReleases(maxItems))
+        })
     )
     
     // 7. AI Invest Signals (from bot analysis)
@@ -528,15 +562,24 @@ export function TraderInsights() {
         .then(data => {
           if (data?.signals?.length > 0) {
             setAinvestSignals(data.signals)
+            realDataTabs.add('ainvest')
+          } else {
+            // Fallback to generated data if API returns empty
+            setAinvestSignals(generateAInvestSignals(maxItems))
           }
         })
-        .catch(() => {})
+        .catch(() => {
+          setAinvestSignals(generateAInvestSignals(maxItems))
+        })
     )
     
     await Promise.all(fetchPromises)
     
-    setMockDataTabs(new Set()) // No mock data in paper/live mode
-    setIsUsingMockData(false)
+    // Track which tabs are using mock data (inverse of realDataTabs)
+    const mockTabs = new Set<TabType>(['insiders', 'traders', 'finviz', 'movingavg', 'earnings', 'press', 'ainvest']
+      .filter(tab => !realDataTabs.has(tab as TabType)) as TabType[])
+    setMockDataTabs(mockTabs)
+    setIsUsingMockData(mockTabs.size > 0)
     setLastUpdate(new Date())
     setLoading(false)
   }
