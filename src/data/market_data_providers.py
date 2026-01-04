@@ -1,18 +1,20 @@
 """
 Market Data Providers - Multi-source data fetching with automatic failover.
 
+ALL providers are FREE and require NO API keys - uses web scraping.
+
 Provider Priority:
-1. yfinance (primary - no API key required)
-2. Yahoo Finance direct HTTP (fallback - no API key)
-3. Alpha Vantage (if API key configured)
-4. Finnhub (if API key configured)
+1. yfinance (primary - library)
+2. Yahoo Finance direct HTTP (fallback)
+3. Google Finance scraping (fallback)
+4. MarketWatch scraping (fallback)
 
 All providers implement the same interface for seamless failover.
 """
 
 import asyncio
 import aiohttp
-import os
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -341,68 +343,79 @@ class YahooDirectProvider(MarketDataProvider):
             return []
 
 
-class AlphaVantageProvider(MarketDataProvider):
-    """Alpha Vantage provider (requires API key)."""
+class GoogleFinanceProvider(MarketDataProvider):
+    """Google Finance web scraper - NO API key required."""
     
-    name = "alphavantage"
-    requires_api_key = True
-    
-    BASE_URL = "https://www.alphavantage.co/query"
-    
-    def __init__(self):
-        self._api_key = os.getenv("ALPHAVANTAGE_API_KEY", "")
+    name = "google_finance"
+    requires_api_key = False
     
     def is_available(self) -> bool:
-        return bool(self._api_key)
+        return True
     
     async def get_quotes(self, symbols: List[str]) -> List[Quote]:
-        if not self.is_available():
-            return []
-        
         quotes = []
         
-        async with aiohttp.ClientSession() as session:
-            for symbol in symbols[:5]:  # Limit due to rate limits
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        }
+        
+        async with aiohttp.ClientSession(headers=headers) as session:
+            for symbol in symbols:
                 try:
-                    params = {
-                        "function": "GLOBAL_QUOTE",
-                        "symbol": symbol,
-                        "apikey": self._api_key,
-                    }
+                    # Google Finance URL
+                    url = f"https://www.google.com/finance/quote/{symbol}:NASDAQ"
                     
-                    async with session.get(self.BASE_URL, params=params, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                         if resp.status != 200:
+                            # Try NYSE
+                            url = f"https://www.google.com/finance/quote/{symbol}:NYSE"
+                            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp2:
+                                if resp2.status != 200:
+                                    continue
+                                text = await resp2.text()
+                        else:
+                            text = await resp.text()
+                        
+                        # Parse price from HTML
+                        # Look for data-last-price attribute or price in specific div
+                        price_match = re.search(r'data-last-price="([0-9.]+)"', text)
+                        if not price_match:
+                            price_match = re.search(r'class="YMlKec fxKbKc">([0-9,.]+)', text)
+                        
+                        if not price_match:
                             continue
                         
-                        data = await resp.json()
-                        quote_data = data.get("Global Quote", {})
+                        price_str = price_match.group(1).replace(',', '')
+                        price = float(price_str)
                         
-                        if not quote_data:
-                            continue
+                        # Parse change
+                        change = 0.0
+                        change_pct = 0.0
+                        change_match = re.search(r'data-price-change="([0-9.-]+)"', text)
+                        change_pct_match = re.search(r'data-price-change-percent="([0-9.-]+)"', text)
                         
-                        price = float(quote_data.get("05. price", 0))
-                        prev = float(quote_data.get("08. previous close", price))
-                        change = float(quote_data.get("09. change", 0))
-                        change_pct = float(quote_data.get("10. change percent", "0").replace("%", ""))
+                        if change_match:
+                            change = float(change_match.group(1))
+                        if change_pct_match:
+                            change_pct = float(change_pct_match.group(1))
+                        
+                        prev_close = price - change if change else price
                         
                         quotes.append(Quote(
                             symbol=symbol,
                             price=price,
                             change=change,
                             change_pct=change_pct,
-                            volume=int(quote_data.get("06. volume", 0)),
-                            prev_close=prev,
-                            high=float(quote_data.get("03. high", price)),
-                            low=float(quote_data.get("04. low", price)),
-                            open=float(quote_data.get("02. open", price)),
-                            source="alphavantage",
+                            volume=0,  # Not easily available from Google
+                            prev_close=prev_close,
+                            source="google_finance",
                         ))
                         
                 except Exception as e:
-                    logger.debug(f"Alpha Vantage quote error for {symbol}: {e}")
+                    logger.debug(f"Google Finance error for {symbol}: {e}")
                 
-                # Rate limiting (5 calls/min for free tier)
-                await asyncio.sleep(12)
+                await asyncio.sleep(0.2)  # Rate limiting
         
         return quotes
     
@@ -412,43 +425,181 @@ class AlphaVantageProvider(MarketDataProvider):
         period: str = "1mo",
         interval: str = "1d"
     ) -> List[HistoricalBar]:
-        # Alpha Vantage has different endpoints for different intervals
-        # Simplified implementation for daily data
-        if not self.is_available():
-            return []
+        # Google Finance doesn't provide easy historical data access
+        return []
+
+
+class MarketWatchProvider(MarketDataProvider):
+    """MarketWatch web scraper - NO API key required."""
+    
+    name = "marketwatch"
+    requires_api_key = False
+    
+    def is_available(self) -> bool:
+        return True
+    
+    async def get_quotes(self, symbols: List[str]) -> List[Quote]:
+        quotes = []
         
-        try:
-            async with aiohttp.ClientSession() as session:
-                params = {
-                    "function": "TIME_SERIES_DAILY",
-                    "symbol": symbol,
-                    "apikey": self._api_key,
-                    "outputsize": "compact",
-                }
-                
-                async with session.get(self.BASE_URL, params=params, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                    if resp.status != 200:
-                        return []
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        }
+        
+        async with aiohttp.ClientSession(headers=headers) as session:
+            for symbol in symbols:
+                try:
+                    url = f"https://www.marketwatch.com/investing/stock/{symbol.lower()}"
                     
-                    data = await resp.json()
-                    time_series = data.get("Time Series (Daily)", {})
-                    
-                    bars = []
-                    for date, values in sorted(time_series.items())[-30:]:
-                        bars.append(HistoricalBar(
-                            timestamp=date,
-                            open=float(values.get("1. open", 0)),
-                            high=float(values.get("2. high", 0)),
-                            low=float(values.get("3. low", 0)),
-                            close=float(values.get("4. close", 0)),
-                            volume=int(values.get("5. volume", 0)),
+                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                        if resp.status != 200:
+                            continue
+                        
+                        text = await resp.text()
+                        
+                        # Parse price - look for intraday__price
+                        price_match = re.search(r'class="intraday__price[^"]*"[^>]*>.*?<bg-quote[^>]*>([0-9,.]+)', text, re.DOTALL)
+                        if not price_match:
+                            price_match = re.search(r'<meta\s+name="price"\s+content="([0-9.]+)"', text)
+                        
+                        if not price_match:
+                            continue
+                        
+                        price_str = price_match.group(1).replace(',', '')
+                        price = float(price_str)
+                        
+                        # Parse change
+                        change = 0.0
+                        change_pct = 0.0
+                        
+                        change_match = re.search(r'class="change--point--[^"]*"[^>]*>([+-]?[0-9,.]+)', text)
+                        change_pct_match = re.search(r'class="change--percent--[^"]*"[^>]*>([+-]?[0-9,.]+)%', text)
+                        
+                        if change_match:
+                            change = float(change_match.group(1).replace(',', ''))
+                        if change_pct_match:
+                            change_pct = float(change_pct_match.group(1).replace(',', ''))
+                        
+                        # Parse volume
+                        volume = 0
+                        vol_match = re.search(r'Volume.*?<span[^>]*>([0-9,.]+[MKB]?)', text, re.DOTALL | re.IGNORECASE)
+                        if vol_match:
+                            vol_str = vol_match.group(1).replace(',', '')
+                            if 'M' in vol_str.upper():
+                                volume = int(float(vol_str.replace('M', '').replace('m', '')) * 1_000_000)
+                            elif 'K' in vol_str.upper():
+                                volume = int(float(vol_str.replace('K', '').replace('k', '')) * 1_000)
+                            elif 'B' in vol_str.upper():
+                                volume = int(float(vol_str.replace('B', '').replace('b', '')) * 1_000_000_000)
+                            else:
+                                volume = int(float(vol_str))
+                        
+                        prev_close = price - change if change else price
+                        
+                        quotes.append(Quote(
+                            symbol=symbol,
+                            price=price,
+                            change=change,
+                            change_pct=change_pct,
+                            volume=volume,
+                            prev_close=prev_close,
+                            source="marketwatch",
                         ))
+                        
+                except Exception as e:
+                    logger.debug(f"MarketWatch error for {symbol}: {e}")
+                
+                await asyncio.sleep(0.3)  # Rate limiting
+        
+        return quotes
+    
+    async def get_history(
+        self, 
+        symbol: str, 
+        period: str = "1mo",
+        interval: str = "1d"
+    ) -> List[HistoricalBar]:
+        # MarketWatch has historical data but requires more complex scraping
+        return []
+
+
+class CNBCProvider(MarketDataProvider):
+    """CNBC web scraper - NO API key required."""
+    
+    name = "cnbc"
+    requires_api_key = False
+    
+    def is_available(self) -> bool:
+        return True
+    
+    async def get_quotes(self, symbols: List[str]) -> List[Quote]:
+        quotes = []
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Accept': 'application/json',
+        }
+        
+        async with aiohttp.ClientSession(headers=headers) as session:
+            for symbol in symbols:
+                try:
+                    # CNBC has a JSON API
+                    url = f"https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol?symbols={symbol}&requestMethod=itv&no498s=1&partnerId=2&fund=1&exthrs=1&output=json"
                     
-                    return bars
-                    
-        except Exception as e:
-            logger.debug(f"Alpha Vantage history error for {symbol}: {e}")
-            return []
+                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                        if resp.status != 200:
+                            continue
+                        
+                        data = await resp.json()
+                        
+                        # Navigate the response structure
+                        quick_quote = data.get('FormattedQuoteResult', {}).get('FormattedQuote', [])
+                        if not quick_quote:
+                            continue
+                        
+                        quote_data = quick_quote[0] if isinstance(quick_quote, list) else quick_quote
+                        
+                        price = float(quote_data.get('last', 0) or 0)
+                        change = float(quote_data.get('change', 0) or 0)
+                        change_pct = float(quote_data.get('change_pct', '0').replace('%', '') or 0)
+                        
+                        vol_str = quote_data.get('volume', '0')
+                        if isinstance(vol_str, str):
+                            vol_str = vol_str.replace(',', '')
+                        volume = int(float(vol_str)) if vol_str else 0
+                        
+                        prev_close = float(quote_data.get('previous_day_closing', price) or price)
+                        high = float(quote_data.get('high', price) or price)
+                        low = float(quote_data.get('low', price) or price)
+                        open_price = float(quote_data.get('open', price) or price)
+                        
+                        quotes.append(Quote(
+                            symbol=symbol,
+                            price=price,
+                            change=change,
+                            change_pct=change_pct,
+                            volume=volume,
+                            prev_close=prev_close,
+                            high=high,
+                            low=low,
+                            open=open_price,
+                            source="cnbc",
+                        ))
+                        
+                except Exception as e:
+                    logger.debug(f"CNBC error for {symbol}: {e}")
+                
+                await asyncio.sleep(0.1)
+        
+        return quotes
+    
+    async def get_history(
+        self, 
+        symbol: str, 
+        period: str = "1mo",
+        interval: str = "1d"
+    ) -> List[HistoricalBar]:
+        return []
 
 
 class MarketDataManager:
@@ -459,11 +610,13 @@ class MarketDataManager:
     """
     
     def __init__(self):
-        # Initialize providers in priority order
+        # Initialize providers in priority order (all FREE, no API keys)
         self._providers: List[MarketDataProvider] = [
-            YFinanceProvider(),
-            YahooDirectProvider(),
-            AlphaVantageProvider(),
+            YFinanceProvider(),      # Primary - library
+            YahooDirectProvider(),   # Fallback - direct HTTP
+            CNBCProvider(),          # Fallback - has JSON API
+            GoogleFinanceProvider(), # Fallback - web scraping
+            MarketWatchProvider(),   # Last resort - web scraping
         ]
         
         # Filter to only available providers
