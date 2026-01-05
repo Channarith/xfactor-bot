@@ -210,14 +210,21 @@ class BotConfig:
     # Strategy weights
     strategy_weights: dict[str, float] = field(default_factory=lambda: DEFAULT_STRATEGY_WEIGHTS.copy())
     
-    # Risk parameters (per bot)
-    max_position_size: float = 25000.0
-    max_positions: int = 10
-    max_daily_loss_pct: float = 2.0
+    # Risk parameters (per bot) - Dynamic based on broker limits
+    max_position_size: float = 0.0       # 0 = auto-calculate as 10% of broker limit
+    max_position_pct: float = 10.0       # % of broker buying power per position
+    max_positions: int = 50              # Allow up to 50 positions per bot
+    max_daily_loss_pct: float = 3.0      # Allow 3% daily loss
     
     # Execution settings
-    trade_frequency_seconds: int = 60
+    trade_frequency_seconds: int = 30    # Check every 30 seconds (was 60)
     use_paper_trading: bool = True
+    
+    # Signal sensitivity (LOWER = MORE TRADES)
+    buy_signal_threshold: float = 2.0      # Points needed for BUY signal
+    strong_buy_threshold: float = 4.8      # Points needed for STRONG BUY (user requested)
+    sell_signal_threshold: float = -2.0    # Points needed for SELL signal
+    strong_sell_threshold: float = -4.8    # Points needed for STRONG SELL
     
     # Extended hours trading
     enable_extended_hours: bool = True  # Allow pre-market and after-hours trading
@@ -812,11 +819,16 @@ class BotInstance:
                 
                 # Determine action based on signal
                 if signal_type in ('strong_buy', 'buy') and current_qty <= 0:
-                    # Calculate position size
-                    max_position = min(
-                        self.config.max_position_size,
-                        buying_power * 0.1  # Max 10% of buying power per position
-                    )
+                    # Calculate position size based on % of buying power
+                    # If max_position_size is 0, use percentage-based calculation
+                    if self.config.max_position_size > 0:
+                        max_position = min(
+                            self.config.max_position_size,
+                            buying_power * (self.config.max_position_pct / 100)
+                        )
+                    else:
+                        # Dynamic: use configured percentage of buying power
+                        max_position = buying_power * (self.config.max_position_pct / 100)
                     
                     # Support fractional shares if enabled
                     if self.config.enable_fractional_shares and price > 0:
@@ -2097,19 +2109,25 @@ class BotInstance:
         total_signals = len(bullish_reasons) + len(bearish_reasons)
         
         # Calculate confidence based on score and number of confirming signals
-        if net_score >= 6:
+        # Use configurable thresholds (lower = more aggressive trading)
+        strong_buy_thresh = self.config.strong_buy_threshold  # Default 4.0
+        buy_thresh = self.config.buy_signal_threshold          # Default 2.0
+        sell_thresh = self.config.sell_signal_threshold        # Default -2.0
+        strong_sell_thresh = self.config.strong_sell_threshold # Default -4.0
+        
+        if net_score >= strong_buy_thresh:
             signal_type = 'strong_buy'
             confidence = min(0.95, 0.6 + (net_score / max_score) * 0.35)
             reasoning = f"🚀 STRONG BUY ({net_score:.1f}/{max_score} points, {len(bullish_reasons)} signals): {' | '.join(bullish_reasons[:5])}"
-        elif net_score >= 3:
+        elif net_score >= buy_thresh:
             signal_type = 'buy'
             confidence = min(0.80, 0.45 + (net_score / max_score) * 0.35)
             reasoning = f"📈 BUY ({net_score:.1f}/{max_score} points, {len(bullish_reasons)} signals): {' | '.join(bullish_reasons[:4])}"
-        elif net_score <= -6:
+        elif net_score <= strong_sell_thresh:
             signal_type = 'strong_sell'
             confidence = min(0.95, 0.6 + (abs(net_score) / max_score) * 0.35)
             reasoning = f"💥 STRONG SELL ({abs(net_score):.1f}/{max_score} points, {len(bearish_reasons)} signals): {' | '.join(bearish_reasons[:5])}"
-        elif net_score <= -3:
+        elif net_score <= sell_thresh:
             signal_type = 'sell'
             confidence = min(0.80, 0.45 + (abs(net_score) / max_score) * 0.35)
             reasoning = f"📉 SELL ({abs(net_score):.1f}/{max_score} points, {len(bearish_reasons)} signals): {' | '.join(bearish_reasons[:4])}"
