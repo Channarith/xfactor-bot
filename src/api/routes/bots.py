@@ -283,6 +283,94 @@ async def get_bot_trade_history(
     }
 
 
+@router.get("/performance/pareto")
+async def get_pareto_performance():
+    """
+    Get Pareto performance analysis (80/20 rule).
+    
+    Shows which bots/symbols contribute most to overall P&L.
+    Typically 20% of bots generate 80% of profits.
+    """
+    manager = get_bot_manager()
+    bots = manager.get_all_bots()
+    
+    # Collect performance data
+    performance_data = []
+    for bot in bots:
+        status = bot.get_status()
+        stats = status.get("stats", {})
+        performance_data.append({
+            "bot_id": bot.id,
+            "bot_name": bot.config.name,
+            "symbols": bot.config.symbols[:5],  # Top 5 symbols
+            "total_pnl": stats.get("total_pnl", 0),
+            "trades": stats.get("trades", 0),
+            "win_rate": stats.get("win_rate_pct", 50),
+            "status": status.get("status", "stopped"),
+        })
+    
+    # Sort by P&L descending
+    performance_data.sort(key=lambda x: x["total_pnl"], reverse=True)
+    
+    # Calculate Pareto distribution
+    total_pnl = sum(abs(b["total_pnl"]) for b in performance_data) or 1
+    cumulative_pnl = 0
+    
+    for i, bot in enumerate(performance_data):
+        cumulative_pnl += abs(bot["total_pnl"])
+        bot["cumulative_pct"] = round((cumulative_pnl / total_pnl) * 100, 1)
+        bot["rank"] = i + 1
+        bot["contribution_pct"] = round((abs(bot["total_pnl"]) / total_pnl) * 100, 1)
+    
+    # Find the 20% of bots that contribute 80% of results
+    top_contributors = [b for b in performance_data if b["cumulative_pct"] <= 80]
+    
+    return {
+        "performance": performance_data,
+        "summary": {
+            "total_bots": len(performance_data),
+            "total_pnl": sum(b["total_pnl"] for b in performance_data),
+            "top_20_pct_count": max(1, len(performance_data) // 5),
+            "top_contributors_count": len(top_contributors),
+            "pareto_ratio": f"{len(top_contributors)}:{len(performance_data) - len(top_contributors)}",
+        },
+        "pareto_insight": f"{len(top_contributors)} bots ({round(len(top_contributors)/max(1,len(performance_data))*100)}%) contribute 80% of results",
+    }
+
+
+@router.get("/performance/summary")
+async def get_performance_summary():
+    """Get overall bot performance summary."""
+    manager = get_bot_manager()
+    bots = manager.get_all_bots()
+    
+    total_trades = 0
+    total_pnl = 0
+    winning_bots = 0
+    active_bots = 0
+    
+    for bot in bots:
+        status = bot.get_status()
+        stats = status.get("stats", {})
+        total_trades += stats.get("trades", 0)
+        pnl = stats.get("total_pnl", 0)
+        total_pnl += pnl
+        if pnl > 0:
+            winning_bots += 1
+        if status.get("status") == "running":
+            active_bots += 1
+    
+    return {
+        "total_bots": len(bots),
+        "active_bots": active_bots,
+        "winning_bots": winning_bots,
+        "total_trades": total_trades,
+        "total_pnl": round(total_pnl, 2),
+        "avg_pnl_per_bot": round(total_pnl / max(1, len(bots)), 2),
+        "win_rate": round((winning_bots / max(1, len(bots))) * 100, 1),
+    }
+
+
 @router.get("/strategies")
 async def get_available_strategies():
     """Get all available trading strategies."""

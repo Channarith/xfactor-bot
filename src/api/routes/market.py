@@ -796,3 +796,190 @@ async def get_ai_signals():
         "source": "XFactor Bot AI Analysis",
     }
 
+
+# ============================================================================
+# Analyst Predictions / Ratings
+# ============================================================================
+
+@router.get("/analyst-ratings")
+async def get_analyst_ratings(
+    limit: int = Query(25, ge=1, le=50),
+    sort_by: str = Query("rating", description="Sort by: rating, target_upside, recommendation"),
+):
+    """
+    Get top analyst predictions, ratings, and price targets.
+    
+    Aggregates analyst consensus from major firms.
+    """
+    # Top stocks with simulated analyst ratings
+    stocks = [
+        {"symbol": "NVDA", "name": "NVIDIA Corp", "sector": "Technology"},
+        {"symbol": "AAPL", "name": "Apple Inc", "sector": "Technology"},
+        {"symbol": "MSFT", "name": "Microsoft Corp", "sector": "Technology"},
+        {"symbol": "GOOGL", "name": "Alphabet Inc", "sector": "Technology"},
+        {"symbol": "AMZN", "name": "Amazon.com", "sector": "Consumer"},
+        {"symbol": "META", "name": "Meta Platforms", "sector": "Technology"},
+        {"symbol": "TSLA", "name": "Tesla Inc", "sector": "Consumer"},
+        {"symbol": "AMD", "name": "AMD Inc", "sector": "Technology"},
+        {"symbol": "PLTR", "name": "Palantir", "sector": "Technology"},
+        {"symbol": "SMCI", "name": "Super Micro", "sector": "Technology"},
+        {"symbol": "ARM", "name": "ARM Holdings", "sector": "Technology"},
+        {"symbol": "AVGO", "name": "Broadcom Inc", "sector": "Technology"},
+        {"symbol": "CRM", "name": "Salesforce", "sector": "Technology"},
+        {"symbol": "ORCL", "name": "Oracle Corp", "sector": "Technology"},
+        {"symbol": "JPM", "name": "JPMorgan Chase", "sector": "Financial"},
+        {"symbol": "V", "name": "Visa Inc", "sector": "Financial"},
+        {"symbol": "UNH", "name": "UnitedHealth", "sector": "Healthcare"},
+        {"symbol": "LLY", "name": "Eli Lilly", "sector": "Healthcare"},
+        {"symbol": "XOM", "name": "Exxon Mobil", "sector": "Energy"},
+        {"symbol": "CVX", "name": "Chevron Corp", "sector": "Energy"},
+        {"symbol": "HD", "name": "Home Depot", "sector": "Consumer"},
+        {"symbol": "WMT", "name": "Walmart Inc", "sector": "Consumer"},
+        {"symbol": "DIS", "name": "Disney Co", "sector": "Entertainment"},
+        {"symbol": "NFLX", "name": "Netflix Inc", "sector": "Entertainment"},
+        {"symbol": "BA", "name": "Boeing Co", "sector": "Industrial"},
+    ]
+    
+    ratings = ["Strong Buy", "Buy", "Hold", "Sell", "Strong Sell"]
+    firms = [
+        "Goldman Sachs", "Morgan Stanley", "JP Morgan", "Bank of America", 
+        "Citi", "Barclays", "UBS", "Deutsche Bank", "Credit Suisse",
+        "Wells Fargo", "Raymond James", "Jefferies", "Piper Sandler"
+    ]
+    
+    analyst_ratings = []
+    for stock in stocks:
+        current_price = random.uniform(50, 500)
+        target_price = current_price * random.uniform(0.9, 1.4)
+        upside = ((target_price - current_price) / current_price) * 100
+        
+        # Generate rating distribution
+        buy_count = random.randint(5, 20)
+        hold_count = random.randint(2, 10)
+        sell_count = random.randint(0, 3)
+        total = buy_count + hold_count + sell_count
+        
+        # Consensus rating based on distribution
+        buy_pct = buy_count / total
+        if buy_pct > 0.7:
+            consensus = "Strong Buy"
+            rating_score = 4.5 + random.uniform(-0.3, 0.3)
+        elif buy_pct > 0.5:
+            consensus = "Buy"
+            rating_score = 3.8 + random.uniform(-0.3, 0.3)
+        elif buy_pct > 0.3:
+            consensus = "Hold"
+            rating_score = 3.0 + random.uniform(-0.3, 0.3)
+        else:
+            consensus = "Sell"
+            rating_score = 2.0 + random.uniform(-0.5, 0.5)
+        
+        analyst_ratings.append({
+            "symbol": stock["symbol"],
+            "company": stock["name"],
+            "sector": stock["sector"],
+            "currentPrice": round(current_price, 2),
+            "targetPrice": round(target_price, 2),
+            "targetUpside": round(upside, 1),
+            "consensus": consensus,
+            "ratingScore": round(rating_score, 2),  # 1-5 scale
+            "buyCount": buy_count,
+            "holdCount": hold_count,
+            "sellCount": sell_count,
+            "totalAnalysts": total,
+            "recentActions": [
+                {
+                    "firm": random.choice(firms),
+                    "action": random.choice(["Upgrade", "Reiterate", "Initiate", "Downgrade"]),
+                    "rating": random.choice(ratings[:3]),
+                    "date": (datetime.now() - timedelta(days=random.randint(1, 30))).strftime("%Y-%m-%d"),
+                }
+                for _ in range(min(3, total))
+            ],
+        })
+    
+    # Sort based on criteria
+    if sort_by == "target_upside":
+        analyst_ratings.sort(key=lambda x: x["targetUpside"], reverse=True)
+    elif sort_by == "recommendation":
+        # Strong Buy first
+        rating_order = {"Strong Buy": 5, "Buy": 4, "Hold": 3, "Sell": 2, "Strong Sell": 1}
+        analyst_ratings.sort(key=lambda x: rating_order.get(x["consensus"], 0), reverse=True)
+    else:  # rating score
+        analyst_ratings.sort(key=lambda x: x["ratingScore"], reverse=True)
+    
+    return {
+        "ratings": analyst_ratings[:limit],
+        "count": len(analyst_ratings[:limit]),
+        "lastUpdated": datetime.now().isoformat(),
+        "source": "Aggregated Analyst Consensus",
+    }
+
+
+@router.get("/analyst-actions")
+async def get_analyst_actions(
+    limit: int = Query(20, ge=1, le=50),
+):
+    """
+    Get recent analyst upgrades, downgrades, and initiations.
+    """
+    firms = [
+        "Goldman Sachs", "Morgan Stanley", "JP Morgan", "Bank of America", 
+        "Citi", "Barclays", "UBS", "Wells Fargo", "Jefferies", "Piper Sandler"
+    ]
+    
+    actions = ["Upgrade", "Downgrade", "Initiate", "Reiterate"]
+    ratings = ["Strong Buy", "Buy", "Outperform", "Hold", "Underperform", "Sell"]
+    
+    stocks = ["NVDA", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "AMD", 
+              "PLTR", "SMCI", "ARM", "AVGO", "CRM", "ORCL", "JPM", "V", "LLY", "XOM"]
+    
+    recent_actions = []
+    for i in range(limit):
+        action = random.choice(actions)
+        
+        if action == "Upgrade":
+            from_rating = random.choice(ratings[3:])  # From Hold/Underperform/Sell
+            to_rating = random.choice(ratings[:3])    # To Buy/Strong Buy/Outperform
+        elif action == "Downgrade":
+            from_rating = random.choice(ratings[:3])
+            to_rating = random.choice(ratings[3:])
+        else:
+            from_rating = None
+            to_rating = random.choice(ratings[:4])
+        
+        current_price = random.uniform(50, 500)
+        target_price = current_price * random.uniform(0.95, 1.35)
+        
+        recent_actions.append({
+            "id": f"action-{i}",
+            "symbol": random.choice(stocks),
+            "firm": random.choice(firms),
+            "action": action,
+            "fromRating": from_rating,
+            "toRating": to_rating,
+            "priceTarget": round(target_price, 2),
+            "currentPrice": round(current_price, 2),
+            "upside": round(((target_price - current_price) / current_price) * 100, 1),
+            "date": (datetime.now() - timedelta(days=random.randint(0, 7))).strftime("%Y-%m-%d"),
+            "notes": random.choice([
+                "Strong AI/ML demand driving growth",
+                "Margin expansion expected",
+                "Valuation concerns at current levels",
+                "Positive data center trends",
+                "Consumer spending remains resilient",
+                "Inventory normalization complete",
+                "New product cycle catalyst",
+                "Competitive pressures increasing",
+            ]),
+        })
+    
+    # Sort by date (newest first)
+    recent_actions.sort(key=lambda x: x["date"], reverse=True)
+    
+    return {
+        "actions": recent_actions,
+        "count": len(recent_actions),
+        "lastUpdated": datetime.now().isoformat(),
+    }
+

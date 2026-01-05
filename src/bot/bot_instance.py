@@ -219,6 +219,15 @@ class BotConfig:
     trade_frequency_seconds: int = 60
     use_paper_trading: bool = True
     
+    # Extended hours trading
+    enable_extended_hours: bool = True  # Allow pre-market and after-hours trading
+    enable_premarket: bool = True       # 4:00 AM - 9:30 AM ET
+    enable_afterhours: bool = True      # 4:00 PM - 8:00 PM ET
+    
+    # Fractional trading
+    enable_fractional_shares: bool = True  # Allow buying fractional shares (broker dependent)
+    min_trade_amount: float = 1.0          # Minimum $ amount per trade (for fractional)
+    
     # News settings
     enable_news_trading: bool = True
     news_sentiment_threshold: float = 0.5
@@ -808,7 +817,17 @@ class BotInstance:
                         self.config.max_position_size,
                         buying_power * 0.1  # Max 10% of buying power per position
                     )
-                    quantity = int(max_position / price) if price > 0 else 0
+                    
+                    # Support fractional shares if enabled
+                    if self.config.enable_fractional_shares and price > 0:
+                        # Calculate fractional quantity (round to 6 decimal places)
+                        quantity = round(max_position / price, 6)
+                        # Ensure minimum trade amount
+                        if quantity * price < self.config.min_trade_amount:
+                            quantity = round(self.config.min_trade_amount / price, 6)
+                    else:
+                        # Whole shares only
+                        quantity = int(max_position / price) if price > 0 else 0
                     
                     if quantity > 0:
                         self._log_activity("order_intent", f"BUY {quantity} {symbol} @ market via {broker.name}", {

@@ -104,9 +104,35 @@ async def calculate_bot_risk_score(bot_id: str, data: BotDataInput):
 async def get_all_risk_scores():
     """Get risk scores for all monitored bots."""
     from src.bot.risk_manager import get_bot_risk_manager
+    from src.bot.bot_manager import get_bot_manager
     
-    manager = get_bot_risk_manager()
-    scores = manager.get_all_risk_scores()
+    risk_manager = get_bot_risk_manager()
+    bot_manager = get_bot_manager()
+    
+    # Auto-score all active bots if not already scored
+    all_bots = bot_manager.get_all_bots()
+    for bot in all_bots:
+        status = bot.get_status()
+        bot_data = {
+            "name": bot.config.name,
+            "account_value": 100000,  # Default for now
+            "current_drawdown_pct": 0,
+            "max_drawdown_pct": status.get("stats", {}).get("max_drawdown_pct", 0),
+            "daily_volatility_pct": 1.0,
+            "win_rate_pct": status.get("stats", {}).get("win_rate_pct", 50),
+            "total_trades": status.get("stats", {}).get("trades", 0),
+            "leverage": 1.0,
+            "current_exposure_pct": 0,
+            "total_return_pct": status.get("stats", {}).get("total_pnl_pct", 0),
+            "sharpe_ratio": 0,
+            "profit_factor": status.get("stats", {}).get("profit_factor", 1.0),
+            "avg_win_pct": 0,
+            "avg_loss_pct": 0,
+            "positions": [],
+        }
+        risk_manager.calculate_risk_score(bot.id, bot_data)
+    
+    scores = risk_manager.get_all_risk_scores()
     
     # Sort by risk score (highest risk first)
     scores.sort(key=lambda x: x["overall_risk_score"], reverse=True)
