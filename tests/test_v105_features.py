@@ -30,13 +30,13 @@ class TestDefaultBots:
     """Tests for default bot configuration"""
 
     def test_default_bots_count(self):
-        """Test that we have 40 default bots"""
+        """Test that we have 50 default bots (updated in v2.0.0)"""
         from src.bot.bot_manager import BotManager, _create_default_bots
         manager = BotManager()
         manager._bots = {}  # Clear any existing bots
         _create_default_bots(manager)
         
-        assert manager.bot_count == 40, f"Expected 40 bots, got {manager.bot_count}"
+        assert manager.bot_count == 50, f"Expected 50 bots, got {manager.bot_count}"
 
     def test_forex_bots_exist(self):
         """Test that forex trading bots are included in defaults"""

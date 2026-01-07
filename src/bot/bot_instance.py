@@ -1044,6 +1044,25 @@ class BotInstance:
                             )
                             self.stats.trade_history.append(trade_record)
                             
+                            # Record trade for performance comparison (bot vs manual)
+                            try:
+                                from src.api.routes.manual_trading import record_trade, TradeSource
+                                record_trade(
+                                    symbol=symbol,
+                                    side="buy",
+                                    quantity=quantity,
+                                    price=price,
+                                    order_type="market",
+                                    source=TradeSource.BOT,
+                                    broker=broker.name,
+                                    order_id=order.order_id,
+                                    source_id=self.id,
+                                    source_name=self.config.name,
+                                    reasoning=reasoning,
+                                )
+                            except Exception as e:
+                                logger.debug(f"Could not record trade for comparison: {e}")
+                            
                             self._log_activity("order_filled", f"BUY {quantity} {symbol} - Order {order.order_id} via {broker.name}", {
                                 "order_id": order.order_id,
                                 "symbol": symbol,
@@ -1101,6 +1120,25 @@ class BotInstance:
                             indicators=signal.get('indicators', {}),
                         )
                         self.stats.trade_history.append(trade_record)
+                        
+                        # Record trade for performance comparison (bot vs manual)
+                        try:
+                            from src.api.routes.manual_trading import record_trade, TradeSource
+                            record_trade(
+                                symbol=symbol,
+                                side="sell",
+                                quantity=abs(current_qty),
+                                price=price,
+                                order_type="market",
+                                source=TradeSource.BOT,
+                                broker=broker.name,
+                                order_id=order.order_id,
+                                source_id=self.id,
+                                source_name=self.config.name,
+                                reasoning=reasoning,
+                            )
+                        except Exception as e:
+                            logger.debug(f"Could not record trade for comparison: {e}")
                         
                         self._log_activity("order_filled", f"SELL {abs(current_qty)} {symbol} - Order {order.order_id} via {broker.name}", {
                             "order_id": order.order_id,

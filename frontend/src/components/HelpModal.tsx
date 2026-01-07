@@ -104,6 +104,36 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '2.1.0',
+    date: 'January 7, 2026',
+    changes: [
+      '✨ Manual Trading Feature',
+      '',
+      '📝 Manual Trading API',
+      '• Submit manual buy/sell orders through the platform',
+      '• Quick buy/sell with dollar amounts or share quantities',
+      '• Close positions with percentage control',
+      '• Trade history with filtering by source',
+      '',
+      '📊 Bot vs Manual Performance Comparison',
+      '• Track performance of manual trades vs automated bots',
+      '• Compare win rates, P&L, and trade volume',
+      '• AI-powered recommendations based on performance',
+      '• Best/worst trade tracking for each source',
+      '',
+      '🖥️ Manual Trading Frontend Component',
+      '• Trade Tab: Buy/sell order form with symbol, quantity, order type',
+      '• History Tab: Filterable trade history (all/manual/bot)',
+      '• Comparison Tab: Visual bot vs manual performance analytics',
+      '• Support for paper and live trading modes',
+      '',
+      '🔧 Trade Source Tracking',
+      '• All trades categorized: manual, bot, tradingview, api',
+      '• Bot trades include reasoning, confidence, indicators',
+      '• Thread-safe trade history storage',
+    ]
+  },
+  {
     version: '2.0.0',
     date: 'January 7, 2026',
     changes: [

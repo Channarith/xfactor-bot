@@ -20,7 +20,8 @@ class TestBotConfig:
         assert config.description == ""
         assert isinstance(config.symbols, list)
         assert len(config.strategies) > 0
-        assert config.max_position_size > 0
+        # Position sizing is now percentage-based (max_position_pct) not fixed amount
+        assert config.max_position_pct > 0
         assert config.max_positions > 0
         assert config.max_daily_loss_pct > 0
         assert config.instrument_type in [InstrumentType.STOCK, "stock", "STK"]

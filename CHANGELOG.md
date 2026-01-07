@@ -5,6 +5,98 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-01-07
+
+### ✨ Manual Trading Feature
+
+This release introduces **Manual Trading** capabilities, allowing users to execute trades directly through the platform and compare their performance against automated bot trading.
+
+---
+
+### 📝 Manual Trading API
+
+New `/api/trading` endpoints for manual trade execution:
+
+- **POST /api/trading/order** - Submit manual buy/sell orders
+- **POST /api/trading/quick-buy** - Quick buy with dollar amount or shares
+- **POST /api/trading/quick-sell** - Quick sell positions
+- **POST /api/trading/close-position** - Close entire positions
+- **GET /api/trading/history** - View trade history with filtering
+- **GET /api/trading/performance/comparison** - Compare bot vs manual performance
+- **GET /api/trading/performance/by-source** - Breakdown by trade source
+- **GET /api/trading/performance/by-symbol** - Performance by symbol
+- **GET /api/trading/stats** - Summary statistics
+
+---
+
+### 📊 Trade Source Tracking
+
+All trades are now categorized by source:
+
+| Source | Description |
+|--------|-------------|
+| `manual` | Direct user-initiated trades |
+| `bot` | Automated bot trades |
+| `tradingview` | TradingView webhook signals |
+| `api` | External API integrations |
+
+Bot trades are automatically recorded with:
+- Bot ID and name
+- Trading reasoning
+- Confidence score
+- Indicator values
+
+---
+
+### 🎯 Bot vs Manual Performance Comparison
+
+New analytics comparing automated and manual trading:
+
+- **Total P&L comparison** - Which approach is more profitable?
+- **Win rate comparison** - Which has better success rate?
+- **Average P&L per trade** - Risk-adjusted returns
+- **Best/worst trade tracking** - Identify outliers
+- **Volume analysis** - Trade size patterns
+- **AI recommendation** - Actionable insights
+
+---
+
+### 🖥️ Manual Trading Frontend Component
+
+New `ManualTrading.tsx` component with:
+
+- **Trade Tab**: Buy/sell order form with symbol, quantity, order type
+- **History Tab**: Filterable trade history (all/manual/bot)
+- **Comparison Tab**: Visual bot vs manual performance comparison
+- Real-time trade status updates
+- Support for paper and live trading modes
+
+---
+
+### 🧪 Test Coverage
+
+New test suite `tests/test_manual_trading.py`:
+- Trade source enum tests
+- Trade recording tests
+- History retrieval with filters
+- Performance comparison tests
+
+Updated existing tests:
+- Fixed `max_position_size` → `max_position_pct` test expectation
+- Updated default bots count from 40 to 50
+
+---
+
+### 🔧 Technical Changes
+
+- Added `manual_trading` router to main.py
+- Added `record_trade()` calls in `bot_instance.py` for bot trades
+- Created `TradeSource` enum for categorization
+- Thread-safe trade history with `threading.Lock`
+- Performance comparison with recommendation engine
+
+---
+
 ## [2.0.0] - 2026-01-07
 
 ### 🚨 MAJOR RELEASE - Critical Bug Fixes & Bot Intelligence Overhaul
