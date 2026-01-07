@@ -24,7 +24,9 @@ _activity_lock = threading.Lock()
 _market_data_cache: dict = {}
 _market_data_lock = threading.Lock()
 _market_data_cache_ttl = 60  # seconds - how long to cache market data
-_yfinance_semaphore: Optional[asyncio.Semaphore] = None  # Limit concurrent yfinance calls
+# Use threading.Semaphore for cross-thread concurrency control
+# asyncio.Semaphore doesn't work across event loops in different threads
+_yfinance_semaphore: Optional[threading.Semaphore] = None  # Limit concurrent yfinance calls
 
 
 def get_bot_activity_log(bot_id: Optional[str] = None, limit: int = 100) -> list[dict]:
@@ -190,6 +192,155 @@ DEFAULT_STRATEGY_WEIGHTS = {
 }
 
 
+# =============================================================================
+# STRATEGY-SPECIFIC THRESHOLD PRESETS
+# =============================================================================
+# Different bot types need different signal thresholds:
+# - Dividend bots: Conservative, need fewer signals
+# - Momentum bots: Aggressive, quick entry/exit
+# - Swing bots: Moderate thresholds
+# - Scalping: Ultra-sensitive
+# =============================================================================
+
+class SignalPreset:
+    """Preset signal thresholds for different trading styles."""
+    
+    # CONSERVATIVE - Dividend/Value bots (fewer symbols, careful entry)
+    # These bots focus on stable income, need fewer confirming signals
+    CONSERVATIVE = {
+        "buy_signal_threshold": 1.5,       # Lower bar to enter
+        "strong_buy_threshold": 3.0,       # Lower bar for strong signal
+        "sell_signal_threshold": -1.5,     # Quicker to protect gains
+        "strong_sell_threshold": -3.0,
+        "trade_frequency_seconds": 300,    # 5 min checks
+    }
+    
+    # MODERATE - ETF Swing, Mean Reversion bots
+    # Balanced approach for medium-term trades
+    MODERATE = {
+        "buy_signal_threshold": 2.0,
+        "strong_buy_threshold": 4.0,
+        "sell_signal_threshold": -2.0,
+        "strong_sell_threshold": -4.0,
+        "trade_frequency_seconds": 120,    # 2 min checks
+    }
+    
+    # AGGRESSIVE - Momentum, Tech, High Volatility bots
+    # Need stronger confirmation to avoid whipsaws
+    AGGRESSIVE = {
+        "buy_signal_threshold": 2.5,
+        "strong_buy_threshold": 4.8,
+        "sell_signal_threshold": -2.5,
+        "strong_sell_threshold": -4.8,
+        "trade_frequency_seconds": 60,     # 1 min checks
+    }
+    
+    # ULTRA_AGGRESSIVE - Scalping, 0DTE options, Meme coins
+    # Very quick trades, sensitive signals
+    ULTRA_AGGRESSIVE = {
+        "buy_signal_threshold": 1.0,       # Very low bar
+        "strong_buy_threshold": 2.5,
+        "sell_signal_threshold": -1.0,
+        "strong_sell_threshold": -2.5,
+        "trade_frequency_seconds": 15,     # 15 sec checks
+    }
+    
+    # NEWS_DRIVEN - News sentiment bots
+    # Sensitive to news, quick reaction needed
+    NEWS_DRIVEN = {
+        "buy_signal_threshold": 1.5,
+        "strong_buy_threshold": 3.5,
+        "sell_signal_threshold": -1.5,
+        "strong_sell_threshold": -3.5,
+        "trade_frequency_seconds": 30,     # 30 sec checks
+    }
+    
+    # INCOME - Dividend, Bond, REIT bots
+    # Very conservative, focus on stability
+    INCOME = {
+        "buy_signal_threshold": 1.2,       # Easy entry for income positions
+        "strong_buy_threshold": 2.5,
+        "sell_signal_threshold": -2.5,     # Reluctant to sell income positions
+        "strong_sell_threshold": -4.0,
+        "trade_frequency_seconds": 600,    # 10 min checks (long-term focus)
+    }
+    
+    # CRYPTO - 24/7 trading, high volatility
+    CRYPTO = {
+        "buy_signal_threshold": 1.8,
+        "strong_buy_threshold": 3.5,
+        "sell_signal_threshold": -1.8,
+        "strong_sell_threshold": -3.5,
+        "trade_frequency_seconds": 30,
+    }
+    
+    # COMMODITY - Macro-driven, geopolitical sensitive
+    COMMODITY = {
+        "buy_signal_threshold": 1.5,
+        "strong_buy_threshold": 3.5,
+        "sell_signal_threshold": -1.5,
+        "strong_sell_threshold": -3.5,
+        "trade_frequency_seconds": 180,
+    }
+    
+    @classmethod
+    def get_preset(cls, preset_name: str) -> dict:
+        """Get preset by name (case-insensitive)."""
+        presets = {
+            "conservative": cls.CONSERVATIVE,
+            "moderate": cls.MODERATE,
+            "aggressive": cls.AGGRESSIVE,
+            "ultra_aggressive": cls.ULTRA_AGGRESSIVE,
+            "news_driven": cls.NEWS_DRIVEN,
+            "income": cls.INCOME,
+            "crypto": cls.CRYPTO,
+            "commodity": cls.COMMODITY,
+        }
+        return presets.get(preset_name.lower(), cls.MODERATE)
+    
+    @classmethod
+    def suggest_preset(cls, strategies: list, instrument_type: str = "stock") -> dict:
+        """Suggest appropriate preset based on strategies and instrument type."""
+        strategies_lower = [s.lower() for s in strategies]
+        
+        # Crypto instruments
+        if instrument_type == "crypto":
+            return cls.CRYPTO
+        
+        # Commodity instruments
+        if instrument_type == "commodity":
+            return cls.COMMODITY
+        
+        # Scalping / 0DTE
+        if "scalping" in strategies_lower or any("0dte" in s.lower() for s in strategies):
+            return cls.ULTRA_AGGRESSIVE
+        
+        # News-driven
+        if "newssentiment" in strategies_lower or "socialsentiment" in strategies_lower:
+            return cls.NEWS_DRIVEN
+        
+        # Momentum / High volatility
+        if "momentum" in strategies_lower:
+            if "technical" in strategies_lower:
+                return cls.AGGRESSIVE
+            return cls.AGGRESSIVE
+        
+        # Mean Reversion / Swing
+        if "meanreversion" in strategies_lower or "swingtrading" in strategies_lower:
+            return cls.MODERATE
+        
+        # Dividend / Income
+        if any(kw in " ".join(strategies_lower) for kw in ["dividend", "income", "bond"]):
+            return cls.INCOME
+        
+        # Trend following
+        if "trendfollowing" in strategies_lower:
+            return cls.MODERATE
+        
+        # Default to moderate
+        return cls.MODERATE
+
+
 @dataclass
 class BotConfig:
     """Configuration for a bot instance."""
@@ -314,10 +465,24 @@ class BotConfig:
             "strategies": self.strategies,
             "strategy_weights": self.strategy_weights,
             "max_position_size": self.max_position_size,
+            "max_position_pct": self.max_position_pct,
             "max_positions": self.max_positions,
             "max_daily_loss_pct": self.max_daily_loss_pct,
             "trade_frequency_seconds": self.trade_frequency_seconds,
             "use_paper_trading": self.use_paper_trading,
+            # Signal thresholds (per-bot overrides)
+            "buy_signal_threshold": self.buy_signal_threshold,
+            "strong_buy_threshold": self.strong_buy_threshold,
+            "sell_signal_threshold": self.sell_signal_threshold,
+            "strong_sell_threshold": self.strong_sell_threshold,
+            # Extended hours
+            "enable_extended_hours": self.enable_extended_hours,
+            "enable_premarket": self.enable_premarket,
+            "enable_afterhours": self.enable_afterhours,
+            # Fractional
+            "enable_fractional_shares": self.enable_fractional_shares,
+            "min_trade_amount": self.min_trade_amount,
+            # News
             "enable_news_trading": self.enable_news_trading,
             "news_sentiment_threshold": self.news_sentiment_threshold,
             # Options
@@ -1077,11 +1242,13 @@ class BotInstance:
                     return entry["data"]
         
         # Initialize semaphore if needed (limit concurrent calls)
+        # Use threading.Semaphore since bots run in different threads with different event loops
         if _yfinance_semaphore is None:
-            _yfinance_semaphore = asyncio.Semaphore(3)  # Max 3 concurrent requests
+            _yfinance_semaphore = threading.Semaphore(3)  # Max 3 concurrent requests
         
-        # Fetch with semaphore to limit concurrency
-        async with _yfinance_semaphore:
+        # Fetch with semaphore to limit concurrency (blocking acquire, not async)
+        _yfinance_semaphore.acquire()
+        try:
             # Double-check cache after acquiring semaphore
             with _market_data_lock:
                 if cache_key in _market_data_cache:
@@ -1161,6 +1328,9 @@ class BotInstance:
                         "error": str(e),
                     }
                 return None
+        finally:
+            # Always release the semaphore
+            _yfinance_semaphore.release()
     
     def _calculate_indicators(self, data: pd.DataFrame) -> Optional[dict]:
         """

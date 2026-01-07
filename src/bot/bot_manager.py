@@ -8,7 +8,7 @@ from typing import Optional, Callable
 
 from loguru import logger
 
-from src.bot.bot_instance import BotInstance, BotConfig, BotStatus, InstrumentType
+from src.bot.bot_instance import BotInstance, BotConfig, BotStatus, InstrumentType, SignalPreset
 from src.bot.auto_optimizer import (
     get_auto_optimizer_manager,
     BotAutoOptimizer,
@@ -357,8 +357,22 @@ _initialized: bool = False
 
 
 def _create_default_bots(manager: BotManager) -> None:
-    """Create default bot configurations."""
+    """Create default bot configurations with strategy-appropriate thresholds."""
+    
+    # Get presets for different trading styles
+    aggressive = SignalPreset.AGGRESSIVE
+    moderate = SignalPreset.MODERATE
+    conservative = SignalPreset.CONSERVATIVE
+    income = SignalPreset.INCOME
+    news_driven = SignalPreset.NEWS_DRIVEN
+    ultra_aggressive = SignalPreset.ULTRA_AGGRESSIVE
+    crypto_preset = SignalPreset.CRYPTO
+    commodity_preset = SignalPreset.COMMODITY
+    
     default_bots = [
+        # =====================================================================
+        # STOCK TRADING BOTS (1-10) - Each with strategy-specific thresholds
+        # =====================================================================
         BotConfig(
             name="Tech Momentum",
             description="Momentum trading on tech stocks",
@@ -366,6 +380,12 @@ def _create_default_bots(manager: BotManager) -> None:
             strategies=["Technical", "Momentum"],
             max_position_size=25000,
             max_positions=5,
+            # AGGRESSIVE thresholds - momentum needs confirmation
+            buy_signal_threshold=aggressive["buy_signal_threshold"],
+            strong_buy_threshold=aggressive["strong_buy_threshold"],
+            sell_signal_threshold=aggressive["sell_signal_threshold"],
+            strong_sell_threshold=aggressive["strong_sell_threshold"],
+            trade_frequency_seconds=aggressive["trade_frequency_seconds"],
         ),
         BotConfig(
             name="ETF Swing Trader",
@@ -374,6 +394,12 @@ def _create_default_bots(manager: BotManager) -> None:
             strategies=["Technical", "MeanReversion"],
             max_position_size=30000,
             max_positions=4,
+            # MODERATE thresholds - ETFs are less volatile
+            buy_signal_threshold=moderate["buy_signal_threshold"],
+            strong_buy_threshold=moderate["strong_buy_threshold"],
+            sell_signal_threshold=moderate["sell_signal_threshold"],
+            strong_sell_threshold=moderate["strong_sell_threshold"],
+            trade_frequency_seconds=moderate["trade_frequency_seconds"],
         ),
         BotConfig(
             name="News Sentiment Bot",
@@ -383,6 +409,12 @@ def _create_default_bots(manager: BotManager) -> None:
             max_position_size=20000,
             max_positions=4,
             enable_news_trading=True,
+            # NEWS-DRIVEN thresholds - quick reaction to news
+            buy_signal_threshold=news_driven["buy_signal_threshold"],
+            strong_buy_threshold=news_driven["strong_buy_threshold"],
+            sell_signal_threshold=news_driven["sell_signal_threshold"],
+            strong_sell_threshold=news_driven["strong_sell_threshold"],
+            trade_frequency_seconds=news_driven["trade_frequency_seconds"],
         ),
         BotConfig(
             name="Mean Reversion",
@@ -391,6 +423,12 @@ def _create_default_bots(manager: BotManager) -> None:
             strategies=["MeanReversion"],
             max_position_size=15000,
             max_positions=4,
+            # MODERATE thresholds - wait for mean reversion setup
+            buy_signal_threshold=moderate["buy_signal_threshold"],
+            strong_buy_threshold=moderate["strong_buy_threshold"],
+            sell_signal_threshold=moderate["sell_signal_threshold"],
+            strong_sell_threshold=moderate["strong_sell_threshold"],
+            trade_frequency_seconds=moderate["trade_frequency_seconds"],
         ),
         BotConfig(
             name="International ADR",
@@ -399,6 +437,12 @@ def _create_default_bots(manager: BotManager) -> None:
             strategies=["Technical", "NewsSentiment"],
             max_position_size=20000,
             max_positions=4,
+            # NEWS-DRIVEN - ADRs are news sensitive (geopolitics)
+            buy_signal_threshold=news_driven["buy_signal_threshold"],
+            strong_buy_threshold=news_driven["strong_buy_threshold"],
+            sell_signal_threshold=news_driven["sell_signal_threshold"],
+            strong_sell_threshold=news_driven["strong_sell_threshold"],
+            trade_frequency_seconds=60,
         ),
         BotConfig(
             name="High Volatility",
@@ -407,6 +451,12 @@ def _create_default_bots(manager: BotManager) -> None:
             strategies=["Momentum", "Technical"],
             max_position_size=15000,
             max_positions=3,
+            # AGGRESSIVE - volatile stocks need more confirmation
+            buy_signal_threshold=aggressive["buy_signal_threshold"],
+            strong_buy_threshold=aggressive["strong_buy_threshold"],
+            sell_signal_threshold=aggressive["sell_signal_threshold"],
+            strong_sell_threshold=aggressive["strong_sell_threshold"],
+            trade_frequency_seconds=30,
         ),
         BotConfig(
             name="Dividend Growth",
@@ -415,6 +465,12 @@ def _create_default_bots(manager: BotManager) -> None:
             strategies=["MeanReversion", "Technical"],
             max_position_size=25000,
             max_positions=5,
+            # INCOME thresholds - conservative, stable positions
+            buy_signal_threshold=income["buy_signal_threshold"],
+            strong_buy_threshold=income["strong_buy_threshold"],
+            sell_signal_threshold=income["sell_signal_threshold"],
+            strong_sell_threshold=income["strong_sell_threshold"],
+            trade_frequency_seconds=income["trade_frequency_seconds"],
         ),
         BotConfig(
             name="Semiconductor Focus",
@@ -424,6 +480,12 @@ def _create_default_bots(manager: BotManager) -> None:
             max_position_size=30000,
             max_positions=6,
             enable_news_trading=True,
+            # NEWS-DRIVEN - semis are news sensitive (earnings, guidance)
+            buy_signal_threshold=news_driven["buy_signal_threshold"],
+            strong_buy_threshold=news_driven["strong_buy_threshold"],
+            sell_signal_threshold=news_driven["sell_signal_threshold"],
+            strong_sell_threshold=news_driven["strong_sell_threshold"],
+            trade_frequency_seconds=45,
         ),
         BotConfig(
             name="Energy Sector",
@@ -432,6 +494,12 @@ def _create_default_bots(manager: BotManager) -> None:
             strategies=["Technical", "MeanReversion"],
             max_position_size=20000,
             max_positions=4,
+            # COMMODITY thresholds - macro sensitive
+            buy_signal_threshold=commodity_preset["buy_signal_threshold"],
+            strong_buy_threshold=commodity_preset["strong_buy_threshold"],
+            sell_signal_threshold=commodity_preset["sell_signal_threshold"],
+            strong_sell_threshold=commodity_preset["strong_sell_threshold"],
+            trade_frequency_seconds=commodity_preset["trade_frequency_seconds"],
         ),
         BotConfig(
             name="Biotech Catalyst",
@@ -441,9 +509,15 @@ def _create_default_bots(manager: BotManager) -> None:
             max_position_size=15000,
             max_positions=4,
             enable_news_trading=True,
+            # NEWS-DRIVEN - catalyst dependent
+            buy_signal_threshold=news_driven["buy_signal_threshold"],
+            strong_buy_threshold=news_driven["strong_buy_threshold"],
+            sell_signal_threshold=news_driven["sell_signal_threshold"],
+            strong_sell_threshold=news_driven["strong_sell_threshold"],
+            trade_frequency_seconds=30,
         ),
         # =====================================================================
-        # OPTIONS TRADING BOTS - High Growth, Short Term
+        # OPTIONS TRADING BOTS - High Growth, Short Term (AGGRESSIVE thresholds)
         # =====================================================================
         BotConfig(
             name="🚀 SPY Calls Momentum",
@@ -461,9 +535,14 @@ def _create_default_bots(manager: BotManager) -> None:
             options_stop_loss_pct=40.0,
             max_position_size=10000,
             max_positions=5,
-            trade_frequency_seconds=30,
             enable_momentum_bursts=True,
             leverage_multiplier=2.0,
+            # AGGRESSIVE for options momentum
+            buy_signal_threshold=aggressive["buy_signal_threshold"],
+            strong_buy_threshold=aggressive["strong_buy_threshold"],
+            sell_signal_threshold=aggressive["sell_signal_threshold"],
+            strong_sell_threshold=aggressive["strong_sell_threshold"],
+            trade_frequency_seconds=30,
         ),
         BotConfig(
             name="🔥 QQQ Tech Calls",
@@ -483,6 +562,12 @@ def _create_default_bots(manager: BotManager) -> None:
             max_positions=4,
             enable_news_trading=True,
             enable_momentum_bursts=True,
+            # NEWS-DRIVEN for QQQ
+            buy_signal_threshold=news_driven["buy_signal_threshold"],
+            strong_buy_threshold=news_driven["strong_buy_threshold"],
+            sell_signal_threshold=news_driven["sell_signal_threshold"],
+            strong_sell_threshold=news_driven["strong_sell_threshold"],
+            trade_frequency_seconds=30,
         ),
         BotConfig(
             name="⚡ 0DTE Scalper",
@@ -500,9 +585,14 @@ def _create_default_bots(manager: BotManager) -> None:
             options_stop_loss_pct=15.0,
             max_position_size=5000,
             max_positions=3,
-            trade_frequency_seconds=15,
             enable_scalping=True,
             leverage_multiplier=3.0,
+            # ULTRA-AGGRESSIVE for 0DTE scalping
+            buy_signal_threshold=ultra_aggressive["buy_signal_threshold"],
+            strong_buy_threshold=ultra_aggressive["strong_buy_threshold"],
+            sell_signal_threshold=ultra_aggressive["sell_signal_threshold"],
+            strong_sell_threshold=ultra_aggressive["strong_sell_threshold"],
+            trade_frequency_seconds=15,
         ),
         BotConfig(
             name="💰 NVDA Earnings Plays",
@@ -521,6 +611,12 @@ def _create_default_bots(manager: BotManager) -> None:
             max_position_size=10000,
             max_positions=3,
             enable_news_trading=True,
+            # NEWS-DRIVEN for earnings plays
+            buy_signal_threshold=news_driven["buy_signal_threshold"],
+            strong_buy_threshold=news_driven["strong_buy_threshold"],
+            sell_signal_threshold=news_driven["sell_signal_threshold"],
+            strong_sell_threshold=news_driven["strong_sell_threshold"],
+            trade_frequency_seconds=45,
         ),
         BotConfig(
             name="🎯 Multi-Stock Calls",
@@ -538,9 +634,15 @@ def _create_default_bots(manager: BotManager) -> None:
             options_stop_loss_pct=40.0,
             max_position_size=15000,
             max_positions=6,
+            # AGGRESSIVE for multi-stock options
+            buy_signal_threshold=aggressive["buy_signal_threshold"],
+            strong_buy_threshold=aggressive["strong_buy_threshold"],
+            sell_signal_threshold=aggressive["sell_signal_threshold"],
+            strong_sell_threshold=aggressive["strong_sell_threshold"],
+            trade_frequency_seconds=60,
         ),
         # =====================================================================
-        # FUTURES TRADING BOTS - High Leverage, Fast Profits
+        # FUTURES TRADING BOTS - High Leverage, Fast Profits (ULTRA-AGGRESSIVE)
         # =====================================================================
         BotConfig(
             name="📈 ES Futures Scalper",
@@ -554,11 +656,16 @@ def _create_default_bots(manager: BotManager) -> None:
             futures_session="rth",
             max_position_size=50000,
             max_positions=2,
-            trade_frequency_seconds=10,
             enable_scalping=True,
             scalp_profit_ticks=8,
             scalp_stop_ticks=4,
             leverage_multiplier=5.0,
+            # ULTRA-AGGRESSIVE for futures scalping
+            buy_signal_threshold=ultra_aggressive["buy_signal_threshold"],
+            strong_buy_threshold=ultra_aggressive["strong_buy_threshold"],
+            sell_signal_threshold=ultra_aggressive["sell_signal_threshold"],
+            strong_sell_threshold=ultra_aggressive["strong_sell_threshold"],
+            trade_frequency_seconds=10,
         ),
         BotConfig(
             name="🌙 NQ Micro Futures",
@@ -572,9 +679,14 @@ def _create_default_bots(manager: BotManager) -> None:
             futures_session="eth",
             max_position_size=20000,
             max_positions=3,
-            trade_frequency_seconds=30,
             enable_news_trading=True,
             enable_momentum_bursts=True,
+            # AGGRESSIVE for overnight micro futures
+            buy_signal_threshold=aggressive["buy_signal_threshold"],
+            strong_buy_threshold=aggressive["strong_buy_threshold"],
+            sell_signal_threshold=aggressive["sell_signal_threshold"],
+            strong_sell_threshold=aggressive["strong_sell_threshold"],
+            trade_frequency_seconds=30,
         ),
         BotConfig(
             name="🛢️ Crude Oil Futures",
@@ -588,6 +700,12 @@ def _create_default_bots(manager: BotManager) -> None:
             max_position_size=30000,
             max_positions=2,
             enable_news_trading=True,
+            # COMMODITY for oil futures
+            buy_signal_threshold=commodity_preset["buy_signal_threshold"],
+            strong_buy_threshold=commodity_preset["strong_buy_threshold"],
+            sell_signal_threshold=commodity_preset["sell_signal_threshold"],
+            strong_sell_threshold=commodity_preset["strong_sell_threshold"],
+            trade_frequency_seconds=60,
         ),
         BotConfig(
             name="⚡ MES Momentum",
@@ -600,12 +718,17 @@ def _create_default_bots(manager: BotManager) -> None:
             futures_use_micro=True,
             max_position_size=15000,
             max_positions=5,
-            trade_frequency_seconds=20,
             enable_momentum_bursts=True,
             leverage_multiplier=3.0,
+            # AGGRESSIVE for momentum futures
+            buy_signal_threshold=aggressive["buy_signal_threshold"],
+            strong_buy_threshold=aggressive["strong_buy_threshold"],
+            sell_signal_threshold=aggressive["sell_signal_threshold"],
+            strong_sell_threshold=aggressive["strong_sell_threshold"],
+            trade_frequency_seconds=20,
         ),
         # =====================================================================
-        # LEVERAGED ETF SWING TRADING BOTS
+        # LEVERAGED ETF SWING TRADING BOTS (AGGRESSIVE)
         # =====================================================================
         BotConfig(
             name="🔄 TQQQ/SQQQ Swing Trader",
@@ -620,18 +743,23 @@ def _create_default_bots(manager: BotManager) -> None:
             },
             max_position_size=50000,
             max_positions=2,
-            max_daily_loss_pct=5.0,  # Higher tolerance for leveraged ETFs
-            trade_frequency_seconds=300,  # 5-minute checks for swing trades
+            max_daily_loss_pct=5.0,
             enable_news_trading=True,
             news_sentiment_threshold=0.6,
             enable_momentum_bursts=True,
-            leverage_multiplier=1.0,  # Already 3x leveraged
+            leverage_multiplier=1.0,
+            # AGGRESSIVE for leveraged ETFs
+            buy_signal_threshold=aggressive["buy_signal_threshold"],
+            strong_buy_threshold=aggressive["strong_buy_threshold"],
+            sell_signal_threshold=aggressive["sell_signal_threshold"],
+            strong_sell_threshold=aggressive["strong_sell_threshold"],
+            trade_frequency_seconds=120,
         ),
         BotConfig(
             name="🔥 SOXL Semiconductor Swing",
             description="3x Leveraged Semiconductor swing trading",
             instrument_type=InstrumentType.STOCK,
-            symbols=["SOXL", "SOXS"],  # Include inverse for bearish plays
+            symbols=["SOXL", "SOXS"],
             strategies=["Technical", "Momentum", "NewsSentiment"],
             strategy_weights={
                 "Technical": 0.7,
@@ -641,13 +769,18 @@ def _create_default_bots(manager: BotManager) -> None:
             max_position_size=40000,
             max_positions=2,
             max_daily_loss_pct=5.0,
-            trade_frequency_seconds=300,
             enable_news_trading=True,
             news_sentiment_threshold=0.55,
             enable_momentum_bursts=True,
+            # NEWS-DRIVEN for semiconductor leveraged
+            buy_signal_threshold=news_driven["buy_signal_threshold"],
+            strong_buy_threshold=news_driven["strong_buy_threshold"],
+            sell_signal_threshold=news_driven["sell_signal_threshold"],
+            strong_sell_threshold=news_driven["strong_sell_threshold"],
+            trade_frequency_seconds=120,
         ),
         # =====================================================================
-        # COMMODITY & RESOURCE TRADING BOTS
+        # COMMODITY & RESOURCE TRADING BOTS (COMMODITY thresholds)
         # =====================================================================
         BotConfig(
             name="🥇 Gold & Precious Metals",
@@ -663,12 +796,17 @@ def _create_default_bots(manager: BotManager) -> None:
             commodity_type="precious_metals",
             commodity_trade_etfs=True,
             commodity_trade_miners=True,
-            commodity_macro_alerts=True,  # Fed, inflation, USD signals
+            commodity_macro_alerts=True,
             commodity_geopolitical_alerts=True,
             max_position_size=30000,
             max_positions=6,
-            trade_frequency_seconds=300,
             enable_news_trading=True,
+            # COMMODITY thresholds
+            buy_signal_threshold=commodity_preset["buy_signal_threshold"],
+            strong_buy_threshold=commodity_preset["strong_buy_threshold"],
+            sell_signal_threshold=commodity_preset["sell_signal_threshold"],
+            strong_sell_threshold=commodity_preset["strong_sell_threshold"],
+            trade_frequency_seconds=180,
         ),
         BotConfig(
             name="🛢️ Oil & Natural Gas",
@@ -679,18 +817,23 @@ def _create_default_bots(manager: BotManager) -> None:
             strategy_weights={
                 "Technical": 0.7,
                 "Momentum": 0.6,
-                "NewsSentiment": 0.7,  # Oil is news-sensitive
+                "NewsSentiment": 0.7,
             },
             commodity_type="energy",
             commodity_trade_etfs=True,
             commodity_trade_miners=False,
             commodity_macro_alerts=True,
-            commodity_geopolitical_alerts=True,  # OPEC, wars, sanctions
+            commodity_geopolitical_alerts=True,
             max_position_size=35000,
             max_positions=7,
-            trade_frequency_seconds=120,
             enable_news_trading=True,
-            news_sentiment_threshold=0.4,  # More sensitive to news
+            news_sentiment_threshold=0.4,
+            # NEWS-DRIVEN for oil (very news sensitive)
+            buy_signal_threshold=news_driven["buy_signal_threshold"],
+            strong_buy_threshold=news_driven["strong_buy_threshold"],
+            sell_signal_threshold=news_driven["sell_signal_threshold"],
+            strong_sell_threshold=news_driven["strong_sell_threshold"],
+            trade_frequency_seconds=60,
         ),
         BotConfig(
             name="⚡ Uranium & Nuclear Energy",
@@ -709,8 +852,13 @@ def _create_default_bots(manager: BotManager) -> None:
             commodity_geopolitical_alerts=True,
             max_position_size=25000,
             max_positions=5,
-            trade_frequency_seconds=300,
             enable_news_trading=True,
+            # NEWS-DRIVEN for uranium (policy sensitive)
+            buy_signal_threshold=news_driven["buy_signal_threshold"],
+            strong_buy_threshold=news_driven["strong_buy_threshold"],
+            sell_signal_threshold=news_driven["sell_signal_threshold"],
+            strong_sell_threshold=news_driven["strong_sell_threshold"],
+            trade_frequency_seconds=120,
         ),
         BotConfig(
             name="🔋 Lithium & Battery Metals",
@@ -729,6 +877,12 @@ def _create_default_bots(manager: BotManager) -> None:
             max_position_size=25000,
             max_positions=5,
             enable_news_trading=True,
+            # COMMODITY thresholds
+            buy_signal_threshold=commodity_preset["buy_signal_threshold"],
+            strong_buy_threshold=commodity_preset["strong_buy_threshold"],
+            sell_signal_threshold=commodity_preset["sell_signal_threshold"],
+            strong_sell_threshold=commodity_preset["strong_sell_threshold"],
+            trade_frequency_seconds=180,
         ),
         BotConfig(
             name="🏭 Industrial Metals",
@@ -744,10 +898,16 @@ def _create_default_bots(manager: BotManager) -> None:
             commodity_type="industrial_metals",
             commodity_trade_etfs=True,
             commodity_trade_miners=True,
-            commodity_macro_alerts=True,  # Infrastructure spending, China
+            commodity_macro_alerts=True,
             max_position_size=30000,
             max_positions=6,
             enable_news_trading=True,
+            # COMMODITY thresholds
+            buy_signal_threshold=commodity_preset["buy_signal_threshold"],
+            strong_buy_threshold=commodity_preset["strong_buy_threshold"],
+            sell_signal_threshold=commodity_preset["sell_signal_threshold"],
+            strong_sell_threshold=commodity_preset["strong_sell_threshold"],
+            trade_frequency_seconds=180,
         ),
         BotConfig(
             name="🌾 Agriculture & Soft Commodities",
@@ -762,11 +922,16 @@ def _create_default_bots(manager: BotManager) -> None:
             },
             commodity_type="agriculture",
             commodity_trade_etfs=True,
-            commodity_seasonal_trading=True,  # Planting/harvest seasons
-            commodity_geopolitical_alerts=True,  # Weather, trade wars
+            commodity_seasonal_trading=True,
+            commodity_geopolitical_alerts=True,
             max_position_size=20000,
             max_positions=6,
-            trade_frequency_seconds=600,  # Less frequent for agriculture
+            # CONSERVATIVE for agriculture (seasonal, less volatile)
+            buy_signal_threshold=conservative["buy_signal_threshold"],
+            strong_buy_threshold=conservative["strong_buy_threshold"],
+            sell_signal_threshold=conservative["sell_signal_threshold"],
+            strong_sell_threshold=conservative["strong_sell_threshold"],
+            trade_frequency_seconds=300,
         ),
         BotConfig(
             name="💎 Diversified Commodities",
@@ -783,7 +948,12 @@ def _create_default_bots(manager: BotManager) -> None:
             commodity_macro_alerts=True,
             max_position_size=40000,
             max_positions=4,
-            trade_frequency_seconds=900,  # 15-min for broad exposure
+            # MODERATE for diversified
+            buy_signal_threshold=moderate["buy_signal_threshold"],
+            strong_buy_threshold=moderate["strong_buy_threshold"],
+            sell_signal_threshold=moderate["sell_signal_threshold"],
+            strong_sell_threshold=moderate["strong_sell_threshold"],
+            trade_frequency_seconds=600,
         ),
         BotConfig(
             name="🔩 Rare Earth & Strategic Metals",
@@ -794,19 +964,25 @@ def _create_default_bots(manager: BotManager) -> None:
             strategy_weights={
                 "Technical": 0.6,
                 "Momentum": 0.6,
-                "NewsSentiment": 0.7,  # Very news-sensitive
+                "NewsSentiment": 0.7,
             },
             commodity_type="rare_earth",
             commodity_trade_etfs=True,
             commodity_trade_miners=True,
-            commodity_geopolitical_alerts=True,  # China supply, defense
+            commodity_geopolitical_alerts=True,
             max_position_size=20000,
             max_positions=5,
             enable_news_trading=True,
             news_sentiment_threshold=0.4,
+            # NEWS-DRIVEN for rare earth (very geopolitical)
+            buy_signal_threshold=news_driven["buy_signal_threshold"],
+            strong_buy_threshold=news_driven["strong_buy_threshold"],
+            sell_signal_threshold=news_driven["sell_signal_threshold"],
+            strong_sell_threshold=news_driven["strong_sell_threshold"],
+            trade_frequency_seconds=120,
         ),
         # =====================================================================
-        # CRYPTOCURRENCY TRADING BOTS
+        # CRYPTOCURRENCY TRADING BOTS (CRYPTO thresholds)
         # =====================================================================
         BotConfig(
             name="₿ Bitcoin & Ethereum Core",
@@ -828,8 +1004,13 @@ def _create_default_bots(manager: BotManager) -> None:
             crypto_on_chain_analysis=True,
             max_position_size=50000,
             max_positions=5,
-            trade_frequency_seconds=60,
             enable_news_trading=True,
+            # CRYPTO thresholds
+            buy_signal_threshold=crypto_preset["buy_signal_threshold"],
+            strong_buy_threshold=crypto_preset["strong_buy_threshold"],
+            sell_signal_threshold=crypto_preset["sell_signal_threshold"],
+            strong_sell_threshold=crypto_preset["strong_sell_threshold"],
+            trade_frequency_seconds=30,
         ),
         BotConfig(
             name="🌐 Altcoin Momentum",
@@ -849,8 +1030,13 @@ def _create_default_bots(manager: BotManager) -> None:
             crypto_take_profit_pct=25.0,
             max_position_size=25000,
             max_positions=5,
-            trade_frequency_seconds=30,
             enable_momentum_bursts=True,
+            # AGGRESSIVE for altcoin momentum
+            buy_signal_threshold=aggressive["buy_signal_threshold"],
+            strong_buy_threshold=aggressive["strong_buy_threshold"],
+            sell_signal_threshold=aggressive["sell_signal_threshold"],
+            strong_sell_threshold=aggressive["strong_sell_threshold"],
+            trade_frequency_seconds=30,
         ),
         BotConfig(
             name="🔗 DeFi Protocol Tokens",
@@ -870,6 +1056,12 @@ def _create_default_bots(manager: BotManager) -> None:
             max_position_size=20000,
             max_positions=5,
             enable_news_trading=True,
+            # CRYPTO thresholds
+            buy_signal_threshold=crypto_preset["buy_signal_threshold"],
+            strong_buy_threshold=crypto_preset["strong_buy_threshold"],
+            sell_signal_threshold=crypto_preset["sell_signal_threshold"],
+            strong_sell_threshold=crypto_preset["strong_sell_threshold"],
+            trade_frequency_seconds=45,
         ),
         BotConfig(
             name="🤖 AI & Compute Tokens",
@@ -891,6 +1083,12 @@ def _create_default_bots(manager: BotManager) -> None:
             max_positions=4,
             enable_news_trading=True,
             news_sentiment_threshold=0.4,
+            # NEWS-DRIVEN for AI tokens (hype driven)
+            buy_signal_threshold=news_driven["buy_signal_threshold"],
+            strong_buy_threshold=news_driven["strong_buy_threshold"],
+            sell_signal_threshold=news_driven["sell_signal_threshold"],
+            strong_sell_threshold=news_driven["strong_sell_threshold"],
+            trade_frequency_seconds=30,
         ),
         BotConfig(
             name="🐕 Meme Coin Scalper",
@@ -905,14 +1103,19 @@ def _create_default_bots(manager: BotManager) -> None:
             crypto_category="meme",
             crypto_exchange="coinbase",
             crypto_trade_spot=True,
-            crypto_trailing_stop_pct=15.0,  # Wide stops for volatility
-            crypto_take_profit_pct=50.0,  # Quick profits
-            max_position_size=5000,  # Small positions
+            crypto_trailing_stop_pct=15.0,
+            crypto_take_profit_pct=50.0,
+            max_position_size=5000,
             max_positions=3,
-            max_daily_loss_pct=10.0,  # Accept high risk
-            trade_frequency_seconds=15,
+            max_daily_loss_pct=10.0,
             enable_scalping=True,
             enable_momentum_bursts=True,
+            # ULTRA-AGGRESSIVE for meme coins
+            buy_signal_threshold=ultra_aggressive["buy_signal_threshold"],
+            strong_buy_threshold=ultra_aggressive["strong_buy_threshold"],
+            sell_signal_threshold=ultra_aggressive["sell_signal_threshold"],
+            strong_sell_threshold=ultra_aggressive["strong_sell_threshold"],
+            trade_frequency_seconds=15,
         ),
         BotConfig(
             name="🏛️ Crypto ETF Portfolio",
@@ -930,7 +1133,12 @@ def _create_default_bots(manager: BotManager) -> None:
             crypto_trade_etfs=True,
             max_position_size=35000,
             max_positions=7,
-            trade_frequency_seconds=300,
+            # MODERATE for ETFs (less volatile than spot)
+            buy_signal_threshold=moderate["buy_signal_threshold"],
+            strong_buy_threshold=moderate["strong_buy_threshold"],
+            sell_signal_threshold=moderate["sell_signal_threshold"],
+            strong_sell_threshold=moderate["strong_sell_threshold"],
+            trade_frequency_seconds=180,
         ),
         BotConfig(
             name="🎮 Gaming & Metaverse",
@@ -949,6 +1157,12 @@ def _create_default_bots(manager: BotManager) -> None:
             max_position_size=15000,
             max_positions=4,
             enable_news_trading=True,
+            # CRYPTO thresholds
+            buy_signal_threshold=crypto_preset["buy_signal_threshold"],
+            strong_buy_threshold=crypto_preset["strong_buy_threshold"],
+            sell_signal_threshold=crypto_preset["sell_signal_threshold"],
+            strong_sell_threshold=crypto_preset["strong_sell_threshold"],
+            trade_frequency_seconds=45,
         ),
         BotConfig(
             name="⚡ Layer 2 Scalability",
@@ -968,9 +1182,15 @@ def _create_default_bots(manager: BotManager) -> None:
             max_position_size=20000,
             max_positions=3,
             enable_news_trading=True,
+            # CRYPTO thresholds
+            buy_signal_threshold=crypto_preset["buy_signal_threshold"],
+            strong_buy_threshold=crypto_preset["strong_buy_threshold"],
+            sell_signal_threshold=crypto_preset["sell_signal_threshold"],
+            strong_sell_threshold=crypto_preset["strong_sell_threshold"],
+            trade_frequency_seconds=45,
         ),
         # =====================================================================
-        # FOREX TRADING BOTS - Currency Pairs
+        # FOREX TRADING BOTS - Currency Pairs (MODERATE thresholds)
         # =====================================================================
         BotConfig(
             name="💱 Major Forex Pairs",
@@ -985,8 +1205,13 @@ def _create_default_bots(manager: BotManager) -> None:
             },
             max_position_size=50000,
             max_positions=4,
-            trade_frequency_seconds=60,
             enable_news_trading=True,
+            # MODERATE for major forex
+            buy_signal_threshold=moderate["buy_signal_threshold"],
+            strong_buy_threshold=moderate["strong_buy_threshold"],
+            sell_signal_threshold=moderate["sell_signal_threshold"],
+            strong_sell_threshold=moderate["strong_sell_threshold"],
+            trade_frequency_seconds=60,
         ),
         BotConfig(
             name="🌏 Asia-Pacific FX",
@@ -1001,8 +1226,13 @@ def _create_default_bots(manager: BotManager) -> None:
             },
             max_position_size=30000,
             max_positions=4,
-            trade_frequency_seconds=120,
             enable_news_trading=True,
+            # MODERATE for APAC forex
+            buy_signal_threshold=moderate["buy_signal_threshold"],
+            strong_buy_threshold=moderate["strong_buy_threshold"],
+            sell_signal_threshold=moderate["sell_signal_threshold"],
+            strong_sell_threshold=moderate["strong_sell_threshold"],
+            trade_frequency_seconds=120,
         ),
         BotConfig(
             name="🇪🇺 Euro Crosses",
@@ -1016,11 +1246,16 @@ def _create_default_bots(manager: BotManager) -> None:
             },
             max_position_size=35000,
             max_positions=4,
+            # MODERATE for euro crosses
+            buy_signal_threshold=moderate["buy_signal_threshold"],
+            strong_buy_threshold=moderate["strong_buy_threshold"],
+            sell_signal_threshold=moderate["sell_signal_threshold"],
+            strong_sell_threshold=moderate["strong_sell_threshold"],
             trade_frequency_seconds=180,
         ),
         
         # =========================================================================
-        # ETF SPECIALISTS (41-45)
+        # ETF SPECIALISTS (41-45) - Various thresholds based on strategy
         # =========================================================================
         
         # 41. Top S&P 500 ETFs
@@ -1036,6 +1271,11 @@ def _create_default_bots(manager: BotManager) -> None:
             },
             max_position_size=50000,
             max_positions=5,
+            # CONSERVATIVE for core holdings
+            buy_signal_threshold=conservative["buy_signal_threshold"],
+            strong_buy_threshold=conservative["strong_buy_threshold"],
+            sell_signal_threshold=conservative["sell_signal_threshold"],
+            strong_sell_threshold=conservative["strong_sell_threshold"],
             trade_frequency_seconds=300,
         ),
         
@@ -1053,6 +1293,11 @@ def _create_default_bots(manager: BotManager) -> None:
             },
             max_position_size=15000,
             max_positions=4,
+            # AGGRESSIVE for leveraged ETFs
+            buy_signal_threshold=aggressive["buy_signal_threshold"],
+            strong_buy_threshold=aggressive["strong_buy_threshold"],
+            sell_signal_threshold=aggressive["sell_signal_threshold"],
+            strong_sell_threshold=aggressive["strong_sell_threshold"],
             trade_frequency_seconds=60,
         ),
         
@@ -1069,6 +1314,11 @@ def _create_default_bots(manager: BotManager) -> None:
             },
             max_position_size=30000,
             max_positions=5,
+            # MODERATE for international developed
+            buy_signal_threshold=moderate["buy_signal_threshold"],
+            strong_buy_threshold=moderate["strong_buy_threshold"],
+            sell_signal_threshold=moderate["sell_signal_threshold"],
+            strong_sell_threshold=moderate["strong_sell_threshold"],
             trade_frequency_seconds=300,
         ),
         
@@ -1086,7 +1336,12 @@ def _create_default_bots(manager: BotManager) -> None:
             },
             max_position_size=25000,
             max_positions=5,
-            trade_frequency_seconds=180,
+            # NEWS-DRIVEN for emerging markets (geopolitical risk)
+            buy_signal_threshold=news_driven["buy_signal_threshold"],
+            strong_buy_threshold=news_driven["strong_buy_threshold"],
+            sell_signal_threshold=news_driven["sell_signal_threshold"],
+            strong_sell_threshold=news_driven["strong_sell_threshold"],
+            trade_frequency_seconds=120,
         ),
         
         # 45. Thematic Growth ETFs
@@ -1103,7 +1358,12 @@ def _create_default_bots(manager: BotManager) -> None:
             },
             max_position_size=20000,
             max_positions=6,
-            trade_frequency_seconds=120,
+            # AGGRESSIVE for thematic growth
+            buy_signal_threshold=aggressive["buy_signal_threshold"],
+            strong_buy_threshold=aggressive["strong_buy_threshold"],
+            sell_signal_threshold=aggressive["sell_signal_threshold"],
+            strong_sell_threshold=aggressive["strong_sell_threshold"],
+            trade_frequency_seconds=90,
         ),
         
         # =========================================================================
@@ -1123,7 +1383,12 @@ def _create_default_bots(manager: BotManager) -> None:
             },
             max_position_size=30000,
             max_positions=6,
-            trade_frequency_seconds=240,
+            # MODERATE for blue chips
+            buy_signal_threshold=moderate["buy_signal_threshold"],
+            strong_buy_threshold=moderate["strong_buy_threshold"],
+            sell_signal_threshold=moderate["sell_signal_threshold"],
+            strong_sell_threshold=moderate["strong_sell_threshold"],
+            trade_frequency_seconds=180,
         ),
         
         # 47. China Tech ADRs
@@ -1140,7 +1405,12 @@ def _create_default_bots(manager: BotManager) -> None:
             },
             max_position_size=20000,
             max_positions=5,
-            trade_frequency_seconds=120,
+            # NEWS-DRIVEN for China ADRs (very news sensitive)
+            buy_signal_threshold=news_driven["buy_signal_threshold"],
+            strong_buy_threshold=news_driven["strong_buy_threshold"],
+            sell_signal_threshold=news_driven["sell_signal_threshold"],
+            strong_sell_threshold=news_driven["strong_sell_threshold"],
+            trade_frequency_seconds=60,
         ),
         
         # 48. European Luxury & Consumer
@@ -1156,7 +1426,12 @@ def _create_default_bots(manager: BotManager) -> None:
             },
             max_position_size=25000,
             max_positions=5,
-            trade_frequency_seconds=300,
+            # MODERATE for luxury brands
+            buy_signal_threshold=moderate["buy_signal_threshold"],
+            strong_buy_threshold=moderate["strong_buy_threshold"],
+            sell_signal_threshold=moderate["sell_signal_threshold"],
+            strong_sell_threshold=moderate["strong_sell_threshold"],
+            trade_frequency_seconds=240,
         ),
         
         # =========================================================================
@@ -1176,6 +1451,11 @@ def _create_default_bots(manager: BotManager) -> None:
             },
             max_position_size=40000,
             max_positions=5,
+            # INCOME thresholds for bonds
+            buy_signal_threshold=income["buy_signal_threshold"],
+            strong_buy_threshold=income["strong_buy_threshold"],
+            sell_signal_threshold=income["sell_signal_threshold"],
+            strong_sell_threshold=income["strong_sell_threshold"],
             trade_frequency_seconds=600,
         ),
         
@@ -1193,7 +1473,12 @@ def _create_default_bots(manager: BotManager) -> None:
             },
             max_position_size=10000,
             max_positions=3,
-            trade_frequency_seconds=60,
+            # ULTRA-AGGRESSIVE for volatility ETFs (very sensitive)
+            buy_signal_threshold=ultra_aggressive["buy_signal_threshold"],
+            strong_buy_threshold=ultra_aggressive["strong_buy_threshold"],
+            sell_signal_threshold=ultra_aggressive["sell_signal_threshold"],
+            strong_sell_threshold=ultra_aggressive["strong_sell_threshold"],
+            trade_frequency_seconds=30,
         ),
     ]
     
