@@ -5,6 +5,150 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-01-07
+
+### 🚨 MAJOR RELEASE - Critical Bug Fixes & Bot Intelligence Overhaul
+
+This is a **major release** addressing a critical bug that caused all bots to fail signal generation, plus a complete overhaul of bot-specific trading parameters.
+
+---
+
+### 🐛 CRITICAL FIX: Asyncio Semaphore Event Loop Bug
+
+#### The Problem
+All bots were failing with this error:
+```
+Error generating signal for [SYMBOL]: <asyncio.locks.Semaphore object at 0x...> is bound to a different event loop
+```
+
+**Result**: Zero signals generated since startup - bots analyzed symbols but every signal calculation failed.
+
+#### Root Cause
+- `asyncio.Semaphore` was used to limit concurrent market data requests
+- The semaphore was created in the main event loop but accessed from bot threads running in different event loops
+- Python's asyncio primitives are bound to a single event loop and cannot be shared across threads
+
+#### The Fix
+- Changed from `asyncio.Semaphore` to `threading.Semaphore` for cross-thread compatibility
+- Semaphore now uses `acquire()` and `release()` with proper `finally` block
+- All bots can now generate signals correctly
+
+---
+
+### 🎯 Bot-Specific Signal Thresholds
+
+#### The Problem
+All 50 bots were using identical global signal thresholds, regardless of their trading strategy:
+- A conservative Dividend Growth bot (5 stable stocks) used the same aggressive thresholds as a 0DTE Scalper
+- Resulted in only 1 trade (BABA) across all bots over multiple days
+
+#### New SignalPreset System
+
+Added 8 strategy-specific threshold presets in `SignalPreset` class:
+
+| Preset | Buy Threshold | Strong Buy | Sell Threshold | Trade Frequency |
+|--------|--------------|------------|----------------|-----------------|
+| **CONSERVATIVE** | 1.5 | 3.0 | -1.5 | 5 min |
+| **MODERATE** | 2.0 | 4.0 | -2.0 | 2 min |
+| **AGGRESSIVE** | 2.5 | 4.8 | -2.5 | 1 min |
+| **ULTRA_AGGRESSIVE** | 1.0 | 2.5 | -1.0 | 15 sec |
+| **NEWS_DRIVEN** | 1.5 | 3.5 | -1.5 | 30 sec |
+| **INCOME** | 1.2 | 2.5 | -2.5 | 10 min |
+| **CRYPTO** | 1.8 | 3.5 | -1.8 | 30 sec |
+| **COMMODITY** | 1.5 | 3.5 | -1.5 | 3 min |
+
+#### Bot Assignments
+
+Each of the 50 default bots now has strategy-appropriate thresholds:
+
+**CONSERVATIVE** (Easy entry, reluctant to sell):
+- 🏆 Top S&P 500 ETFs
+- 🌾 Agriculture & Soft Commodities
+
+**MODERATE** (Balanced approach):
+- ETF Swing Trader
+- Mean Reversion
+- 💱 Major Forex Pairs
+- 🏢 ADR Blue Chips
+- 💎 Diversified Commodities
+
+**AGGRESSIVE** (Needs confirmation, volatile assets):
+- Tech Momentum
+- High Volatility
+- 🔄 TQQQ/SQQQ Swing Trader
+- 🚀 SPY Calls Momentum
+- 🌐 Altcoin Momentum
+
+**ULTRA_AGGRESSIVE** (Very sensitive, fast trades):
+- ⚡ 0DTE Scalper
+- 📈 ES Futures Scalper
+- 🐕 Meme Coin Scalper
+- 📊 Volatility ETF Trader
+
+**NEWS_DRIVEN** (Quick reaction to news):
+- News Sentiment Bot
+- International ADR
+- Semiconductor Focus
+- Biotech Catalyst
+- 🇨🇳 China Tech ADRs
+- 🛢️ Oil & Natural Gas
+- 🔩 Rare Earth & Strategic Metals
+
+**INCOME** (Conservative, stable positions):
+- Dividend Growth
+- 💵 Bond ETF Rotator
+
+**CRYPTO** (24/7 volatility):
+- ₿ Bitcoin & Ethereum Core
+- 🔗 DeFi Protocol Tokens
+- ⚡ Layer 2 Scalability
+- 🎮 Gaming & Metaverse
+
+**COMMODITY** (Macro-sensitive):
+- Energy Sector
+- 🥇 Gold & Precious Metals
+- 🔋 Lithium & Battery Metals
+- 🏭 Industrial Metals
+
+---
+
+### 📊 Enhanced BotConfig
+
+New fields exposed in `BotConfig`:
+- `buy_signal_threshold` - Points needed for BUY signal
+- `strong_buy_threshold` - Points needed for STRONG BUY
+- `sell_signal_threshold` - Points needed for SELL signal
+- `strong_sell_threshold` - Points needed for STRONG SELL
+
+These are now included in `to_dict()` serialization and can be configured per-bot.
+
+---
+
+### 🛠️ Auto Version Bump Script
+
+Added `scripts/auto_version_bump.py` for automated version management:
+- 8+ features → bump patch version
+- 20+ features → bump minor version
+- Updates all version files automatically
+- Dry-run mode available
+
+```bash
+python scripts/auto_version_bump.py --check    # Check if bump needed
+python scripts/auto_version_bump.py --bump     # Perform bump
+python scripts/auto_version_bump.py --type major  # Force major bump
+```
+
+---
+
+### 📦 Version Updates
+
+- API: 2.0.0
+- Desktop: 2.0.0
+- Frontend: 2.0.0
+- All DMG filenames: `XFactor_Bot_2.0.0_*.dmg`
+
+---
+
 ## [1.2.3] - 2026-01-04
 
 ### 📊 Comprehensive Indicator System (22+ Indicators)
