@@ -98,8 +98,9 @@ class IBKRBroker(BaseBroker):
         self._positions_cache_time: Optional[datetime] = None
         self._positions_cache_ttl = 5  # Cache for 5 seconds
         
-        # Async lock for coordinating calls
+        # Async lock for coordinating calls - store both lock and its event loop
         self._async_lock: Optional[asyncio.Lock] = None
+        self._async_lock_loop: Optional[asyncio.AbstractEventLoop] = None
     
     def _connect_sync(self) -> bool:
         """
@@ -257,9 +258,23 @@ class IBKRBroker(BaseBroker):
         return self._ib.isConnected()
     
     def _get_async_lock(self) -> asyncio.Lock:
-        """Get or create async lock for the current event loop."""
-        if self._async_lock is None:
+        """Get or create async lock for the current event loop.
+        
+        asyncio.Lock is bound to the event loop where it was created.
+        If the event loop changes (e.g., different request context), we need
+        to create a new lock for the current event loop.
+        """
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop, create one for when we need it
+            current_loop = None
+        
+        # Check if we need to create a new lock for the current event loop
+        if self._async_lock is None or self._async_lock_loop is not current_loop:
             self._async_lock = asyncio.Lock()
+            self._async_lock_loop = current_loop
+        
         return self._async_lock
     
     async def get_accounts(self) -> List[AccountInfo]:

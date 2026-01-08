@@ -5,6 +5,14 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-01-07
+
+### 🐛 Bug Fixes
+
+- **IBKR Broker Event Loop Fix**: Fixed `asyncio.Lock is bound to a different event loop` error that occurred when multiple bots or API requests accessed the IBKR broker concurrently. The async lock now properly detects event loop changes and creates a new lock when needed.
+
+---
+
 ## [2.1.0] - 2026-01-07
 
 ### ✨ Manual Trading Feature
