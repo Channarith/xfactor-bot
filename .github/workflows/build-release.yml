@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v2.1.0)'
+        description: 'Version tag (e.g., v2.1.1)'
         required: false
-        default: 'v2.1.0'
+        default: 'v2.1.1'
 
 permissions:
   contents: write  # Required to create releases
@@ -87,11 +87,14 @@ jobs:
       - name: Create DMG manually
         run: |
           cd desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos
+          # Get version from tauri.conf.json
+          VERSION=$(grep -o '"version": "[^"]*"' ../../../../../../../desktop/src-tauri/tauri.conf.json | head -1 | cut -d'"' -f4)
+          echo "Building DMG for version: $VERSION"
           # Wait for filesystem to settle
           sleep 5
           # Retry up to 3 times
           for i in 1 2 3; do
-            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_2.1.0_aarch64.dmg" && break
+            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_${VERSION}_aarch64.dmg" && break
             echo "Attempt $i failed, retrying in 5s..."
             sleep 5
           done
@@ -177,11 +180,14 @@ jobs:
       - name: Create DMG manually
         run: |
           cd desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos
+          # Get version from tauri.conf.json
+          VERSION=$(grep -o '"version": "[^"]*"' ../../../../../../../desktop/src-tauri/tauri.conf.json | head -1 | cut -d'"' -f4)
+          echo "Building DMG for version: $VERSION"
           # Wait for filesystem to settle
           sleep 5
           # Retry up to 3 times
           for i in 1 2 3; do
-            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_2.1.0_x64_legacy.dmg" && break
+            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_${VERSION}_x64_legacy.dmg" && break
             echo "Attempt $i failed, retrying in 5s..."
             sleep 5
           done
@@ -269,11 +275,14 @@ jobs:
       - name: Create DMG manually
         run: |
           cd desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos
+          # Get version from tauri.conf.json
+          VERSION=$(grep -o '"version": "[^"]*"' ../../../../../../../desktop/src-tauri/tauri.conf.json | head -1 | cut -d'"' -f4)
+          echo "Building DMG for version: $VERSION"
           # Wait for filesystem to settle
           sleep 5
           # Retry up to 3 times
           for i in 1 2 3; do
-            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_2.1.0_x64_modern.dmg" && break
+            hdiutil create -volname "XFactor_Bot" -srcfolder "XFactor_Bot.app" -ov -format UDZO "XFactor_Bot_${VERSION}_x64_modern.dmg" && break
             echo "Attempt $i failed, retrying in 5s..."
             sleep 5
           done
