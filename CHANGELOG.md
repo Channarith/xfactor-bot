@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FastAPI Deprecation Warnings**: Fixed `regex` -> `pattern` deprecation warnings in Query parameters.
 - **Pandas Timezone Warnings**: Fixed `FutureWarning: parsing datetimes with mixed time zones` by specifying `utc=True` in `pd.to_datetime()` calls.
 - **Alpaca Crypto Symbol Handling**: Added symbol normalization for crypto trading (converts `BTC-USD` to `BTC/USD` format). Validates symbols against supported Alpaca crypto list before order submission.
+- **IBKR Fractional Shares Fix**: IBKR does not support fractional shares. Orders now automatically round down to whole numbers. If the rounded quantity is 0, the order is rejected with a clear error message instead of failing at the broker level.
 
 ### ✨ New Features
 

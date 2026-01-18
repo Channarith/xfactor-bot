@@ -137,6 +137,7 @@ const changelog = [
       '• Fixed FastAPI regex deprecation warnings',
       '• Fixed pandas timezone parsing warnings',
       '• Added Alpaca crypto symbol normalization (BTC-USD → BTC/USD)',
+      '• IBKR fractional shares: auto-rounds to whole numbers, rejects if 0',
     ]
   },
   {

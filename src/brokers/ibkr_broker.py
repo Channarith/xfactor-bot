@@ -498,9 +498,26 @@ class IBKRBroker(BaseBroker):
         time_in_force: str = "DAY",
         **kwargs
     ) -> Order:
-        """Submit an order to IBKR."""
+        """Submit an order to IBKR.
+        
+        Note: IBKR does not support fractional shares for most symbols.
+        Quantities are automatically rounded down to whole numbers.
+        If the rounded quantity is 0, the order is rejected.
+        """
         if not self._ib or not self._ib.isConnected():
             raise ConnectionError("Not connected to IBKR")
+        
+        # IBKR does not support fractional shares - round down to whole number
+        import math
+        original_quantity = quantity
+        quantity = math.floor(quantity)
+        
+        if quantity <= 0:
+            logger.warning(f"IBKR order rejected: quantity {original_quantity} rounds to 0 whole shares for {symbol}")
+            raise ValueError(f"Cannot place IBKR order: quantity {original_quantity} rounds to 0 whole shares. Minimum order is 1 share.")
+        
+        if original_quantity != quantity:
+            logger.info(f"IBKR fractional order adjusted: {original_quantity} → {quantity} shares for {symbol}")
         
         lock = self._get_async_lock()
         async with lock:
