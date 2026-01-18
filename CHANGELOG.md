@@ -5,6 +5,15 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.3] - 2026-01-17
+
+### 🐛 Bug Fixes
+
+- **IBKR Fractional Shares Fix**: IBKR does not support fractional shares. Orders now automatically round down to whole numbers. If the rounded quantity is 0, the order is rejected with a clear error message instead of failing at the broker level.
+- **Top Traders Endpoint Fix**: Fixed `NameError: name '_ensure_insider_data' is not defined` in `/api/market/top-traders` endpoint. Added missing helper function and refactored to avoid code duplication.
+
+---
+
 ## [2.1.2] - 2026-01-17
 
 ### 🐛 Bug Fixes
@@ -15,7 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FastAPI Deprecation Warnings**: Fixed `regex` -> `pattern` deprecation warnings in Query parameters.
 - **Pandas Timezone Warnings**: Fixed `FutureWarning: parsing datetimes with mixed time zones` by specifying `utc=True` in `pd.to_datetime()` calls.
 - **Alpaca Crypto Symbol Handling**: Added symbol normalization for crypto trading (converts `BTC-USD` to `BTC/USD` format). Validates symbols against supported Alpaca crypto list before order submission.
-- **IBKR Fractional Shares Fix**: IBKR does not support fractional shares. Orders now automatically round down to whole numbers. If the rounded quantity is 0, the order is rejected with a clear error message instead of failing at the broker level.
 
 ### ✨ New Features
 

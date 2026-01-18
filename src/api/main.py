@@ -8,7 +8,7 @@ Versions:
 """
 
 # Application version - keep in sync with frontend/package.json
-APP_VERSION = "2.1.2"
+APP_VERSION = "2.1.3"
 
 import os
 import asyncio

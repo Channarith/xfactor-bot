@@ -155,6 +155,22 @@ _insider_cache: Dict[str, Any] = {
 }
 
 
+async def _ensure_insider_data() -> None:
+    """Ensure insider data cache is populated."""
+    global _insider_cache
+    
+    now = datetime.now()
+    if (
+        _insider_cache['last_fetch'] is None or
+        (now - _insider_cache['last_fetch']).seconds > _insider_cache['cache_duration'] or
+        len(_insider_cache['trades']) == 0
+    ):
+        logger.info("Fetching fresh insider trades from OpenInsider...")
+        _insider_cache['trades'] = await fetch_insider_trades_from_openinsider()
+        _insider_cache['last_fetch'] = now
+        logger.info(f"Fetched {len(_insider_cache['trades'])} insider trades")
+
+
 @router.get("/insider-trades")
 async def get_insider_trades(
     limit: int = Query(50, ge=1, le=100),
@@ -168,18 +184,7 @@ async def get_insider_trades(
     - Includes buy/sell type, price, quantity
     - Caches for 15 minutes
     """
-    global _insider_cache
-    
-    now = datetime.now()
-    if (
-        _insider_cache['last_fetch'] is None or
-        (now - _insider_cache['last_fetch']).seconds > _insider_cache['cache_duration'] or
-        len(_insider_cache['trades']) == 0
-    ):
-        logger.info("Fetching fresh insider trades from OpenInsider...")
-        _insider_cache['trades'] = await fetch_insider_trades_from_openinsider()
-        _insider_cache['last_fetch'] = now
-        logger.info(f"Fetched {len(_insider_cache['trades'])} insider trades")
+    await _ensure_insider_data()
     
     trades = _insider_cache['trades']
     

@@ -104,6 +104,22 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '2.1.3',
+    date: 'January 17, 2026',
+    changes: [
+      '🐛 IBKR Fractional Shares Fix',
+      '',
+      '• IBKR does not support fractional shares for most symbols',
+      '• Orders now automatically round down to whole numbers',
+      '• If rounded quantity is 0, order is rejected with clear error',
+      '• Prevents cryptic broker-level failures',
+      '',
+      '🔧 Top Traders API Fix',
+      '• Fixed missing _ensure_insider_data function',
+      '• /api/market/top-traders now works correctly',
+    ]
+  },
+  {
     version: '2.1.2',
     date: 'January 17, 2026',
     changes: [
@@ -137,7 +153,6 @@ const changelog = [
       '• Fixed FastAPI regex deprecation warnings',
       '• Fixed pandas timezone parsing warnings',
       '• Added Alpaca crypto symbol normalization (BTC-USD → BTC/USD)',
-      '• IBKR fractional shares: auto-rounds to whole numbers, rejects if 0',
     ]
   },
   {

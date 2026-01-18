@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trading-bot"
-version = "2.1.2"
+version = "2.1.3"
 description = "IBKR Automated Trading Bot with News Intelligence"
 readme = "README.md"
 license = {text = "MIT"}
