@@ -142,7 +142,8 @@ class YFinanceProvider(MarketDataProvider):
                         timeout=15
                     )
                     
-                    if data.empty:
+                    # Handle None or empty data from yfinance
+                    if data is None or data.empty:
                         continue
                     
                     # Process each symbol
@@ -214,7 +215,8 @@ class YFinanceProvider(MarketDataProvider):
                 timeout=15
             )
             
-            if data.empty:
+            # Handle None or empty data from yfinance
+            if data is None or data.empty:
                 return []
             
             bars = []

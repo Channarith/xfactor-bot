@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **IBKR Fractional Shares Fix**: IBKR does not support fractional shares. Orders now automatically round down to whole numbers. If the rounded quantity is 0, the order is rejected with a clear error message instead of failing at the broker level.
 - **Top Traders Endpoint Fix**: Fixed `NameError: name '_ensure_insider_data' is not defined` in `/api/market/top-traders` endpoint. Added missing helper function and refactored to avoid code duplication.
+- **yfinance NoneType Fix**: Fixed `'NoneType' object is not subscriptable` errors when yfinance returns None instead of DataFrame. Added None checks before accessing `.empty` property.
 
 ---
 

@@ -117,6 +117,10 @@ const changelog = [
       '🔧 Top Traders API Fix',
       '• Fixed missing _ensure_insider_data function',
       '• /api/market/top-traders now works correctly',
+      '',
+      '🔧 yfinance NoneType Fix',
+      '• Fixed NoneType not subscriptable errors',
+      '• Added null checks when yfinance returns None',
     ]
   },
   {
