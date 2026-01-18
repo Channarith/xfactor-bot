@@ -104,6 +104,53 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '2.1.2',
+    date: 'January 17, 2026',
+    changes: [
+      '🐛 Bug Fixes & Multi-Broker Improvements',
+      '',
+      '🔧 Bot Manager UI Fix',
+      '• Removed duplicate nested "Bot Manager" header',
+      '• Now displays actual bot count correctly',
+      '',
+      '💰 P&L Tracking Fixed',
+      '• Bots now properly track daily/total P&L when trades execute',
+      '• Previously showed +$0.00 even after trades',
+      '',
+      '🔄 Bot Details Auto-Refresh',
+      '• Performance chart refreshes bot details every 30 seconds',
+      '',
+      '📊 Trade Rejection Tracking',
+      '• Track rejections by reason (buying power, position limit, etc.)',
+      '• View blocked_by_* counters and recent rejections in bot status',
+      '',
+      '🔗 Multi-Broker Mode by Default',
+      '• New bots trade on ALL connected brokers simultaneously',
+      '• Ensures trades go to both IBKR and Alpaca',
+      '',
+      '⚙️ Bot-Level Limit Overrides',
+      '• override_global_limits: Bot limits take precedence',
+      '• ignore_vix_limits: Don\'t reduce position size during VIX spikes',
+      '• ignore_sector_limits: Skip sector concentration checks',
+      '',
+      '🛠️ Technical Fixes',
+      '• Fixed FastAPI regex deprecation warnings',
+      '• Fixed pandas timezone parsing warnings',
+      '• Added Alpaca crypto symbol normalization (BTC-USD → BTC/USD)',
+    ]
+  },
+  {
+    version: '2.1.1',
+    date: 'January 7, 2026',
+    changes: [
+      '🐛 IBKR Broker Event Loop Fix',
+      '',
+      '• Fixed asyncio.Lock bound to different event loop error',
+      '• Occurred when multiple bots accessed IBKR concurrently',
+      '• Async lock now detects event loop changes automatically',
+    ]
+  },
+  {
     version: '2.1.0',
     date: 'January 7, 2026',
     changes: [

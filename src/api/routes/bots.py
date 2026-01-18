@@ -90,6 +90,20 @@ class CreateBotRequest(BaseModel):
         default=False,
         description="If True, execute trades on ALL connected brokers simultaneously"
     )
+    
+    # Bot-level limit overrides
+    override_global_limits: bool = Field(
+        default=False,
+        description="If True, bot's limits take precedence over global risk limits (except hard stops)"
+    )
+    ignore_vix_limits: bool = Field(
+        default=False,
+        description="If True, don't reduce position size during VIX spikes"
+    )
+    ignore_sector_limits: bool = Field(
+        default=False,
+        description="If True, don't check sector concentration limits"
+    )
 
 
 class UpdateBotRequest(BaseModel):

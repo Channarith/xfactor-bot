@@ -89,6 +89,26 @@ class AlpacaBroker(BaseBroker):
         self._api_lock = threading.Lock()
         
         logger.debug(f"AlpacaBroker initialized: paper={paper}, base_url={self.base_url}")
+        
+        # Supported crypto symbols on Alpaca (as of 2024)
+        # Alpaca uses "/" format, e.g. "BTC/USD"
+        self._supported_crypto = {
+            "BTC/USD", "ETH/USD", "LTC/USD", "BCH/USD", "AVAX/USD", 
+            "LINK/USD", "UNI/USD", "AAVE/USD", "DOT/USD", "DOGE/USD",
+            "SHIB/USD", "SOL/USD", "MATIC/USD", "XLM/USD", "ALGO/USD",
+            "ATOM/USD", "CRV/USD", "GRT/USD", "MKR/USD", "SUSHI/USD",
+        }
+        
+        # Symbol conversion mappings (user-friendly -> Alpaca format)
+        self._crypto_symbol_map = {
+            "BTC-USD": "BTC/USD", "ETH-USD": "ETH/USD", "LTC-USD": "LTC/USD",
+            "BCH-USD": "BCH/USD", "AVAX-USD": "AVAX/USD", "LINK-USD": "LINK/USD",
+            "UNI-USD": "UNI/USD", "AAVE-USD": "AAVE/USD", "DOT-USD": "DOT/USD",
+            "DOGE-USD": "DOGE/USD", "SHIB-USD": "SHIB/USD", "SOL-USD": "SOL/USD",
+            "MATIC-USD": "MATIC/USD", "XLM-USD": "XLM/USD", "ALGO-USD": "ALGO/USD",
+            "ATOM-USD": "ATOM/USD", "CRV-USD": "CRV/USD", "GRT-USD": "GRT/USD",
+            "MKR-USD": "MKR/USD", "SUSHI-USD": "SUSHI/USD",
+        }
     
     async def connect(self) -> bool:
         """Connect to Alpaca API with timeout handling."""
@@ -182,6 +202,44 @@ class AlpacaBroker(BaseBroker):
         self._connected = False
         self._account_cache = None
         self._positions_cache = None
+    
+    def _normalize_symbol(self, symbol: str) -> tuple[str, bool]:
+        """
+        Normalize symbol for Alpaca trading.
+        
+        Args:
+            symbol: Original symbol (e.g. "BTC-USD", "AAPL")
+            
+        Returns:
+            Tuple of (normalized_symbol, is_crypto)
+        """
+        # Check if it's a crypto symbol
+        if symbol in self._crypto_symbol_map:
+            return self._crypto_symbol_map[symbol], True
+        
+        # Check if already in Alpaca format
+        if "/" in symbol and symbol in self._supported_crypto:
+            return symbol, True
+        
+        # Check for unsupported crypto formats
+        if "-USD" in symbol.upper():
+            # Might be an unsupported crypto
+            potential_crypto = symbol.upper().replace("-", "/")
+            if potential_crypto not in self._supported_crypto:
+                logger.warning(f"⚠️ {symbol} is not a supported Alpaca crypto symbol. Supported: BTC, ETH, LTC, SOL, DOGE, etc.")
+                return symbol, True  # Still return it, will fail at order submission with clear error
+            return potential_crypto, True
+        
+        # Regular stock symbol
+        return symbol.upper(), False
+    
+    def is_symbol_tradeable(self, symbol: str) -> bool:
+        """Check if a symbol is tradeable on Alpaca."""
+        normalized, is_crypto = self._normalize_symbol(symbol)
+        if is_crypto:
+            return normalized in self._supported_crypto
+        # For stocks, assume tradeable (will fail at order submission if not)
+        return True
         logger.info("Disconnected from Alpaca")
     
     async def health_check(self) -> bool:
@@ -409,7 +467,15 @@ class AlpacaBroker(BaseBroker):
         from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest, StopOrderRequest, StopLimitOrderRequest
         from alpaca.trading.enums import OrderSide as AlpacaSide, TimeInForce
         
-        logger.info(f"📤 Submitting Alpaca order: {side.value.upper()} {quantity} {symbol} ({order_type.value})")
+        # Normalize symbol (handle crypto format conversion)
+        original_symbol = symbol
+        symbol, is_crypto = self._normalize_symbol(symbol)
+        
+        if is_crypto and symbol not in self._supported_crypto:
+            raise ValueError(f"Crypto symbol '{original_symbol}' is not supported on Alpaca. Supported crypto: BTC, ETH, LTC, SOL, DOGE, SHIB, MATIC, AVAX, LINK, etc.")
+        
+        logger.info(f"📤 Submitting Alpaca order: {side.value.upper()} {quantity} {symbol} ({order_type.value})" + 
+                   (f" [normalized from {original_symbol}]" if symbol != original_symbol else ""))
         
         try:
             # Map order side

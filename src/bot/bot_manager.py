@@ -31,6 +31,9 @@ class BotManager:
     
     MAX_BOTS = 100  # Support for stocks, options, futures, crypto, and commodity bots
     
+    # Global settings - can be overridden per-bot
+    DEFAULT_MULTI_BROKER = True  # When True, bots trade on ALL connected brokers by default
+    
     def __init__(self):
         """Initialize the bot manager."""
         self._bots: dict[str, BotInstance] = {}
@@ -46,7 +49,7 @@ class BotManager:
         # Auto-optimizer integration
         self._optimizer_manager = get_auto_optimizer_manager()
         
-        logger.info("Bot Manager initialized with auto-optimizer support")
+        logger.info(f"Bot Manager initialized with auto-optimizer support (multi_broker={self.DEFAULT_MULTI_BROKER})")
     
     @property
     def bot_count(self) -> int:
@@ -96,6 +99,12 @@ class BotManager:
             if bot_id and bot_id in self._bots:
                 logger.warning(f"Bot ID {bot_id} already exists")
                 return None
+            
+            # Apply default multi-broker setting if not explicitly set
+            # This ensures trades go to ALL connected brokers by default
+            if config.broker_type is None and not config.multi_broker:
+                config.multi_broker = self.DEFAULT_MULTI_BROKER
+                logger.debug(f"Applied default multi_broker={self.DEFAULT_MULTI_BROKER} to bot '{config.name}'")
             
             # Create bot
             bot = BotInstance(config, bot_id)

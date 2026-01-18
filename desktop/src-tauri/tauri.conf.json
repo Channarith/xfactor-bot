@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "XFactor_Bot",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "identifier": "com.xfactor.trading",
   "build": {
     "frontendDist": "../../frontend/dist",

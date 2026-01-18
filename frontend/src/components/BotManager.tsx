@@ -456,14 +456,15 @@ export function BotManager({ token = '' }: BotManagerProps) {
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      {/* Header */}
+    <div>
+      {/* Quick Actions Bar */}
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Bot className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold">Bot Manager</h2>
-          <span className="text-sm text-muted-foreground">
-            ({filteredBots.length}/100)
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium text-muted-foreground">
+            {bots.length} bots
+          </span>
+          <span className="text-xs text-muted-foreground">
+            ({bots.filter(b => b.status === 'running').length} running)
           </span>
         </div>
         

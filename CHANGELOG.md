@@ -5,6 +5,38 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.2] - 2026-01-17
+
+### 🐛 Bug Fixes
+
+- **Bot Manager UI Fix**: Removed duplicate nested "Bot Manager" header that was showing incorrect bot count (40 vs 50). Now displays actual bot count correctly.
+- **P&L Tracking**: Bots now properly track and update daily P&L and total P&L when trades are executed. Previously showed +$0.00 even after trades.
+- **Bot Details Auto-Refresh**: Bot performance chart now auto-refreshes bot details every 30 seconds for real-time updates.
+- **FastAPI Deprecation Warnings**: Fixed `regex` -> `pattern` deprecation warnings in Query parameters.
+- **Pandas Timezone Warnings**: Fixed `FutureWarning: parsing datetimes with mixed time zones` by specifying `utc=True` in `pd.to_datetime()` calls.
+- **Alpaca Crypto Symbol Handling**: Added symbol normalization for crypto trading (converts `BTC-USD` to `BTC/USD` format). Validates symbols against supported Alpaca crypto list before order submission.
+
+### ✨ New Features
+
+- **Trade Rejection Tracking**: Bots now track rejection reasons with detailed categorization:
+  - `insufficient_buying_power` - Order rejected due to insufficient funds
+  - `position_limit` - Maximum positions reached
+  - `daily_loss_limit` - Daily loss limit exceeded
+  - `asset_not_found` - Symbol not tradeable on broker
+  - `broker_error` - Other broker-related errors
+- **Bot Attribution in Logs**: Trade logs now include which bot executed each trade (`bot_id`, `bot_name`) for better tracking.
+- **Multi-Broker Mode by Default**: New bots now default to trading on ALL connected brokers simultaneously. This ensures trades go to both IBKR and Alpaca when both are connected.
+- **Bot-Level Limit Overrides**: New configuration options for individual bots:
+  - `override_global_limits` - Bot's limits take precedence over global risk limits
+  - `ignore_vix_limits` - Don't reduce position size during VIX spikes
+  - `ignore_sector_limits` - Don't check sector concentration limits
+- **Rejection Statistics in Bot Status**: Bot status now includes:
+  - `rejections_by_reason` - Count of rejections by reason type
+  - `blocked_by_*` counters for different block types
+  - `recent_rejections` - Last 10 rejected orders with details
+
+---
+
 ## [2.1.1] - 2026-01-07
 
 ### 🐛 Bug Fixes

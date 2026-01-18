@@ -242,7 +242,6 @@ export function Dashboard() {
           <CollapsiblePanel 
             title="Bot Manager" 
             icon={<Bot className="h-5 w-5" />}
-            badge="40"
             defaultExpanded={true}
           >
             <BotManagerInner />

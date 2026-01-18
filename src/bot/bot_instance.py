@@ -456,6 +456,17 @@ class BotConfig:
     failover_brokers: List[str] = field(default_factory=list)  # Backup brokers in priority order
     multi_broker: bool = False  # If True, execute trades on ALL connected brokers simultaneously
     
+    # =========================================================================
+    # Bot-level limit overrides
+    # =========================================================================
+    override_global_limits: bool = False  # If True, bot's limits take precedence over global risk limits
+    # When override_global_limits is True:
+    #   - Bot's max_position_size, max_positions, max_daily_loss_pct are used instead of global
+    #   - Still respects hard stops (kill switch, extreme VIX, etc.)
+    #   - Use with caution - allows more aggressive trading per-bot
+    ignore_vix_limits: bool = False  # If True, don't reduce position size during VIX spikes
+    ignore_sector_limits: bool = False  # If True, don't check sector concentration limits
+    
     def to_dict(self) -> dict:
         return {
             "name": self.name,
@@ -533,6 +544,10 @@ class BotConfig:
             "broker_type": self.broker_type,
             "failover_brokers": self.failover_brokers,
             "multi_broker": self.multi_broker,
+            # Limit overrides
+            "override_global_limits": self.override_global_limits,
+            "ignore_vix_limits": self.ignore_vix_limits,
+            "ignore_sector_limits": self.ignore_sector_limits,
         }
     
     @classmethod
@@ -559,6 +574,17 @@ class TradeRecord:
 
 
 @dataclass
+class RejectionRecord:
+    """Record of a rejected order with reason."""
+    timestamp: str
+    symbol: str
+    side: str
+    quantity: float
+    reason: str
+    broker: str
+    error_code: Optional[str] = None
+
+@dataclass
 class BotStats:
     """Runtime statistics for a bot."""
     trades_today: int = 0
@@ -577,6 +603,16 @@ class BotStats:
     orders_filled: int = 0
     orders_rejected: int = 0
     trade_history: List[TradeRecord] = field(default_factory=list)  # Track all trades with reasons
+    
+    # Enhanced rejection tracking
+    rejection_history: List[RejectionRecord] = field(default_factory=list)  # Track rejected orders with reasons
+    rejections_by_reason: dict = field(default_factory=dict)  # Count by reason type
+    
+    # Trade limit tracking
+    blocked_by_buying_power: int = 0
+    blocked_by_position_limit: int = 0
+    blocked_by_daily_loss_limit: int = 0
+    blocked_by_broker_limits: int = 0
 
 
 class BotInstance:
@@ -622,6 +658,10 @@ class BotInstance:
             "on_error": [],
         }
         
+        # Position cost tracking for P&L calculation
+        # {symbol: {"quantity": float, "avg_cost": float, "total_cost": float}}
+        self._position_costs: dict[str, dict] = {}
+        
         logger.info(f"Bot {self.id} created: {config.name}")
         self._log_activity("created", f"Bot created with {len(config.symbols)} symbols")
     
@@ -645,6 +685,76 @@ class BotInstance:
             logger.info(f"[Bot {self.id}] {event_type}: {message}")
         else:
             logger.debug(f"[Bot {self.id}] {event_type}: {message}")
+    
+    def _record_buy(self, symbol: str, quantity: float, price: float) -> None:
+        """Record a buy trade for P&L tracking."""
+        if symbol not in self._position_costs:
+            self._position_costs[symbol] = {"quantity": 0, "avg_cost": 0, "total_cost": 0}
+        
+        pos = self._position_costs[symbol]
+        new_total_qty = pos["quantity"] + quantity
+        new_total_cost = pos["total_cost"] + (quantity * price)
+        
+        pos["quantity"] = new_total_qty
+        pos["total_cost"] = new_total_cost
+        pos["avg_cost"] = new_total_cost / new_total_qty if new_total_qty > 0 else 0
+        
+        self._log_activity("position_cost_update", f"Bought {symbol}: qty={new_total_qty}, avg_cost=${pos['avg_cost']:.2f}", {
+            "symbol": symbol,
+            "action": "buy",
+            "quantity": quantity,
+            "price": price,
+            "new_qty": new_total_qty,
+            "avg_cost": pos["avg_cost"],
+        })
+    
+    def _record_sell(self, symbol: str, quantity: float, price: float) -> float:
+        """
+        Record a sell trade for P&L tracking.
+        Returns the realized P&L from this sell.
+        """
+        if symbol not in self._position_costs or self._position_costs[symbol]["quantity"] <= 0:
+            logger.warning(f"Sell recorded for {symbol} but no position cost tracked")
+            return 0
+        
+        pos = self._position_costs[symbol]
+        avg_cost = pos["avg_cost"]
+        
+        # Calculate realized P&L
+        sell_qty = min(quantity, pos["quantity"])  # Can't sell more than we have
+        realized_pnl = (price - avg_cost) * sell_qty
+        
+        # Update position
+        pos["quantity"] -= sell_qty
+        pos["total_cost"] = pos["quantity"] * avg_cost
+        
+        # Update bot stats
+        self.stats.daily_pnl += realized_pnl
+        self.stats.total_pnl += realized_pnl
+        
+        # Update win rate
+        if realized_pnl > 0:
+            # Count winning trades
+            wins = sum(1 for t in self.stats.trade_history if t.side == "sell")
+            total_sells = len([t for t in self.stats.trade_history if t.side == "sell"])
+            if total_sells > 0:
+                # Rough estimate - actual win rate would need more tracking
+                self.stats.win_rate = max(0, min(1, self.stats.win_rate + (0.1 if realized_pnl > 0 else -0.1)))
+        
+        self._log_activity("pnl_realized", f"Sold {symbol}: P&L ${realized_pnl:+.2f} (sell @ ${price:.2f}, cost @ ${avg_cost:.2f})", {
+            "symbol": symbol,
+            "action": "sell",
+            "quantity": sell_qty,
+            "price": price,
+            "avg_cost": avg_cost,
+            "realized_pnl": realized_pnl,
+            "daily_pnl": self.stats.daily_pnl,
+            "total_pnl": self.stats.total_pnl,
+            "bot_id": self.id,
+            "bot_name": self.config.name,
+        })
+        
+        return realized_pnl
     
     @property
     def is_running(self) -> bool:
@@ -1029,6 +1139,9 @@ class BotInstance:
                             self.stats.orders_filled += 1
                             self.stats.last_trade_time = datetime.utcnow()
                             
+                            # Track position cost for P&L calculation
+                            self._record_buy(symbol, quantity, price)
+                            
                             # Track trade with reasoning
                             trade_record = TradeRecord(
                                 timestamp=datetime.utcnow().isoformat(),
@@ -1075,10 +1188,51 @@ class BotInstance:
                         except Exception as e:
                             self.stats.orders_rejected += 1
                             self.stats.errors_count += 1
-                            self._log_activity("order_rejected", f"Order failed for {symbol} on {broker.name}: {e}", {
+                            
+                            # Categorize the rejection reason
+                            error_str = str(e).lower()
+                            reason = "unknown"
+                            if "buying power" in error_str or "insufficient" in error_str:
+                                reason = "insufficient_buying_power"
+                                self.stats.blocked_by_buying_power += 1
+                            elif "position" in error_str or "limit" in error_str:
+                                reason = "position_limit"
+                                self.stats.blocked_by_position_limit += 1
+                            elif "daily" in error_str or "loss" in error_str:
+                                reason = "daily_loss_limit"
+                                self.stats.blocked_by_daily_loss_limit += 1
+                            elif "not found" in error_str or "invalid" in error_str:
+                                reason = "asset_not_found"
+                                self.stats.blocked_by_broker_limits += 1
+                            else:
+                                reason = "broker_error"
+                                self.stats.blocked_by_broker_limits += 1
+                            
+                            # Track rejection reason counts
+                            self.stats.rejections_by_reason[reason] = self.stats.rejections_by_reason.get(reason, 0) + 1
+                            
+                            # Record rejection with full details
+                            rejection = RejectionRecord(
+                                timestamp=datetime.utcnow().isoformat(),
+                                symbol=symbol,
+                                side="buy",
+                                quantity=quantity,
+                                reason=reason,
+                                broker=broker.name,
+                                error_code=str(e)[:200],  # Truncate long errors
+                            )
+                            self.stats.rejection_history.append(rejection)
+                            # Keep only last 100 rejections
+                            if len(self.stats.rejection_history) > 100:
+                                self.stats.rejection_history = self.stats.rejection_history[-100:]
+                            
+                            self._log_activity("order_rejected", f"Order failed for {symbol} on {broker.name}: {e} (reason: {reason})", {
                                 "symbol": symbol,
                                 "error": str(e),
                                 "broker": broker.name,
+                                "rejection_reason": reason,
+                                "bot_id": self.id,
+                                "bot_name": self.config.name,
                             })
                     else:
                         self._log_activity("skip_order", f"Quantity would be 0 for {symbol} (price={price})")
@@ -1105,6 +1259,9 @@ class BotInstance:
                         self.stats.trades_today += 1
                         self.stats.orders_filled += 1
                         self.stats.last_trade_time = datetime.utcnow()
+                        
+                        # Calculate and record P&L
+                        realized_pnl = self._record_sell(symbol, abs(current_qty), price)
                         
                         # Track trade with reasoning
                         trade_record = TradeRecord(
@@ -1152,9 +1309,43 @@ class BotInstance:
                     except Exception as e:
                         self.stats.orders_rejected += 1
                         self.stats.errors_count += 1
-                        self._log_activity("order_rejected", f"Order failed for {symbol} on {broker.name}: {e}", {
+                        
+                        # Categorize the rejection reason
+                        error_str = str(e).lower()
+                        reason = "unknown"
+                        if "insufficient" in error_str or "qty" in error_str:
+                            reason = "insufficient_quantity"
+                            self.stats.blocked_by_broker_limits += 1
+                        elif "position" in error_str or "not found" in error_str:
+                            reason = "position_not_found"
+                            self.stats.blocked_by_broker_limits += 1
+                        else:
+                            reason = "broker_error"
+                            self.stats.blocked_by_broker_limits += 1
+                        
+                        # Track rejection reason counts
+                        self.stats.rejections_by_reason[reason] = self.stats.rejections_by_reason.get(reason, 0) + 1
+                        
+                        # Record rejection with full details
+                        rejection = RejectionRecord(
+                            timestamp=datetime.utcnow().isoformat(),
+                            symbol=symbol,
+                            side="sell",
+                            quantity=abs(current_qty),
+                            reason=reason,
+                            broker=broker.name,
+                            error_code=str(e)[:200],
+                        )
+                        self.stats.rejection_history.append(rejection)
+                        if len(self.stats.rejection_history) > 100:
+                            self.stats.rejection_history = self.stats.rejection_history[-100:]
+                        
+                        self._log_activity("order_rejected", f"Order failed for {symbol} on {broker.name}: {e} (reason: {reason})", {
                             "symbol": symbol,
                             "error": str(e),
+                            "rejection_reason": reason,
+                            "bot_id": self.id,
+                            "bot_name": self.config.name,
                             "broker": broker.name,
                         })
                 else:
@@ -1314,7 +1505,7 @@ class BotInstance:
                         }
                         for b in bars
                     ])
-                    df.index = pd.to_datetime([b.timestamp for b in bars])
+                    df.index = pd.to_datetime([b.timestamp for b in bars], utc=True)
                     
                     with _market_data_lock:
                         _market_data_cache[cache_key] = {
@@ -2394,6 +2585,23 @@ class BotInstance:
                         "confidence": t.confidence,
                     }
                     for t in self.stats.trade_history[-20:]  # Last 20 trades
+                ],
+                # Rejection tracking
+                "rejections_by_reason": self.stats.rejections_by_reason,
+                "blocked_by_buying_power": self.stats.blocked_by_buying_power,
+                "blocked_by_position_limit": self.stats.blocked_by_position_limit,
+                "blocked_by_daily_loss_limit": self.stats.blocked_by_daily_loss_limit,
+                "blocked_by_broker_limits": self.stats.blocked_by_broker_limits,
+                "recent_rejections": [
+                    {
+                        "timestamp": r.timestamp,
+                        "symbol": r.symbol,
+                        "side": r.side,
+                        "quantity": r.quantity,
+                        "reason": r.reason,
+                        "broker": r.broker,
+                    }
+                    for r in self.stats.rejection_history[-10:]  # Last 10 rejections
                 ],
             },
         }

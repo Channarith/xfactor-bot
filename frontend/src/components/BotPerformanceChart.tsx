@@ -79,13 +79,27 @@ const TIME_RANGES = [
   { value: 'ALL', label: 'ALL' },
 ]
 
-export function BotPerformanceChart({ botId, botName, botDetails, onClose }: BotPerformanceChartProps) {
+export function BotPerformanceChart({ botId, botName, botDetails: initialBotDetails, onClose }: BotPerformanceChartProps) {
   const [timeRange, setTimeRange] = useState('1D')
   const [data, setData] = useState<PerformanceData[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [activeTab, setActiveTab] = useState<'chart' | 'details' | 'optimizer'>('chart')
+  const [botDetails, setBotDetails] = useState<BotDetails | null>(initialBotDetails || null)
+
+  // Fetch bot details for live updates
+  const fetchBotDetails = useCallback(async () => {
+    try {
+      const response = await fetch(apiUrl(`/api/bots/${botId}`))
+      if (response.ok) {
+        const details = await response.json()
+        setBotDetails(details)
+      }
+    } catch (err) {
+      console.error('Failed to fetch bot details:', err)
+    }
+  }, [botId])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -111,13 +125,18 @@ export function BotPerformanceChart({ botId, botName, botDetails, onClose }: Bot
 
   useEffect(() => {
     fetchData()
+    fetchBotDetails()
     
-    // Auto-refresh every 30 seconds for 1D view
-    if (timeRange === '1D') {
-      const interval = setInterval(fetchData, 30000)
-      return () => clearInterval(interval)
-    }
-  }, [fetchData, timeRange])
+    // Auto-refresh every 30 seconds for both performance data and bot details
+    const interval = setInterval(() => {
+      if (timeRange === '1D') {
+        fetchData()
+      }
+      fetchBotDetails()  // Always refresh bot details
+    }, 30000)
+    
+    return () => clearInterval(interval)
+  }, [fetchData, fetchBotDetails, timeRange])
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp)

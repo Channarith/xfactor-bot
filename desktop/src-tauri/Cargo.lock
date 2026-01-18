@@ -6440,7 +6440,7 @@ checksum = "ea6fc2961e4ef194dcbfe56bb845534d0dc8098940c7e5c012a258bfec6701bd"
 
 [[package]]
 name = "xfactor-bot"
-version = "0.9.6"
+version = "2.1.2"
 dependencies = [
  "chrono",
  "log",

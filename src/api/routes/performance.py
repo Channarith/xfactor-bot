@@ -112,7 +112,7 @@ def _get_time_params(time_range: str) -> tuple[int, int, datetime]:
 @router.get("/bot/{bot_id}")
 async def get_bot_performance(
     bot_id: str,
-    time_range: str = Query("1D", regex="^(1D|1W|1M|3M|6M|1Y|YTD|ALL)$"),
+    time_range: str = Query("1D", pattern="^(1D|1W|1M|3M|6M|1Y|YTD|ALL)$"),
 ) -> dict:
     """
     Get performance data for a specific bot.
@@ -208,7 +208,7 @@ async def get_bot_performance(
 @router.get("/position/{symbol}")
 async def get_position_performance(
     symbol: str,
-    time_range: str = Query("1D", regex="^(1D|1W|1M|3M|6M|1Y|YTD|ALL)$"),
+    time_range: str = Query("1D", pattern="^(1D|1W|1M|3M|6M|1Y|YTD|ALL)$"),
 ) -> dict:
     """
     Get performance data for a specific position/symbol.
@@ -272,9 +272,9 @@ async def get_position_performance(
 
 @router.get("/positions/all")
 async def get_all_positions_performance(
-    time_range: str = Query("1D", regex="^(1D|1W|1M|3M|6M|1Y|YTD|ALL)$"),
-    sort_by: str = Query("symbol", regex="^(symbol|last_price|change_pct|equity|today_return|total_return|total_pct)$"),
-    sort_order: str = Query("asc", regex="^(asc|desc)$"),
+    time_range: str = Query("1D", pattern="^(1D|1W|1M|3M|6M|1Y|YTD|ALL)$"),
+    sort_by: str = Query("symbol", pattern="^(symbol|last_price|change_pct|equity|today_return|total_return|total_pct)$"),
+    sort_order: str = Query("asc", pattern="^(asc|desc)$"),
 ) -> dict:
     """
     Get performance data for all positions with sorting.

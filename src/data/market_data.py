@@ -269,7 +269,7 @@ class MarketDataManager:
         
         # Set time as index
         if not df.empty:
-            df["time"] = pd.to_datetime(df["time"])
+            df["time"] = pd.to_datetime(df["time"], utc=True)
             df.set_index("time", inplace=True)
             
             # Cache the result
