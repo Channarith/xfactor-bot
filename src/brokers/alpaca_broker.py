@@ -89,6 +89,21 @@ class AlpacaBroker(BaseBroker):
         self._api_lock = threading.Lock()
         
         logger.debug(f"AlpacaBroker initialized: paper={paper}, base_url={self.base_url}")
+    
+    @property
+    def supports_fractional_shares(self) -> bool:
+        """Alpaca supports fractional share trading for most US stocks."""
+        return True
+    
+    @property
+    def supports_extended_hours(self) -> bool:
+        """Alpaca supports extended hours trading (pre-market and after-hours)."""
+        return True
+    
+    @property
+    def max_orders_per_minute(self) -> int:
+        """Alpaca allows 200 API requests per minute."""
+        return 200
         
         # Supported crypto symbols on Alpaca (as of 2024)
         # Alpaca uses "/" format, e.g. "BTC/USD"

@@ -143,6 +143,24 @@ class BaseBroker(ABC):
         """
         return True
     
+    @property
+    def supports_extended_hours(self) -> bool:
+        """Whether this broker supports extended hours trading.
+        
+        Default is True. Override if broker has restrictions.
+        """
+        return True
+    
+    @property
+    def max_orders_per_minute(self) -> int:
+        """Maximum orders per minute allowed by this broker's API.
+        
+        Used for broker-level rate limiting. Default is 60.
+        - Alpaca: 200 requests/minute
+        - IBKR: Varies, conservative default
+        """
+        return 60
+    
     # =========================================================================
     # Connection Management
     # =========================================================================

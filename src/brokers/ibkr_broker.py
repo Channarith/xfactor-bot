@@ -137,6 +137,11 @@ class IBKRBroker(BaseBroker):
         """IBKR supports extended hours trading with limit orders."""
         return True
     
+    @property
+    def max_orders_per_minute(self) -> int:
+        """IBKR recommends max 50 messages per second, but we use conservative limit."""
+        return 50
+    
     def _is_regular_trading_hours(self) -> bool:
         """Check if current time is within regular trading hours (9:30 AM - 4:00 PM ET)."""
         now_et = datetime.now(ET)
