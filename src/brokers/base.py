@@ -134,6 +134,15 @@ class BaseBroker(ABC):
         """Human-readable broker name."""
         return self.broker_type.value.upper()
     
+    @property
+    def supports_fractional_shares(self) -> bool:
+        """Whether this broker supports fractional share orders.
+        
+        Default is True. Brokers that don't support fractional shares
+        (like IBKR) should override this to return False.
+        """
+        return True
+    
     # =========================================================================
     # Connection Management
     # =========================================================================

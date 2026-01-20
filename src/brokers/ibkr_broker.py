@@ -102,6 +102,11 @@ class IBKRBroker(BaseBroker):
         self._async_lock: Optional[asyncio.Lock] = None
         self._async_lock_loop: Optional[asyncio.AbstractEventLoop] = None
     
+    @property
+    def supports_fractional_shares(self) -> bool:
+        """IBKR does not support fractional share orders via API."""
+        return False
+    
     def _connect_sync(self) -> bool:
         """
         Synchronous connect method to be run in executor.

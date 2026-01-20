@@ -104,6 +104,19 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '2.1.4',
+    date: 'January 20, 2026',
+    changes: [
+      '🐛 IBKR Fractional Shares - Complete Fix',
+      '',
+      '• Fixed IBKR error 10243: "Fractional-sized order cannot be placed via API"',
+      '• Added supports_fractional_shares property to broker interface',
+      '• Bots now check broker capability before calculating order quantities',
+      '• Two-level protection: bot-level + broker-level rounding',
+      '• Sell orders also respect broker fractional share support',
+    ]
+  },
+  {
     version: '2.1.3',
     date: 'January 17, 2026',
     changes: [

@@ -5,6 +5,19 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.4] - 2026-01-20
+
+### 🐛 Bug Fixes
+
+- **IBKR Fractional Shares - Bot-Level Fix**: Fixed IBKR error 10243 "Fractional-sized order cannot be placed via API". Bot instances now check `broker.supports_fractional_shares` property before calculating order quantities.
+- **Broker Fractional Share Support Property**: Added `supports_fractional_shares` property to `BaseBroker` (default `True`). IBKR overrides to return `False`.
+- **Two-Level Fractional Share Protection**: 
+  1. Bot instance uses whole numbers when broker doesn't support fractions
+  2. IBKR broker still rounds down as a safety net
+- **Sell Order Whole Share Handling**: Sell orders now also respect broker's fractional share support, preventing fractional sell rejections.
+
+---
+
 ## [2.1.3] - 2026-01-17
 
 ### 🐛 Bug Fixes

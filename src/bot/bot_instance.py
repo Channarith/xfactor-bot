@@ -1105,15 +1105,20 @@ class BotInstance:
                         # Dynamic: use configured percentage of buying power
                         max_position = buying_power * (self.config.max_position_pct / 100)
                     
-                    # Support fractional shares if enabled
-                    if self.config.enable_fractional_shares and price > 0:
+                    # Support fractional shares if enabled AND broker supports it
+                    use_fractional = (
+                        self.config.enable_fractional_shares 
+                        and getattr(broker, 'supports_fractional_shares', True)
+                    )
+                    
+                    if use_fractional and price > 0:
                         # Calculate fractional quantity (round to 6 decimal places)
                         quantity = round(max_position / price, 6)
                         # Ensure minimum trade amount
                         if quantity * price < self.config.min_trade_amount:
                             quantity = round(self.config.min_trade_amount / price, 6)
                     else:
-                        # Whole shares only
+                        # Whole shares only (broker doesn't support fractions or config disabled)
                         quantity = int(max_position / price) if price > 0 else 0
                     
                     if quantity > 0:
@@ -1238,10 +1243,18 @@ class BotInstance:
                         self._log_activity("skip_order", f"Quantity would be 0 for {symbol} (price={price})")
                 
                 elif signal_type in ('strong_sell', 'sell') and current_qty > 0:
-                    self._log_activity("order_intent", f"SELL {abs(current_qty)} {symbol} @ market via {broker.name}", {
+                    # Round sell quantity for brokers that don't support fractional shares
+                    sell_qty = abs(current_qty)
+                    if not getattr(broker, 'supports_fractional_shares', True):
+                        sell_qty = int(sell_qty)  # Round down to whole shares
+                        if sell_qty <= 0:
+                            self._log_activity("skip_order", f"SELL skipped for {symbol}: fractional position {current_qty} rounds to 0 for {broker.name}")
+                            continue
+                    
+                    self._log_activity("order_intent", f"SELL {sell_qty} {symbol} @ market via {broker.name}", {
                         "symbol": symbol,
                         "side": "sell",
-                        "quantity": abs(current_qty),
+                        "quantity": sell_qty,
                         "broker": broker.name,
                         "reasoning": reasoning,
                     })
@@ -1253,7 +1266,7 @@ class BotInstance:
                             account_id=account_id,
                             symbol=symbol,
                             side=OrderSide.SELL,
-                            quantity=abs(current_qty),
+                            quantity=sell_qty,
                             order_type=OrderType.MARKET,
                         )
                         self.stats.trades_today += 1
@@ -1261,14 +1274,14 @@ class BotInstance:
                         self.stats.last_trade_time = datetime.utcnow()
                         
                         # Calculate and record P&L
-                        realized_pnl = self._record_sell(symbol, abs(current_qty), price)
+                        realized_pnl = self._record_sell(symbol, sell_qty, price)
                         
                         # Track trade with reasoning
                         trade_record = TradeRecord(
                             timestamp=datetime.utcnow().isoformat(),
                             symbol=symbol,
                             side="sell",
-                            quantity=abs(current_qty),
+                            quantity=sell_qty,
                             price=price,
                             order_id=order.order_id,
                             broker=broker.name,
@@ -1284,7 +1297,7 @@ class BotInstance:
                             record_trade(
                                 symbol=symbol,
                                 side="sell",
-                                quantity=abs(current_qty),
+                                quantity=sell_qty,
                                 price=price,
                                 order_type="market",
                                 source=TradeSource.BOT,
@@ -1297,15 +1310,15 @@ class BotInstance:
                         except Exception as e:
                             logger.debug(f"Could not record trade for comparison: {e}")
                         
-                        self._log_activity("order_filled", f"SELL {abs(current_qty)} {symbol} - Order {order.order_id} via {broker.name}", {
+                        self._log_activity("order_filled", f"SELL {sell_qty} {symbol} - Order {order.order_id} via {broker.name}", {
                             "order_id": order.order_id,
                             "symbol": symbol,
                             "side": "sell",
-                            "quantity": abs(current_qty),
+                            "quantity": sell_qty,
                             "broker": broker.name,
                             "reasoning": reasoning,
                         })
-                        self._emit("on_trade", {"symbol": symbol, "side": "sell", "quantity": abs(current_qty), "order_id": order.order_id, "broker": broker.name, "reasoning": reasoning})
+                        self._emit("on_trade", {"symbol": symbol, "side": "sell", "quantity": sell_qty, "order_id": order.order_id, "broker": broker.name, "reasoning": reasoning})
                     except Exception as e:
                         self.stats.orders_rejected += 1
                         self.stats.errors_count += 1
