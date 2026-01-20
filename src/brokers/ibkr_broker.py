@@ -375,6 +375,12 @@ class IBKRBroker(BaseBroker):
                 
                 if connected:
                     self._connected = True
+                    # Clear caches on reconnect to ensure fresh margin data
+                    self._account_cache = None
+                    self._account_cache_time = None
+                    self._positions_cache = None
+                    self._positions_cache_time = None
+                    logger.info("IBKR connected (caches cleared for fresh data)")
                     return True
                 else:
                     self._error_message = "Failed to connect to TWS/Gateway. Check that it's running and API is enabled."
@@ -408,7 +414,14 @@ class IBKRBroker(BaseBroker):
             self._ib.disconnect()
         self._ib = None
         self._connected = False
-        logger.info("Disconnected from IBKR")
+        
+        # Clear all caches on disconnect to force fresh data on reconnect
+        self._account_cache = None
+        self._account_cache_time = None
+        self._positions_cache = None
+        self._positions_cache_time = None
+        
+        logger.info("Disconnected from IBKR (caches cleared)")
     
     async def health_check(self) -> bool:
         """Check IBKR connection health."""
