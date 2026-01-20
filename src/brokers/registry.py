@@ -103,6 +103,9 @@ class BrokerRegistry:
                 if self._default_broker is None:
                     self._default_broker = broker_type
                 
+                # Sync existing positions for tracking
+                await self._sync_positions_on_connect(broker_type)
+                
                 # Save connection if requested
                 if save_connection:
                     saved_conns = get_saved_connections()
@@ -410,6 +413,9 @@ class BrokerRegistry:
                 # Restore as default if it was the default
                 if self._default_broker is None:
                     self._default_broker = broker_type
+                
+                # Sync existing positions for tracking
+                await self._sync_positions_on_connect(broker_type)
             else:
                 error_msg = getattr(broker, '_error_message', None) or "Unknown error"
                 self._log_connection_event(broker_type, "reconnect_failed", error_msg)
@@ -435,6 +441,20 @@ class BrokerRegistry:
         config = self._connection_configs[broker_type]
         success, _ = await self.connect_broker(broker_type, **config)
         return success
+    
+    async def _sync_positions_on_connect(self, broker_type: BrokerType) -> None:
+        """Sync existing positions from broker for tracking after connect/reconnect."""
+        try:
+            from src.bot.bot_manager import get_bot_manager
+            manager = get_bot_manager()
+            
+            if manager:
+                synced = await manager.sync_positions_from_broker(broker_type.value)
+                if synced > 0:
+                    logger.info(f"Synced {synced} existing positions from {broker_type.value}")
+        except Exception as e:
+            # Don't fail connection if sync fails
+            logger.debug(f"Could not sync positions from {broker_type.value}: {e}")
     
     def set_auto_reconnect(self, enabled: bool):
         """Enable or disable auto-reconnection."""

@@ -91,6 +91,33 @@ async def get_all_positions() -> Dict[str, Any]:
     }
 
 
+@router.post("/sync")
+async def sync_positions() -> Dict[str, Any]:
+    """
+    Sync position tracking with actual broker positions.
+    
+    This recognizes pre-existing positions that were opened before
+    the bot tracking system started or from other sources.
+    """
+    try:
+        from src.bot.bot_manager import get_bot_manager
+        manager = get_bot_manager()
+        
+        if not manager:
+            return {"status": "error", "message": "Bot manager not available"}
+        
+        synced = await manager.sync_positions_from_broker()
+        
+        return {
+            "status": "ok",
+            "synced_count": synced,
+            "message": f"Synced {synced} pre-existing positions",
+        }
+    except Exception as e:
+        logger.error(f"Error syncing positions: {e}")
+        return {"status": "error", "message": str(e)}
+
+
 @router.get("/summary")
 async def get_portfolio_summary(
     broker: Optional[str] = None,  # Filter by specific broker (e.g., "ibkr", "alpaca")

@@ -89,6 +89,65 @@ class BotManager:
                 for (symbol, broker), info in self._position_tracking.items()
             }
     
+    async def sync_positions_from_broker(self, broker_type: str = None) -> int:
+        """
+        Sync position tracking with actual broker positions.
+        
+        For positions that exist in the broker but aren't tracked,
+        marks them as 'pre-existing' (opened before bot tracking started).
+        
+        Returns count of positions synced.
+        """
+        try:
+            from src.brokers.registry import get_broker_registry
+            registry = get_broker_registry()
+            
+            synced = 0
+            
+            for bt in registry.connected_brokers:
+                if broker_type and bt.value.lower() != broker_type.lower():
+                    continue
+                    
+                broker = registry.get_broker(bt)
+                if not broker or not broker.is_connected:
+                    continue
+                
+                try:
+                    accounts = await broker.get_accounts()
+                    if not accounts:
+                        continue
+                    
+                    account_id = accounts[0].account_id
+                    positions = await broker.get_positions(account_id)
+                    
+                    with self._position_lock:
+                        for pos in positions:
+                            key = (pos.symbol.upper(), bt.value.upper())
+                            
+                            # Only add if not already tracked
+                            if key not in self._position_tracking:
+                                self._position_tracking[key] = {
+                                    "bot_id": "pre-existing",
+                                    "bot_name": "Pre-existing Position",
+                                    "opened_at": None,  # Unknown
+                                    "quantity": pos.quantity,
+                                    "synced": True,  # Mark as synced, not bot-opened
+                                }
+                                synced += 1
+                                logger.debug(f"Synced pre-existing position: {pos.symbol} on {bt.value}")
+                    
+                except Exception as e:
+                    logger.error(f"Error syncing positions from {bt.value}: {e}")
+            
+            if synced > 0:
+                logger.info(f"Synced {synced} pre-existing positions from brokers")
+            
+            return synced
+            
+        except Exception as e:
+            logger.error(f"Error in sync_positions_from_broker: {e}")
+            return 0
+    
     @property
     def bot_count(self) -> int:
         """Get number of bots."""
