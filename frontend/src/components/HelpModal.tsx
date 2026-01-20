@@ -104,6 +104,27 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '2.1.7',
+    date: 'January 20, 2026',
+    changes: [
+      '🛡️ Margin Safety System',
+      '',
+      '• Monitors margin cushion % above maintenance requirement',
+      '• Blocks new buys when margin < 20%',
+      '• Auto-reduces positions when margin < 15%',
+      '• Emergency sell when margin < 12%',
+      '• Configurable thresholds in bot settings',
+      '',
+      '📊 Position Bot Tracking',
+      '• Open Positions now shows which bot opened each position',
+      '• Displays bot_id, bot_name, and opened_at timestamp',
+      '',
+      '🔧 Agentic Tuning Fix',
+      '• Fixed 24-hour delay before first evaluation',
+      '• Now evaluates immediately on start',
+    ]
+  },
+  {
     version: '2.1.6',
     date: 'January 20, 2026',
     changes: [

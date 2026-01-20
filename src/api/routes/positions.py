@@ -28,12 +28,23 @@ class PositionResponse(BaseModel):
     broker: Optional[str] = None
     sector: Optional[str] = None
     strategy: Optional[str] = None
+    bot_id: Optional[str] = None
+    bot_name: Optional[str] = None
+    opened_at: Optional[str] = None
 
 
 @router.get("/")
 async def get_all_positions() -> Dict[str, Any]:
     """Get all current positions from connected brokers."""
     registry = get_broker_registry()
+    
+    # Get bot tracking info
+    try:
+        from src.bot.bot_manager import get_bot_manager
+        manager = get_bot_manager()
+        position_tracking = manager.get_all_position_tracking() if manager else {}
+    except Exception:
+        position_tracking = {}
     
     all_positions = []
     total_value = 0.0
@@ -50,6 +61,10 @@ async def get_all_positions() -> Dict[str, Any]:
                     positions = await broker.get_positions(account_id)
                     
                     for pos in positions:
+                        # Look up bot info for this position
+                        tracking_key = f"{pos.symbol.upper()}@{broker_type.value.upper()}"
+                        bot_info = position_tracking.get(tracking_key, {})
+                        
                         all_positions.append({
                             "symbol": pos.symbol,
                             "quantity": pos.quantity,
@@ -60,6 +75,9 @@ async def get_all_positions() -> Dict[str, Any]:
                             "unrealized_pnl_pct": pos.unrealized_pnl_pct,
                             "side": pos.side,
                             "broker": broker_type.value,
+                            "bot_id": bot_info.get("bot_id"),
+                            "bot_name": bot_info.get("bot_name"),
+                            "opened_at": bot_info.get("opened_at"),
                         })
                         total_value += pos.market_value
                         

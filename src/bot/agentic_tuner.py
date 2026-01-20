@@ -409,31 +409,54 @@ class AgenticTuner:
     
     async def _evaluation_loop(self) -> None:
         """Background loop for periodic evaluation."""
+        # Run initial evaluation immediately
+        logger.info("AgenticTuner: Running initial evaluation...")
+        await self._run_evaluation_cycle()
+        
         while self._running:
             try:
-                await asyncio.sleep(self.config.evaluation_interval_hours * 3600)
+                # Wait for next evaluation interval
+                wait_hours = self.config.evaluation_interval_hours
+                logger.info(f"AgenticTuner: Next evaluation in {wait_hours} hours")
+                await asyncio.sleep(wait_hours * 3600)
                 
                 if not self._running:
                     break
                 
-                # Update phase based on days running
-                self._update_phase()
-                
-                # Calculate scores
-                await self._calculate_all_scores()
-                
-                # Rank bots
-                self._rank_bots()
-                
-                # Prune if auto-prune is enabled
-                if self.config.auto_prune:
-                    await self._execute_pruning()
+                await self._run_evaluation_cycle()
                 
             except asyncio.CancelledError:
+                logger.info("AgenticTuner: Evaluation loop cancelled")
                 break
             except Exception as e:
-                logger.error(f"Error in evaluation loop: {e}")
-                await asyncio.sleep(60)
+                logger.error(f"AgenticTuner evaluation error: {e}")
+                await asyncio.sleep(60)  # Wait 1 minute before retry
+    
+    async def _run_evaluation_cycle(self) -> None:
+        """Run a single evaluation cycle."""
+        logger.info("AgenticTuner: Starting evaluation cycle")
+        
+        # Update phase based on days running
+        self._update_phase()
+        
+        # Calculate scores
+        await self._calculate_all_scores()
+        
+        # Rank bots
+        self._rank_bots()
+        
+        # Log top 5 performers
+        rankings = self.get_rankings()[:5]
+        if rankings:
+            logger.info("AgenticTuner Top 5 Performers:")
+            for i, r in enumerate(rankings, 1):
+                logger.info(f"  #{i}: {r.get('bot_name', 'Unknown')} - Score: {r.get('composite_score', 0):.2f}, P&L: ${r.get('total_profit', 0):.2f}")
+        
+        # Prune if auto-prune is enabled
+        if self.config.auto_prune:
+            await self._execute_pruning()
+        
+        logger.info(f"AgenticTuner: Evaluation cycle complete. Phase: {self._current_phase.value}, Active: {self.active_bot_count}, Champions: {self.champion_count}")
     
     def _update_phase(self) -> None:
         """Update the current tuning phase based on days running."""

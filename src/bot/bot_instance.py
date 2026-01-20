@@ -392,6 +392,15 @@ class BotConfig:
     enable_fractional_shares: bool = True  # Allow buying fractional shares (broker dependent)
     min_trade_amount: float = 1.0          # Minimum $ amount per trade (for fractional)
     
+    # =========================================================================
+    # Margin Safety Settings
+    # =========================================================================
+    enable_margin_safety: bool = True      # Enable margin cushion checks
+    min_margin_cushion_pct: float = 20.0   # Minimum margin cushion before stopping new buys
+    margin_warning_pct: float = 25.0       # Log warning when cushion falls below this
+    margin_reduce_positions_pct: float = 15.0  # Start reducing positions below this
+    margin_emergency_pct: float = 12.0     # Emergency: sell positions to restore margin
+    
     # News settings
     enable_news_trading: bool = True
     news_sentiment_threshold: float = 0.5
@@ -1089,6 +1098,46 @@ class BotInstance:
             self.stats.errors_count += 1
             return
         
+        # =========================================================================
+        # Margin Safety Checks
+        # =========================================================================
+        margin_cushion = getattr(account, 'margin_cushion_pct', 100.0)
+        margin_safe_for_buys = True
+        margin_needs_reduction = False
+        margin_emergency = False
+        
+        if self.config.enable_margin_safety:
+            if margin_cushion < self.config.margin_emergency_pct:
+                # EMERGENCY: Need to sell positions immediately
+                margin_emergency = True
+                margin_safe_for_buys = False
+                self._log_activity("margin_emergency", 
+                    f"⚠️ MARGIN EMERGENCY: {margin_cushion:.1f}% cushion. Will sell positions to restore margin.", 
+                    {"margin_cushion": margin_cushion, "threshold": self.config.margin_emergency_pct})
+                logger.warning(f"[Bot {self.id}] MARGIN EMERGENCY: {margin_cushion:.1f}% - selling positions")
+                
+            elif margin_cushion < self.config.margin_reduce_positions_pct:
+                # Need to reduce positions, no new buys
+                margin_needs_reduction = True
+                margin_safe_for_buys = False
+                self._log_activity("margin_reduce", 
+                    f"⚠️ MARGIN LOW: {margin_cushion:.1f}% cushion. Reducing positions, no new buys.",
+                    {"margin_cushion": margin_cushion, "threshold": self.config.margin_reduce_positions_pct})
+                logger.warning(f"[Bot {self.id}] MARGIN LOW: {margin_cushion:.1f}% - reducing positions")
+                
+            elif margin_cushion < self.config.min_margin_cushion_pct:
+                # Below minimum, no new buys but can hold
+                margin_safe_for_buys = False
+                self._log_activity("margin_warning",
+                    f"⚠️ MARGIN WARNING: {margin_cushion:.1f}% cushion. No new buys allowed.",
+                    {"margin_cushion": margin_cushion, "threshold": self.config.min_margin_cushion_pct})
+                
+            elif margin_cushion < self.config.margin_warning_pct:
+                # Warning level, still can trade but log it
+                self._log_activity("margin_caution",
+                    f"Margin caution: {margin_cushion:.1f}% cushion approaching minimum",
+                    {"margin_cushion": margin_cushion, "threshold": self.config.margin_warning_pct})
+        
         # Note: Paper trading mode still executes trades - just on a paper/simulated account
         # The broker itself handles whether it's a paper or live account
         mode = "PAPER" if self.config.use_paper_trading else "LIVE"
@@ -1144,8 +1193,39 @@ class BotInstance:
                 # Log the AI reasoning
                 logger.info(f"[Bot {self.id}] 🤖 Trade Reasoning for {symbol}: {reasoning}")
                 
+                # =========================================================================
+                # Emergency Margin Sell - Override normal signals
+                # =========================================================================
+                if margin_emergency and current_qty > 0:
+                    # Force sell to restore margin regardless of signal
+                    self._log_activity("margin_emergency_sell", 
+                        f"EMERGENCY SELL {current_qty} {symbol} - Margin cushion critical ({margin_cushion:.1f}%)",
+                        {"symbol": symbol, "quantity": current_qty, "margin_cushion": margin_cushion})
+                    
+                    # Override signal to force sell
+                    signal_type = 'strong_sell'
+                    reasoning = f"🚨 MARGIN EMERGENCY: Forced sell to restore margin cushion (was {margin_cushion:.1f}%)"
+                    logger.warning(f"[Bot {self.id}] 🚨 MARGIN EMERGENCY SELL: {symbol} ({current_qty} shares)")
+                
+                # Auto-reduce positions when margin is low (but not emergency)
+                elif margin_needs_reduction and current_qty > 0 and signal_type not in ('strong_buy', 'buy'):
+                    # Sell positions that aren't showing buy signals
+                    self._log_activity("margin_reduction_sell",
+                        f"MARGIN REDUCTION: Selling {symbol} to improve margin cushion ({margin_cushion:.1f}%)",
+                        {"symbol": symbol, "quantity": current_qty, "margin_cushion": margin_cushion})
+                    signal_type = 'sell'
+                    reasoning = f"📉 MARGIN REDUCTION: Selling to improve cushion (was {margin_cushion:.1f}%)"
+                
                 # Determine action based on signal
                 if signal_type in ('strong_buy', 'buy') and current_qty <= 0:
+                    # Check margin safety before buying
+                    if not margin_safe_for_buys:
+                        self._log_activity("margin_block", 
+                            f"BUY blocked for {symbol}: margin cushion {margin_cushion:.1f}% below threshold",
+                            {"symbol": symbol, "margin_cushion": margin_cushion})
+                        self.stats.blocked_by_broker_limits += 1
+                        continue
+                    
                     # Calculate position size based on % of buying power
                     # If max_position_size is 0, use percentage-based calculation
                     if self.config.max_position_size > 0:
@@ -1239,6 +1319,15 @@ class BotInstance:
                             except Exception as e:
                                 logger.debug(f"Could not record trade for comparison: {e}")
                             
+                            # Track position with bot info for UI display
+                            try:
+                                from src.bot.bot_manager import get_bot_manager
+                                manager = get_bot_manager()
+                                if manager:
+                                    manager.track_position_open(symbol, broker.name, self.id, self.config.name, quantity)
+                            except Exception as e:
+                                logger.debug(f"Could not track position for bot: {e}")
+                            
                             self._log_activity("order_filled", f"BUY {quantity} {symbol} - Order {order.order_id} via {broker.name}", {
                                 "order_id": order.order_id,
                                 "symbol": symbol,
@@ -1246,6 +1335,8 @@ class BotInstance:
                                 "quantity": quantity,
                                 "broker": broker.name,
                                 "reasoning": reasoning,
+                                "bot_id": self.id,
+                                "bot_name": self.config.name,
                             })
                             self._emit("on_trade", {"symbol": symbol, "side": "buy", "quantity": quantity, "order_id": order.order_id, "broker": broker.name, "reasoning": reasoning})
                             
@@ -1378,6 +1469,15 @@ class BotInstance:
                         except Exception as e:
                             logger.debug(f"Could not record trade for comparison: {e}")
                         
+                        # Remove position tracking when fully closed
+                        try:
+                            from src.bot.bot_manager import get_bot_manager
+                            manager = get_bot_manager()
+                            if manager:
+                                manager.track_position_close(symbol, broker.name)
+                        except Exception as e:
+                            logger.debug(f"Could not remove position tracking: {e}")
+                        
                         self._log_activity("order_filled", f"SELL {sell_qty} {symbol} - Order {order.order_id} via {broker.name}", {
                             "order_id": order.order_id,
                             "symbol": symbol,
@@ -1385,6 +1485,8 @@ class BotInstance:
                             "quantity": sell_qty,
                             "broker": broker.name,
                             "reasoning": reasoning,
+                            "bot_id": self.id,
+                            "bot_name": self.config.name,
                         })
                         self._emit("on_trade", {"symbol": symbol, "side": "sell", "quantity": sell_qty, "order_id": order.order_id, "broker": broker.name, "reasoning": reasoning})
                         

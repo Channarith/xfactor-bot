@@ -46,10 +46,48 @@ class BotManager:
             "on_trade_completed": [],
         }
         
+        # Position tracking: maps (symbol, broker) -> {bot_id, bot_name, opened_at, quantity}
+        self._position_tracking: dict[tuple, dict] = {}
+        self._position_lock = threading.Lock()
+        
         # Auto-optimizer integration
         self._optimizer_manager = get_auto_optimizer_manager()
         
         logger.info(f"Bot Manager initialized with auto-optimizer support (multi_broker={self.DEFAULT_MULTI_BROKER})")
+    
+    def track_position_open(self, symbol: str, broker: str, bot_id: str, bot_name: str, quantity: float) -> None:
+        """Track which bot opened a position."""
+        with self._position_lock:
+            key = (symbol.upper(), broker.upper())
+            self._position_tracking[key] = {
+                "bot_id": bot_id,
+                "bot_name": bot_name,
+                "opened_at": datetime.now().isoformat(),
+                "quantity": quantity,
+            }
+            logger.debug(f"Position tracked: {symbol} on {broker} opened by bot {bot_name} ({bot_id})")
+    
+    def track_position_close(self, symbol: str, broker: str) -> None:
+        """Remove position tracking when closed."""
+        with self._position_lock:
+            key = (symbol.upper(), broker.upper())
+            if key in self._position_tracking:
+                del self._position_tracking[key]
+                logger.debug(f"Position tracking removed: {symbol} on {broker}")
+    
+    def get_position_bot(self, symbol: str, broker: str) -> Optional[dict]:
+        """Get the bot that opened a position."""
+        with self._position_lock:
+            key = (symbol.upper(), broker.upper())
+            return self._position_tracking.get(key)
+    
+    def get_all_position_tracking(self) -> dict:
+        """Get all position tracking info."""
+        with self._position_lock:
+            return {
+                f"{symbol}@{broker}": info 
+                for (symbol, broker), info in self._position_tracking.items()
+            }
     
     @property
     def bot_count(self) -> int:

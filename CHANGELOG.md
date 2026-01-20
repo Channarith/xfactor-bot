@@ -5,6 +5,30 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.7] - 2026-01-20
+
+### ✨ New Features
+
+- **Margin Safety System**: Comprehensive margin cushion monitoring and protection.
+  - `margin_cushion_pct` property calculates buffer above maintenance margin
+  - `is_margin_safe`, `is_margin_warning`, `is_margin_critical` properties
+  - Configurable thresholds: `min_margin_cushion_pct` (20%), `margin_warning_pct` (25%)
+  - Auto-blocks new buys when margin cushion < 20%
+  - Auto-reduces positions when margin < 15%
+  - Emergency sell when margin < 12%
+
+- **Position Bot Tracking**: Track which bot opened each position.
+  - `track_position_open()` / `track_position_close()` in BotManager
+  - Positions API now returns `bot_id`, `bot_name`, `opened_at`
+  - Displays in Open Positions UI
+
+- **Agentic Tuning Fix**: Fixed tuner waiting 24h before first evaluation.
+  - Now runs initial evaluation immediately on start
+  - Added logging for top 5 performers after each evaluation
+  - Added evaluation cycle completion logging
+
+---
+
 ## [2.1.6] - 2026-01-20
 
 ### ✨ New Features

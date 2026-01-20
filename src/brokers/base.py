@@ -105,10 +105,40 @@ class AccountInfo:
     equity: float
     margin_used: float = 0
     margin_available: float = 0
+    excess_liquidity: float = 0  # Funds available after margin requirements
+    maintenance_margin: float = 0  # Minimum equity required
     day_trades_remaining: int = 3  # PDT rule
     is_pattern_day_trader: bool = False
     currency: str = "USD"
     last_updated: datetime = field(default_factory=datetime.now)
+    
+    @property
+    def margin_cushion_pct(self) -> float:
+        """Calculate margin cushion as percentage above maintenance requirement.
+        
+        Returns percentage buffer above minimum margin requirement.
+        E.g., 15% means equity is 15% above the minimum required.
+        """
+        if self.maintenance_margin <= 0:
+            return 100.0  # No margin requirements = 100% cushion
+        
+        excess = self.equity - self.maintenance_margin
+        return (excess / self.maintenance_margin) * 100 if self.maintenance_margin > 0 else 100.0
+    
+    @property
+    def is_margin_safe(self) -> bool:
+        """Check if margin cushion is at a safe level (> 20%)."""
+        return self.margin_cushion_pct > 20.0
+    
+    @property
+    def is_margin_warning(self) -> bool:
+        """Check if margin cushion is in warning zone (10-20%)."""
+        return 10.0 < self.margin_cushion_pct <= 20.0
+    
+    @property
+    def is_margin_critical(self) -> bool:
+        """Check if margin cushion is critical (< 10%)."""
+        return self.margin_cushion_pct <= 10.0
 
 
 class BaseBroker(ABC):

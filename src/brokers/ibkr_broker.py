@@ -519,6 +519,8 @@ class IBKRBroker(BaseBroker):
                 cash_val = parse_float(summary_dict.get("TotalCashValue") or summary_dict.get("CashBalance"))
                 bp = parse_float(summary_dict.get("BuyingPower") or summary_dict.get("AvailableFunds"))
                 portfolio = parse_float(summary_dict.get("GrossPositionValue") or summary_dict.get("StockMarketValue"))
+                maint_margin = parse_float(summary_dict.get("MaintMarginReq"))
+                excess_liq = parse_float(summary_dict.get("ExcessLiquidity") or summary_dict.get("AvailableFunds"))
                 
                 result = [AccountInfo(
                     account_id=self.account_id,
@@ -528,13 +530,24 @@ class IBKRBroker(BaseBroker):
                     cash=cash_val,
                     portfolio_value=portfolio,
                     equity=equity,
-                    margin_used=parse_float(summary_dict.get("MaintMarginReq")),
+                    margin_used=maint_margin,
                     margin_available=parse_float(summary_dict.get("AvailableFunds")),
+                    excess_liquidity=excess_liq,
+                    maintenance_margin=maint_margin,
                     day_trades_remaining=int(parse_float(summary_dict.get("DayTradesRemaining", 3))),
                     is_pattern_day_trader=summary_dict.get("DayTradesRemaining", "3") == "0",
                     currency="USD",
                     last_updated=datetime.now()
                 )]
+                
+                # Log margin cushion status
+                margin_cushion = result[0].margin_cushion_pct
+                if result[0].is_margin_critical:
+                    logger.warning(f"⚠️ IBKR MARGIN CRITICAL: {margin_cushion:.1f}% cushion (equity: ${equity:,.0f}, maint: ${maint_margin:,.0f})")
+                elif result[0].is_margin_warning:
+                    logger.warning(f"⚠️ IBKR MARGIN WARNING: {margin_cushion:.1f}% cushion")
+                else:
+                    logger.debug(f"IBKR margin cushion: {margin_cushion:.1f}%")
                 
                 # Update cache
                 self._account_cache = result
