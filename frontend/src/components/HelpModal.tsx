@@ -104,6 +104,24 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '2.1.5',
+    date: 'January 20, 2026',
+    changes: [
+      '✨ IBKR Extended Hours Trading',
+      '',
+      '• Pre-market trading: 4:00 AM - 9:30 AM ET',
+      '• After-hours trading: 4:00 PM - 8:00 PM ET',
+      '• Market orders auto-convert to limit orders in extended hours',
+      '• Limit price = current price ± 0.5% buffer',
+      '• outsideRth=True flag enables extended hours execution',
+      '',
+      '📊 Order Limit Tracking (15 per symbol/side)',
+      '• Tracks orders per symbol per side over 24h window',
+      '• Prevents exceeding IBKR order limits',
+      '• get_order_counts() shows current order usage',
+    ]
+  },
+  {
     version: '2.1.4',
     date: 'January 20, 2026',
     changes: [

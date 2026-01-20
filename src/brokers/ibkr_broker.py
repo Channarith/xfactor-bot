@@ -20,9 +20,11 @@ import asyncio
 import os
 import socket
 import threading
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
-from typing import Optional, List, Dict, Any
+from datetime import datetime, time as dt_time
+from typing import Optional, List, Dict, Any, Tuple
+import pytz
 
 from loguru import logger
 
@@ -30,6 +32,20 @@ from src.brokers.base import (
     BaseBroker, BrokerType, Position, Order, AccountInfo,
     OrderStatus, OrderType, OrderSide
 )
+
+# US Eastern timezone for market hours
+ET = pytz.timezone('America/New_York')
+
+# Regular Trading Hours (RTH)
+MARKET_OPEN = dt_time(9, 30)   # 9:30 AM ET
+MARKET_CLOSE = dt_time(16, 0)  # 4:00 PM ET
+
+# Extended Hours
+PRE_MARKET_OPEN = dt_time(4, 0)    # 4:00 AM ET
+AFTER_HOURS_CLOSE = dt_time(20, 0)  # 8:00 PM ET
+
+# Maximum orders per symbol per side (IBKR limit)
+MAX_ORDERS_PER_SYMBOL_SIDE = 15
 
 # Thread pool for blocking IB operations - use single worker to prevent concurrent access
 _ib_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ibkr")
@@ -101,11 +117,144 @@ class IBKRBroker(BaseBroker):
         # Async lock for coordinating calls - store both lock and its event loop
         self._async_lock: Optional[asyncio.Lock] = None
         self._async_lock_loop: Optional[asyncio.AbstractEventLoop] = None
+        
+        # Order tracking per symbol per side (for 15 order limit)
+        # Key: (symbol, side) -> list of order timestamps
+        self._order_counts: Dict[Tuple[str, str], List[datetime]] = defaultdict(list)
+        self._order_count_window = 86400  # 24 hours in seconds (reset daily)
+        
+        # Extended hours configuration
+        self.enable_extended_hours = True
+        self.extended_hours_price_buffer_pct = 0.5  # 0.5% buffer for limit prices
     
     @property
     def supports_fractional_shares(self) -> bool:
         """IBKR does not support fractional share orders via API."""
         return False
+    
+    @property
+    def supports_extended_hours(self) -> bool:
+        """IBKR supports extended hours trading with limit orders."""
+        return True
+    
+    def _is_regular_trading_hours(self) -> bool:
+        """Check if current time is within regular trading hours (9:30 AM - 4:00 PM ET)."""
+        now_et = datetime.now(ET)
+        current_time = now_et.time()
+        weekday = now_et.weekday()
+        
+        # Weekend check (Saturday=5, Sunday=6)
+        if weekday >= 5:
+            return False
+        
+        return MARKET_OPEN <= current_time < MARKET_CLOSE
+    
+    def _is_extended_hours(self) -> bool:
+        """Check if current time is within extended trading hours."""
+        now_et = datetime.now(ET)
+        current_time = now_et.time()
+        weekday = now_et.weekday()
+        
+        # Weekend check
+        if weekday >= 5:
+            return False
+        
+        # Pre-market: 4:00 AM - 9:30 AM ET
+        if PRE_MARKET_OPEN <= current_time < MARKET_OPEN:
+            return True
+        
+        # After-hours: 4:00 PM - 8:00 PM ET
+        if MARKET_CLOSE <= current_time < AFTER_HOURS_CLOSE:
+            return True
+        
+        return False
+    
+    def _get_market_session(self) -> str:
+        """Get current market session name."""
+        if self._is_regular_trading_hours():
+            return "regular"
+        elif self._is_extended_hours():
+            now_et = datetime.now(ET)
+            if now_et.time() < MARKET_OPEN:
+                return "pre-market"
+            else:
+                return "after-hours"
+        else:
+            return "closed"
+    
+    def _check_order_limit(self, symbol: str, side: str) -> bool:
+        """
+        Check if we can place another order for this symbol/side.
+        Returns True if under the 15 order limit, False otherwise.
+        """
+        key = (symbol.upper(), side.upper())
+        now = datetime.now()
+        
+        # Clean up old orders (older than 24 hours)
+        self._order_counts[key] = [
+            ts for ts in self._order_counts[key]
+            if (now - ts).total_seconds() < self._order_count_window
+        ]
+        
+        return len(self._order_counts[key]) < MAX_ORDERS_PER_SYMBOL_SIDE
+    
+    def _record_order(self, symbol: str, side: str) -> None:
+        """Record an order for tracking purposes."""
+        key = (symbol.upper(), side.upper())
+        self._order_counts[key].append(datetime.now())
+    
+    def get_order_counts(self) -> Dict[str, Dict[str, int]]:
+        """Get current order counts per symbol per side."""
+        result = {}
+        now = datetime.now()
+        
+        for (symbol, side), timestamps in self._order_counts.items():
+            # Filter to valid timestamps
+            valid = [ts for ts in timestamps if (now - ts).total_seconds() < self._order_count_window]
+            
+            if symbol not in result:
+                result[symbol] = {}
+            result[symbol][side] = len(valid)
+        
+        return result
+    
+    async def _get_current_price(self, symbol: str) -> Optional[float]:
+        """Get current market price for a symbol (for limit order pricing)."""
+        try:
+            if not self._ib or not self._ib.isConnected():
+                return None
+            
+            from ib_insync import Stock
+            
+            loop = asyncio.get_event_loop()
+            contract = Stock(symbol.upper(), "SMART", "USD")
+            
+            def get_ticker():
+                with _ibkr_lock:
+                    self._ib.qualifyContracts(contract)
+                    ticker = self._ib.reqMktData(contract, '', False, False)
+                    self._ib.sleep(1)  # Wait for data
+                    self._ib.cancelMktData(contract)
+                    return ticker
+            
+            ticker = await asyncio.wait_for(
+                loop.run_in_executor(_ib_executor, get_ticker),
+                timeout=10
+            )
+            
+            # Use last price, or midpoint of bid/ask
+            if ticker.last and ticker.last > 0:
+                return float(ticker.last)
+            elif ticker.bid and ticker.ask and ticker.bid > 0 and ticker.ask > 0:
+                return float((ticker.bid + ticker.ask) / 2)
+            elif ticker.close and ticker.close > 0:
+                return float(ticker.close)
+            
+            return None
+            
+        except Exception as e:
+            logger.debug(f"Could not get current price for {symbol}: {e}")
+            return None
     
     def _connect_sync(self) -> bool:
         """
@@ -505,9 +654,30 @@ class IBKRBroker(BaseBroker):
     ) -> Order:
         """Submit an order to IBKR.
         
-        Note: IBKR does not support fractional shares for most symbols.
-        Quantities are automatically rounded down to whole numbers.
-        If the rounded quantity is 0, the order is rejected.
+        Features:
+        - Automatic whole number rounding (IBKR doesn't support fractional shares)
+        - Extended hours support with automatic limit order conversion
+        - Order limit tracking (15 orders per symbol per side per 24h)
+        
+        Args:
+            account_id: IBKR account ID
+            symbol: Stock symbol
+            side: BUY or SELL
+            quantity: Number of shares (will be rounded to whole number)
+            order_type: MARKET, LIMIT, STOP, or STOP_LIMIT
+            limit_price: Price for limit orders
+            stop_price: Price for stop orders
+            time_in_force: DAY, GTC, etc.
+            **kwargs: Additional options:
+                - force_market: Force market order even in extended hours (will be held)
+                - skip_order_limit_check: Skip the 15 order limit check
+        
+        Returns:
+            Order object with order details
+            
+        Raises:
+            ConnectionError: Not connected to IBKR
+            ValueError: Invalid quantity or order limit reached
         """
         if not self._ib or not self._ib.isConnected():
             raise ConnectionError("Not connected to IBKR")
@@ -524,6 +694,49 @@ class IBKRBroker(BaseBroker):
         if original_quantity != quantity:
             logger.info(f"IBKR fractional order adjusted: {original_quantity} → {quantity} shares for {symbol}")
         
+        # Check order limit (15 orders per symbol per side)
+        action = "BUY" if side == OrderSide.BUY else "SELL"
+        skip_limit_check = kwargs.get('skip_order_limit_check', False)
+        
+        if not skip_limit_check and not self._check_order_limit(symbol, action):
+            logger.warning(f"IBKR order limit reached: {MAX_ORDERS_PER_SYMBOL_SIDE} {action} orders for {symbol} in 24h")
+            raise ValueError(f"Order limit reached: Maximum {MAX_ORDERS_PER_SYMBOL_SIDE} {action} orders per 24 hours for {symbol}")
+        
+        # Check market session and adjust order type for extended hours
+        session = self._get_market_session()
+        use_extended_hours = False
+        effective_order_type = order_type
+        effective_limit_price = limit_price
+        
+        if session != "regular" and self.enable_extended_hours:
+            if session == "closed":
+                logger.warning(f"IBKR market is closed. Order for {symbol} will be held until market opens.")
+            else:
+                # Extended hours - convert market orders to limit orders
+                if order_type == OrderType.MARKET:
+                    # Get current price for limit order
+                    current_price = await self._get_current_price(symbol)
+                    
+                    if current_price:
+                        # Add buffer for limit price
+                        buffer = current_price * (self.extended_hours_price_buffer_pct / 100)
+                        
+                        if side == OrderSide.BUY:
+                            # For buys, set limit slightly above current price
+                            effective_limit_price = round(current_price + buffer, 2)
+                        else:
+                            # For sells, set limit slightly below current price
+                            effective_limit_price = round(current_price - buffer, 2)
+                        
+                        effective_order_type = OrderType.LIMIT
+                        use_extended_hours = True
+                        logger.info(f"IBKR {session}: Converting MARKET to LIMIT @ ${effective_limit_price} for {symbol}")
+                    else:
+                        logger.warning(f"IBKR {session}: Could not get price for {symbol}, using MARKET order (will be held)")
+                else:
+                    # Already a limit order, enable extended hours
+                    use_extended_hours = True
+        
         lock = self._get_async_lock()
         async with lock:
             try:
@@ -535,18 +748,21 @@ class IBKRBroker(BaseBroker):
                 contract = Stock(symbol.upper(), "SMART", "USD")
                 
                 # Create order based on type
-                action = "BUY" if side == OrderSide.BUY else "SELL"
-                
-                if order_type == OrderType.MARKET:
+                if effective_order_type == OrderType.MARKET:
                     ib_order = MarketOrder(action, quantity)
-                elif order_type == OrderType.LIMIT:
-                    ib_order = LimitOrder(action, quantity, limit_price)
-                elif order_type == OrderType.STOP:
+                elif effective_order_type == OrderType.LIMIT:
+                    ib_order = LimitOrder(action, quantity, effective_limit_price)
+                elif effective_order_type == OrderType.STOP:
                     ib_order = StopOrder(action, quantity, stop_price)
-                elif order_type == OrderType.STOP_LIMIT:
-                    ib_order = StopLimitOrder(action, quantity, limit_price, stop_price)
+                elif effective_order_type == OrderType.STOP_LIMIT:
+                    ib_order = StopLimitOrder(action, quantity, effective_limit_price, stop_price)
                 else:
-                    raise ValueError(f"Unsupported order type: {order_type}")
+                    raise ValueError(f"Unsupported order type: {effective_order_type}")
+                
+                # Enable extended hours trading if applicable
+                if use_extended_hours:
+                    ib_order.outsideRth = True
+                    logger.info(f"IBKR order enabled for extended hours trading: {action} {quantity} {symbol}")
                 
                 ib_order.tif = time_in_force.upper()
                 
@@ -560,7 +776,14 @@ class IBKRBroker(BaseBroker):
                     timeout=30
                 )
                 
-                logger.info(f"IBKR order submitted: {trade.order.orderId} - {action} {quantity} {symbol}")
+                # Record order for limit tracking
+                self._record_order(symbol, action)
+                
+                # Log with extended hours info
+                session_info = f" [{session}]" if session != "regular" else ""
+                price_info = f" @ ${effective_limit_price}" if effective_order_type == OrderType.LIMIT else ""
+                ext_info = " (outsideRth)" if use_extended_hours else ""
+                logger.info(f"IBKR order submitted: {trade.order.orderId} - {action} {quantity} {symbol}{price_info}{session_info}{ext_info}")
                 
                 # Invalidate caches after order
                 self._account_cache = None
@@ -570,9 +793,9 @@ class IBKRBroker(BaseBroker):
                     order_id=str(trade.order.orderId),
                     symbol=symbol,
                     side=side,
-                    order_type=order_type,
+                    order_type=effective_order_type,
                     quantity=quantity,
-                    limit_price=limit_price,
+                    limit_price=effective_limit_price,
                     stop_price=stop_price,
                     status=OrderStatus.SUBMITTED,
                     filled_quantity=0,

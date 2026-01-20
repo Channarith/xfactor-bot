@@ -5,6 +5,30 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.5] - 2026-01-20
+
+### ✨ New Features
+
+- **IBKR Extended Hours Trading**: Full support for pre-market (4:00-9:30 AM ET) and after-hours (4:00-8:00 PM ET) trading.
+  - Market orders automatically convert to limit orders during extended hours
+  - Limit price calculated from current price with 0.5% buffer
+  - `outsideRth=True` flag set for extended hours orders
+  - Clear logging shows session type: `[pre-market]` or `[after-hours]`
+  
+- **Order Limit Tracking (15 per symbol/side)**: Prevents exceeding IBKR's order limits.
+  - Tracks orders per symbol per side (BUY/SELL) over 24-hour window
+  - Rejects orders that would exceed 15 orders per symbol per side
+  - `get_order_counts()` method to view current order counts
+  - Configurable via `skip_order_limit_check` parameter
+
+- **Market Session Detection**: New helper methods:
+  - `_is_regular_trading_hours()` - Check if 9:30 AM - 4:00 PM ET
+  - `_is_extended_hours()` - Check if pre-market or after-hours
+  - `_get_market_session()` - Returns "regular", "pre-market", "after-hours", or "closed"
+  - `supports_extended_hours` property (True for IBKR)
+
+---
+
 ## [2.1.4] - 2026-01-20
 
 ### 🐛 Bug Fixes
