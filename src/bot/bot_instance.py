@@ -6,7 +6,7 @@ import asyncio
 import threading
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Optional, Any, Callable, List
 import uuid
@@ -371,6 +371,12 @@ class BotConfig:
     trade_frequency_seconds: int = 30    # Check every 30 seconds (was 60)
     use_paper_trading: bool = True
     
+    # Rate limiting - prevent broker throttling/security blocks
+    order_delay_seconds: float = 2.0     # Delay between consecutive orders (seconds)
+    symbol_delay_seconds: float = 0.5    # Delay between analyzing symbols (seconds)
+    max_orders_per_minute: int = 10      # Maximum orders per minute per bot
+    min_order_interval_seconds: float = 1.0  # Minimum time between any two orders
+    
     # Signal sensitivity (LOWER = MORE TRADES)
     buy_signal_threshold: float = 2.0      # Points needed for BUY signal
     strong_buy_threshold: float = 4.8      # Points needed for STRONG BUY (user requested)
@@ -662,6 +668,10 @@ class BotInstance:
         # {symbol: {"quantity": float, "avg_cost": float, "total_cost": float}}
         self._position_costs: dict[str, dict] = {}
         
+        # Rate limiting state
+        self._last_order_time: Optional[datetime] = None
+        self._orders_this_minute: List[datetime] = []
+        
         logger.info(f"Bot {self.id} created: {config.name}")
         self._log_activity("created", f"Bot created with {len(config.symbols)} symbols")
     
@@ -685,6 +695,48 @@ class BotInstance:
             logger.info(f"[Bot {self.id}] {event_type}: {message}")
         else:
             logger.debug(f"[Bot {self.id}] {event_type}: {message}")
+    
+    async def _wait_for_rate_limit(self) -> None:
+        """Wait if necessary to respect rate limiting settings."""
+        now = datetime.utcnow()
+        
+        # Clean up old orders from the per-minute tracking
+        one_minute_ago = now - timedelta(seconds=60)
+        self._orders_this_minute = [
+            t for t in self._orders_this_minute if t > one_minute_ago
+        ]
+        
+        # Check if we've hit the per-minute limit
+        if len(self._orders_this_minute) >= self.config.max_orders_per_minute:
+            wait_time = 60 - (now - self._orders_this_minute[0]).total_seconds()
+            if wait_time > 0:
+                self._log_activity("rate_limit", f"Rate limit: waiting {wait_time:.1f}s (hit {self.config.max_orders_per_minute}/min limit)")
+                await asyncio.sleep(wait_time)
+        
+        # Check minimum interval since last order
+        if self._last_order_time:
+            elapsed = (now - self._last_order_time).total_seconds()
+            if elapsed < self.config.min_order_interval_seconds:
+                wait_time = self.config.min_order_interval_seconds - elapsed
+                self._log_activity("rate_limit", f"Rate limit: waiting {wait_time:.2f}s (min interval)")
+                await asyncio.sleep(wait_time)
+    
+    def _record_order_time(self) -> None:
+        """Record that an order was placed for rate limiting."""
+        now = datetime.utcnow()
+        self._last_order_time = now
+        self._orders_this_minute.append(now)
+    
+    async def _post_order_delay(self) -> None:
+        """Add configurable delay after placing an order."""
+        if self.config.order_delay_seconds > 0:
+            self._log_activity("delay", f"Order delay: {self.config.order_delay_seconds}s between orders")
+            await asyncio.sleep(self.config.order_delay_seconds)
+    
+    async def _symbol_analysis_delay(self) -> None:
+        """Add configurable delay between analyzing symbols."""
+        if self.config.symbol_delay_seconds > 0:
+            await asyncio.sleep(self.config.symbol_delay_seconds)
     
     def _record_buy(self, symbol: str, quantity: float, price: float) -> None:
         """Record a buy trade for P&L tracking."""
@@ -1130,6 +1182,9 @@ class BotInstance:
                             "broker": broker.name,
                         })
                         
+                        # Rate limiting - wait if needed
+                        await self._wait_for_rate_limit()
+                        
                         # Execute buy order
                         try:
                             self.stats.orders_submitted += 1
@@ -1140,6 +1195,9 @@ class BotInstance:
                                 quantity=quantity,
                                 order_type=OrderType.MARKET,
                             )
+                            
+                            # Record order time for rate limiting
+                            self._record_order_time()
                             self.stats.trades_today += 1
                             self.stats.orders_filled += 1
                             self.stats.last_trade_time = datetime.utcnow()
@@ -1190,6 +1248,9 @@ class BotInstance:
                                 "reasoning": reasoning,
                             })
                             self._emit("on_trade", {"symbol": symbol, "side": "buy", "quantity": quantity, "order_id": order.order_id, "broker": broker.name, "reasoning": reasoning})
+                            
+                            # Post-order delay to prevent rate limiting
+                            await self._post_order_delay()
                         except Exception as e:
                             self.stats.orders_rejected += 1
                             self.stats.errors_count += 1
@@ -1259,6 +1320,9 @@ class BotInstance:
                         "reasoning": reasoning,
                     })
                     
+                    # Rate limiting - wait if needed
+                    await self._wait_for_rate_limit()
+                    
                     # Sell existing position
                     try:
                         self.stats.orders_submitted += 1
@@ -1269,6 +1333,10 @@ class BotInstance:
                             quantity=sell_qty,
                             order_type=OrderType.MARKET,
                         )
+                        
+                        # Record order time for rate limiting
+                        self._record_order_time()
+                        
                         self.stats.trades_today += 1
                         self.stats.orders_filled += 1
                         self.stats.last_trade_time = datetime.utcnow()
@@ -1319,6 +1387,9 @@ class BotInstance:
                             "reasoning": reasoning,
                         })
                         self._emit("on_trade", {"symbol": symbol, "side": "sell", "quantity": sell_qty, "order_id": order.order_id, "broker": broker.name, "reasoning": reasoning})
+                        
+                        # Post-order delay to prevent rate limiting
+                        await self._post_order_delay()
                     except Exception as e:
                         self.stats.orders_rejected += 1
                         self.stats.errors_count += 1
@@ -1367,6 +1438,9 @@ class BotInstance:
                         self._log_activity("skip_trade", f"{symbol}: Already have position ({current_qty}), skipping buy")
                     elif signal_type in ('strong_sell', 'sell'):
                         self._log_activity("skip_trade", f"{symbol}: No position to sell")
+                
+                # Delay between analyzing symbols to prevent rate limiting
+                await self._symbol_analysis_delay()
                 
             except Exception as e:
                 self.stats.errors_count += 1

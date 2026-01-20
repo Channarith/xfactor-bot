@@ -104,6 +104,21 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '2.1.6',
+    date: 'January 20, 2026',
+    changes: [
+      '⏱️ Bot Rate Limiting',
+      '',
+      '• Configurable delays between orders to prevent broker throttling',
+      '• order_delay_seconds: 2.0s delay between orders',
+      '• symbol_delay_seconds: 0.5s delay between analyzing symbols',
+      '• max_orders_per_minute: 10 orders/minute limit per bot',
+      '• min_order_interval_seconds: 1.0s minimum between orders',
+      '• Automatic waiting when rate limits are approached',
+      '• Clear logging shows when rate limiting is active',
+    ]
+  },
+  {
     version: '2.1.5',
     date: 'January 20, 2026',
     changes: [

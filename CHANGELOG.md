@@ -5,6 +5,20 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.6] - 2026-01-20
+
+### ✨ New Features
+
+- **Bot Rate Limiting**: Configurable delays between orders to prevent broker throttling and security blocks.
+  - `order_delay_seconds`: Delay between consecutive orders (default: 2.0s)
+  - `symbol_delay_seconds`: Delay between analyzing symbols (default: 0.5s)
+  - `max_orders_per_minute`: Maximum orders per minute per bot (default: 10)
+  - `min_order_interval_seconds`: Minimum time between any two orders (default: 1.0s)
+  - Automatic waiting when rate limits are approached
+  - Clear logging shows when rate limiting is active
+
+---
+
 ## [2.1.5] - 2026-01-20
 
 ### ✨ New Features
