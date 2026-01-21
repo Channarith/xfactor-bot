@@ -1395,13 +1395,55 @@ class BotInstance:
                         self._log_activity("skip_order", f"Quantity would be 0 for {symbol} (price={price})")
                 
                 elif signal_type in ('strong_sell', 'sell') and current_qty > 0:
-                    # Round sell quantity for brokers that don't support fractional shares
-                    sell_qty = abs(current_qty)
+                    # =========================================================================
+                    # COMPREHENSIVE PRE-SELL VALIDATION
+                    # =========================================================================
+                    
+                    # Step 1: Re-verify position exists (fresh check, not cached)
+                    try:
+                        fresh_position = await broker.get_position(account_id, symbol)
+                        verified_qty = fresh_position.quantity if fresh_position else 0
+                    except Exception as pos_error:
+                        self._log_activity("sell_validation_error", 
+                            f"SELL blocked for {symbol}: Could not verify position on {broker.name}: {pos_error}",
+                            {"symbol": symbol, "broker": broker.name, "error": str(pos_error)})
+                        self.stats.orders_rejected += 1
+                        continue
+                    
+                    # Step 2: Verify we actually have shares to sell
+                    if verified_qty <= 0:
+                        self._log_activity("sell_blocked_no_position",
+                            f"⚠️ SELL blocked for {symbol}: No position found on {broker.name} "
+                            f"(cached qty was {current_qty}, verified qty is {verified_qty})",
+                            {"symbol": symbol, "broker": broker.name, 
+                             "cached_qty": current_qty, "verified_qty": verified_qty})
+                        self.stats.blocked_by_position_limit += 1
+                        logger.warning(f"[Bot {self.id}] SELL BLOCKED: {symbol} - no position on {broker.name}")
+                        continue
+                    
+                    # Step 3: Use verified quantity, not cached
+                    if verified_qty != current_qty:
+                        self._log_activity("position_qty_mismatch",
+                            f"Position quantity mismatch for {symbol}: cached={current_qty}, verified={verified_qty}",
+                            {"symbol": symbol, "cached": current_qty, "verified": verified_qty})
+                        logger.info(f"[Bot {self.id}] Position qty updated: {symbol} {current_qty} → {verified_qty}")
+                    
+                    # Step 4: Round sell quantity for brokers that don't support fractional shares
+                    sell_qty = abs(verified_qty)  # Use verified quantity
                     if not getattr(broker, 'supports_fractional_shares', True):
                         sell_qty = int(sell_qty)  # Round down to whole shares
                         if sell_qty <= 0:
-                            self._log_activity("skip_order", f"SELL skipped for {symbol}: fractional position {current_qty} rounds to 0 for {broker.name}")
+                            self._log_activity("skip_order", 
+                                f"SELL skipped for {symbol}: fractional position {verified_qty} rounds to 0 for {broker.name}",
+                                {"symbol": symbol, "verified_qty": verified_qty, "broker": broker.name})
                             continue
+                    
+                    # Step 5: Final validation log
+                    self._log_activity("sell_validated", 
+                        f"✅ SELL validated: {sell_qty} {symbol} on {broker.name} "
+                        f"(position verified: {verified_qty} shares)",
+                        {"symbol": symbol, "sell_qty": sell_qty, "verified_qty": verified_qty, 
+                         "broker": broker.name, "avg_cost": fresh_position.avg_cost if fresh_position else 0})
                     
                     self._log_activity("order_intent", f"SELL {sell_qty} {symbol} @ market via {broker.name}", {
                         "symbol": symbol,
@@ -1409,6 +1451,7 @@ class BotInstance:
                         "quantity": sell_qty,
                         "broker": broker.name,
                         "reasoning": reasoning,
+                        "verified_position": verified_qty,
                     })
                     
                     # Rate limiting - wait if needed

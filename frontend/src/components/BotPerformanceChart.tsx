@@ -129,13 +129,13 @@ export function BotPerformanceChart({ botId, botName, botDetails: initialBotDeta
     
     // Auto-refresh every 30 seconds for both performance data and bot details
     const interval = setInterval(() => {
-      if (timeRange === '1D') {
+    if (timeRange === '1D') {
         fetchData()
       }
       fetchBotDetails()  // Always refresh bot details
     }, 30000)
     
-    return () => clearInterval(interval)
+      return () => clearInterval(interval)
   }, [fetchData, fetchBotDetails, timeRange])
 
   const formatTime = (timestamp: string) => {

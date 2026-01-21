@@ -489,6 +489,33 @@ class AlpacaBroker(BaseBroker):
         if is_crypto and symbol not in self._supported_crypto:
             raise ValueError(f"Crypto symbol '{original_symbol}' is not supported on Alpaca. Supported crypto: BTC, ETH, LTC, SOL, DOGE, SHIB, MATIC, AVAX, LINK, etc.")
         
+        # =========================================================================
+        # SELL ORDER VALIDATION - Verify position exists before selling
+        # =========================================================================
+        if side == OrderSide.SELL:
+            skip_check = kwargs.get('skip_position_check', False)
+            is_valid, error_msg, position = await self.validate_sell_order(
+                account_id, symbol, quantity, skip_position_check=skip_check
+            )
+            
+            if not is_valid:
+                logger.error(f"❌ Alpaca SELL order rejected: {error_msg}")
+                raise ValueError(f"SELL order validation failed: {error_msg}")
+            
+            # Adjust quantity if trying to sell more than we have
+            if position and quantity > position.quantity:
+                old_qty = quantity
+                quantity = position.quantity  # Alpaca supports fractional, no floor needed
+                logger.warning(
+                    f"Alpaca SELL quantity adjusted: {old_qty} → {quantity} "
+                    f"(only {position.quantity} shares available for {symbol})"
+                )
+                
+                if quantity <= 0:
+                    raise ValueError(
+                        f"Cannot sell {symbol}: Position quantity is {position.quantity}"
+                    )
+        
         logger.info(f"📤 Submitting Alpaca order: {side.value.upper()} {quantity} {symbol} ({order_type.value})" + 
                    (f" [normalized from {original_symbol}]" if symbol != original_symbol else ""))
         

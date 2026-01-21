@@ -90,7 +90,7 @@ class CreateBotRequest(BaseModel):
         default=False,
         description="If True, execute trades on ALL connected brokers simultaneously"
     )
-    
+
     # Bot-level limit overrides
     override_global_limits: bool = Field(
         default=False,

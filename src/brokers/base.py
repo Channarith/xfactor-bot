@@ -292,6 +292,98 @@ class BaseBroker(ABC):
         pass
     
     # =========================================================================
+    # Sell Order Validation
+    # =========================================================================
+    
+    async def validate_sell_order(
+        self,
+        account_id: str,
+        symbol: str,
+        quantity: float,
+        skip_position_check: bool = False
+    ) -> tuple[bool, str, Optional[Position]]:
+        """
+        Validate that a sell order can be executed.
+        
+        Performs comprehensive checks:
+        1. Position exists for the symbol
+        2. Position quantity >= sell quantity
+        3. Position is not short (can't sell short positions with regular sell)
+        
+        Args:
+            account_id: The account identifier
+            symbol: The ticker symbol to sell
+            quantity: Number of shares to sell
+            skip_position_check: If True, skip position validation (for manual overrides)
+            
+        Returns:
+            Tuple of (is_valid, error_message, position)
+            - is_valid: True if sell can proceed
+            - error_message: Description of why validation failed (empty if valid)
+            - position: The current position if found, None otherwise
+        """
+        from loguru import logger
+        
+        if skip_position_check:
+            logger.warning(f"[{self.name}] Skipping position check for SELL {quantity} {symbol} (manual override)")
+            return True, "", None
+        
+        # Get current position
+        try:
+            position = await self.get_position(account_id, symbol)
+        except Exception as e:
+            error_msg = f"Failed to verify position for {symbol}: {e}"
+            logger.error(f"[{self.name}] {error_msg}")
+            return False, error_msg, None
+        
+        # Check 1: Position must exist
+        if position is None:
+            error_msg = f"Cannot sell {symbol}: No position found on {self.name}"
+            logger.warning(f"[{self.name}] SELL BLOCKED - {error_msg}")
+            return False, error_msg, None
+        
+        # Check 2: Must have sufficient quantity
+        if position.quantity <= 0:
+            error_msg = f"Cannot sell {symbol}: Position quantity is {position.quantity} (zero or negative)"
+            logger.warning(f"[{self.name}] SELL BLOCKED - {error_msg}")
+            return False, error_msg, position
+        
+        # Check 3: Requested quantity must not exceed position
+        if quantity > position.quantity:
+            error_msg = (
+                f"Cannot sell {quantity} {symbol}: Only {position.quantity} shares available on {self.name}. "
+                f"Attempted to sell more shares than owned."
+            )
+            logger.warning(f"[{self.name}] SELL BLOCKED - {error_msg}")
+            return False, error_msg, position
+        
+        # Check 4: Warn if selling a short position
+        if position.is_short:
+            logger.warning(
+                f"[{self.name}] Selling short position for {symbol}: "
+                f"{position.quantity} shares (this will buy to cover)"
+            )
+        
+        # All checks passed
+        logger.info(
+            f"[{self.name}] ✅ SELL validated: {quantity} of {position.quantity} {symbol} available "
+            f"(avg cost: ${position.avg_cost:.2f}, current: ${position.current_price:.2f})"
+        )
+        return True, "", position
+    
+    async def get_position_quantity(self, account_id: str, symbol: str) -> float:
+        """
+        Get the quantity of shares held for a symbol.
+        
+        Returns 0 if no position exists or on error.
+        """
+        try:
+            position = await self.get_position(account_id, symbol)
+            return position.quantity if position else 0.0
+        except Exception:
+            return 0.0
+    
+    # =========================================================================
     # Order Management
     # =========================================================================
     

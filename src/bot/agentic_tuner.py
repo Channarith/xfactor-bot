@@ -435,16 +435,16 @@ class AgenticTuner:
     async def _run_evaluation_cycle(self) -> None:
         """Run a single evaluation cycle."""
         logger.info("AgenticTuner: Starting evaluation cycle")
-        
-        # Update phase based on days running
-        self._update_phase()
-        
-        # Calculate scores
-        await self._calculate_all_scores()
-        
-        # Rank bots
-        self._rank_bots()
-        
+                
+                # Update phase based on days running
+                self._update_phase()
+                
+                # Calculate scores
+                await self._calculate_all_scores()
+                
+                # Rank bots
+                self._rank_bots()
+                
         # Log top 5 performers
         rankings = self.get_rankings()[:5]
         if rankings:
@@ -452,10 +452,10 @@ class AgenticTuner:
             for i, r in enumerate(rankings, 1):
                 logger.info(f"  #{i}: {r.get('bot_name', 'Unknown')} - Score: {r.get('composite_score', 0):.2f}, P&L: ${r.get('total_profit', 0):.2f}")
         
-        # Prune if auto-prune is enabled
-        if self.config.auto_prune:
-            await self._execute_pruning()
-        
+                # Prune if auto-prune is enabled
+                if self.config.auto_prune:
+                    await self._execute_pruning()
+                
         logger.info(f"AgenticTuner: Evaluation cycle complete. Phase: {self._current_phase.value}, Active: {self.active_bot_count}, Champions: {self.champion_count}")
     
     def _update_phase(self) -> None:

@@ -5,6 +5,51 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.8] - 2026-01-21
+
+### ✨ New Features
+
+- **Comprehensive Sell Order Validation**: Prevents selling stocks you don't own.
+  - `validate_sell_order()` method in BaseBroker verifies position exists before selling
+  - Checks: position exists, quantity >= sell amount, handles short positions
+  - Returns detailed validation result with position info
+
+- **IBKR Sell Validation**: Automatic validation before every sell order.
+  - Rejects sell if no position found on IBKR
+  - Adjusts quantity if trying to sell more than available
+  - Clear error messages on validation failure
+
+- **Alpaca Sell Validation**: Matching validation for Alpaca broker.
+  - Supports fractional share adjustments
+  - Validates position exists before submission
+
+- **5-Step Pre-Sell Validation in Bots**: Fresh position verification before every sell.
+  1. Fresh position fetch (not cached)
+  2. Verify position quantity > 0
+  3. Detect cache vs verified quantity mismatches
+  4. Fractional share handling per broker
+  5. Final validation logging
+
+- **Multi-Broker Position Check**: Find positions across all connected brokers.
+  - `get_position_across_brokers()` in BotManager
+  - Identifies which broker(s) hold a position
+  - Helps debug "wrong broker" configuration issues
+
+- **Cross-Broker Sell Validation**: Validates sell across all brokers.
+  - `validate_sell_across_brokers()` with recommendations
+  - Detects: wrong broker, insufficient quantity, position not found
+  - Suggests corrective actions
+
+- **Multi-Broker Position API**: New endpoint to check positions across brokers.
+  - `GET /api/positions/multi-broker/{symbol}` - position on all brokers
+  - Returns total quantity, which brokers have position
+
+- **Sell Validation API**: Pre-validate sell orders via API.
+  - `POST /api/positions/validate-sell` - validate before executing
+  - Parameters: symbol, quantity, optional broker
+
+---
+
 ## [2.1.7] - 2026-01-20
 
 ### ✨ New Features

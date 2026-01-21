@@ -725,6 +725,33 @@ class IBKRBroker(BaseBroker):
         if original_quantity != quantity:
             logger.info(f"IBKR fractional order adjusted: {original_quantity} → {quantity} shares for {symbol}")
         
+        # =========================================================================
+        # SELL ORDER VALIDATION - Verify position exists before selling
+        # =========================================================================
+        if side == OrderSide.SELL:
+            skip_check = kwargs.get('skip_position_check', False)
+            is_valid, error_msg, position = await self.validate_sell_order(
+                account_id, symbol, quantity, skip_position_check=skip_check
+            )
+            
+            if not is_valid:
+                logger.error(f"❌ IBKR SELL order rejected: {error_msg}")
+                raise ValueError(f"SELL order validation failed: {error_msg}")
+            
+            # Adjust quantity if trying to sell more than we have
+            if position and quantity > position.quantity:
+                old_qty = quantity
+                quantity = math.floor(position.quantity)
+                logger.warning(
+                    f"IBKR SELL quantity adjusted: {old_qty} → {quantity} "
+                    f"(only {position.quantity} shares available for {symbol})"
+                )
+                
+                if quantity <= 0:
+                    raise ValueError(
+                        f"Cannot sell {symbol}: Position {position.quantity} rounds to 0 whole shares"
+                    )
+        
         # Check order limit (15 orders per symbol per side)
         action = "BUY" if side == OrderSide.BUY else "SELL"
         skip_limit_check = kwargs.get('skip_order_limit_check', False)

@@ -148,6 +148,176 @@ class BotManager:
             logger.error(f"Error in sync_positions_from_broker: {e}")
             return 0
     
+    async def get_position_across_brokers(self, symbol: str) -> dict:
+        """
+        Get position for a symbol across ALL connected brokers.
+        
+        This helps identify which broker(s) hold a position.
+        
+        Returns:
+            Dict mapping broker name to position info:
+            {
+                "IBKR": {"quantity": 100, "avg_cost": 150.25, ...},
+                "ALPACA": {"quantity": 0, "error": None},
+                ...
+            }
+        """
+        try:
+            from src.brokers.registry import get_broker_registry
+            registry = get_broker_registry()
+            
+            results = {}
+            symbol = symbol.upper()
+            
+            for bt in registry.connected_brokers:
+                broker = registry.get_broker(bt)
+                if not broker or not broker.is_connected:
+                    results[bt.value.upper()] = {
+                        "quantity": 0,
+                        "connected": False,
+                        "error": "Not connected"
+                    }
+                    continue
+                
+                try:
+                    accounts = await broker.get_accounts()
+                    if not accounts:
+                        results[bt.value.upper()] = {
+                            "quantity": 0,
+                            "connected": True,
+                            "error": "No accounts"
+                        }
+                        continue
+                    
+                    account_id = accounts[0].account_id
+                    position = await broker.get_position(account_id, symbol)
+                    
+                    if position:
+                        results[bt.value.upper()] = {
+                            "quantity": position.quantity,
+                            "avg_cost": position.avg_cost,
+                            "current_price": position.current_price,
+                            "market_value": position.market_value,
+                            "unrealized_pnl": position.unrealized_pnl,
+                            "connected": True,
+                            "error": None
+                        }
+                    else:
+                        results[bt.value.upper()] = {
+                            "quantity": 0,
+                            "connected": True,
+                            "error": None
+                        }
+                        
+                except Exception as e:
+                    results[bt.value.upper()] = {
+                        "quantity": 0,
+                        "connected": True,
+                        "error": str(e)
+                    }
+                    logger.debug(f"Error getting position for {symbol} from {bt.value}: {e}")
+            
+            # Log summary
+            brokers_with_position = [
+                f"{b}: {info['quantity']}" 
+                for b, info in results.items() 
+                if info.get('quantity', 0) > 0
+            ]
+            
+            if brokers_with_position:
+                logger.info(f"Position {symbol} found on: {', '.join(brokers_with_position)}")
+            else:
+                logger.debug(f"Position {symbol}: Not held on any connected broker")
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error getting positions across brokers for {symbol}: {e}")
+            return {}
+    
+    async def validate_sell_across_brokers(
+        self, 
+        symbol: str, 
+        quantity: float,
+        target_broker: str = None
+    ) -> dict:
+        """
+        Validate a sell order across brokers.
+        
+        Checks if the position exists on the target broker (or any broker if not specified).
+        Returns detailed information about where the position exists.
+        
+        Args:
+            symbol: Stock symbol to sell
+            quantity: Quantity to sell
+            target_broker: Specific broker to check (e.g., "ibkr", "alpaca")
+            
+        Returns:
+            Dict with validation result and details
+        """
+        positions = await self.get_position_across_brokers(symbol)
+        
+        result = {
+            "symbol": symbol,
+            "requested_quantity": quantity,
+            "can_sell": False,
+            "target_broker": target_broker,
+            "positions_by_broker": positions,
+            "brokers_with_position": [],
+            "total_quantity_available": 0,
+            "recommendation": ""
+        }
+        
+        # Calculate totals
+        for broker, info in positions.items():
+            qty = info.get("quantity", 0)
+            if qty > 0:
+                result["brokers_with_position"].append(broker)
+                result["total_quantity_available"] += qty
+        
+        # Validate
+        if target_broker:
+            target_upper = target_broker.upper()
+            target_info = positions.get(target_upper, {})
+            target_qty = target_info.get("quantity", 0)
+            
+            if target_qty >= quantity:
+                result["can_sell"] = True
+                result["recommendation"] = f"OK: {target_upper} has {target_qty} shares (selling {quantity})"
+            elif target_qty > 0:
+                result["can_sell"] = False
+                result["recommendation"] = (
+                    f"PARTIAL: {target_upper} only has {target_qty} of {quantity} requested. "
+                    f"Reduce quantity or check other brokers."
+                )
+            else:
+                # Check if position exists elsewhere
+                if result["brokers_with_position"]:
+                    result["recommendation"] = (
+                        f"WRONG BROKER: No position on {target_upper}. "
+                        f"Position exists on: {', '.join(result['brokers_with_position'])}. "
+                        f"Configure bot for correct broker."
+                    )
+                else:
+                    result["recommendation"] = (
+                        f"NO POSITION: {symbol} not held on any connected broker"
+                    )
+        else:
+            if result["total_quantity_available"] >= quantity:
+                result["can_sell"] = True
+                result["recommendation"] = (
+                    f"OK: Total {result['total_quantity_available']} shares available "
+                    f"on {', '.join(result['brokers_with_position'])}"
+                )
+            else:
+                result["recommendation"] = f"INSUFFICIENT: Only {result['total_quantity_available']} shares available"
+        
+        # Log the validation result
+        if not result["can_sell"]:
+            logger.warning(f"Sell validation failed for {symbol}: {result['recommendation']}")
+        
+        return result
+    
     @property
     def bot_count(self) -> int:
         """Get number of bots."""

@@ -478,3 +478,109 @@ async def get_position(symbol: str) -> Dict[str, Any]:
         "unrealized_pnl_pct": 0,
         "message": "Position not found",
     }
+
+
+@router.get("/multi-broker/{symbol}")
+async def get_position_across_brokers(symbol: str) -> Dict[str, Any]:
+    """
+    Get position for a symbol across ALL connected brokers.
+    
+    This helps identify which broker(s) hold a position, useful for:
+    - Debugging why sells aren't happening
+    - Verifying position exists on correct broker
+    - Checking for cross-broker position mismatches
+    
+    Args:
+        symbol: Stock symbol to check
+        
+    Returns:
+        Dict with position info from each broker
+    """
+    try:
+        from src.bot.bot_manager import get_bot_manager
+        manager = get_bot_manager()
+        
+        if not manager:
+            return {
+                "symbol": symbol.upper(),
+                "error": "Bot manager not available",
+                "positions": {}
+            }
+        
+        positions = await manager.get_position_across_brokers(symbol)
+        
+        # Calculate summary
+        total_qty = sum(
+            info.get("quantity", 0) 
+            for info in positions.values()
+        )
+        brokers_with_position = [
+            broker for broker, info in positions.items()
+            if info.get("quantity", 0) > 0
+        ]
+        
+        return {
+            "symbol": symbol.upper(),
+            "total_quantity": total_qty,
+            "brokers_with_position": brokers_with_position,
+            "positions_by_broker": positions,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error checking position across brokers for {symbol}: {e}")
+        return {
+            "symbol": symbol.upper(),
+            "error": str(e),
+            "positions": {}
+        }
+
+
+@router.post("/validate-sell")
+async def validate_sell_order(
+    symbol: str,
+    quantity: float,
+    broker: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Validate if a sell order can be executed.
+    
+    Performs comprehensive checks:
+    1. Position exists on target broker (or any broker if not specified)
+    2. Sufficient quantity available
+    3. Identifies which broker(s) have the position
+    
+    Args:
+        symbol: Stock symbol to sell
+        quantity: Number of shares to sell
+        broker: Optional specific broker to check (e.g., "ibkr", "alpaca")
+        
+    Returns:
+        Validation result with detailed information
+    """
+    try:
+        from src.bot.bot_manager import get_bot_manager
+        manager = get_bot_manager()
+        
+        if not manager:
+            return {
+                "symbol": symbol.upper(),
+                "can_sell": False,
+                "error": "Bot manager not available"
+            }
+        
+        result = await manager.validate_sell_across_brokers(
+            symbol=symbol,
+            quantity=quantity,
+            target_broker=broker
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error validating sell for {symbol}: {e}")
+        return {
+            "symbol": symbol.upper(),
+            "can_sell": False,
+            "error": str(e)
+        }
