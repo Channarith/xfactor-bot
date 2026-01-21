@@ -324,6 +324,11 @@ class BotManager:
         return len(self._bots)
     
     @property
+    def bots(self) -> dict:
+        """Get all bots dict (for backwards compatibility)."""
+        return self._bots
+    
+    @property
     def running_count(self) -> int:
         """Get number of running bots."""
         return sum(1 for bot in self._bots.values() if bot.is_running)

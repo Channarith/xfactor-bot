@@ -43,7 +43,7 @@ async def cleanup_all_resources():
         bot_mgr = get_bot_manager()
         if bot_mgr:
             logger.info("Stopping all trading bots...")
-            await bot_mgr.stop_all_bots()
+            bot_mgr.stop_all()  # stop_all() is synchronous
             logger.info("All bots stopped")
     except Exception as e:
         logger.warning(f"Error stopping bots: {e}")

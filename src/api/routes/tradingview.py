@@ -194,8 +194,8 @@ async def process_alert(alert: TradingViewAlert) -> WebhookResponse:
         # Option 3: Create a generic order
         
         tv_bot = None
-        for bot_id, bot in bot_manager.bots.items():
-            if "tradingview" in bot.name.lower() or (alert.strategy and alert.strategy.lower() in bot.name.lower()):
+        for bot in bot_manager.get_all_bots():
+            if "tradingview" in bot.config.name.lower() or (alert.strategy and alert.strategy.lower() in bot.config.name.lower()):
                 tv_bot = bot
                 break
         
