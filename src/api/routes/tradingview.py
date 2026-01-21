@@ -199,7 +199,7 @@ async def process_alert(alert: TradingViewAlert) -> WebhookResponse:
                 tv_bot = bot
                 break
         
-        if tv_bot and tv_bot.running:
+        if tv_bot and tv_bot.is_running:
             # Execute via bot
             # This would need implementation in the bot
             result = f"Routed to bot: {tv_bot.name}"
