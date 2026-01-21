@@ -104,6 +104,43 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '2.1.9',
+    date: 'January 21, 2026',
+    changes: [
+      '🌐 Network Error Handling',
+      '',
+      '• Smart network outage detection across the system',
+      '• Single "NETWORK DOWN" warning instead of log spam',
+      '• Pauses trading automatically when network fails',
+      '• "NETWORK RESTORED" notification when connectivity returns',
+      '• Reduces hundreds of error logs to a few clean warnings',
+      '',
+      '🔧 Bug Fixes',
+      '• Fixed BotManager "bots" attribute error on shutdown',
+      '• Fixed stop_all() method call in cleanup',
+    ]
+  },
+  {
+    version: '2.1.8',
+    date: 'January 21, 2026',
+    changes: [
+      '🛡️ Sell Order Validation',
+      '',
+      '• Comprehensive validation before every sell order',
+      '• Verifies position exists on broker before selling',
+      '• Prevents selling stocks you don\'t own',
+      '• Fresh position check (not cached) before each sell',
+      '• Quantity adjustment if selling more than available',
+      '',
+      '🔍 Multi-Broker Position Check',
+      '• GET /api/positions/multi-broker/{symbol} endpoint',
+      '• Check where a position exists across all brokers',
+      '• POST /api/positions/validate-sell endpoint',
+      '• Pre-validate sell orders before execution',
+      '• Identifies "wrong broker" configuration issues',
+    ]
+  },
+  {
     version: '2.1.7',
     date: 'January 20, 2026',
     changes: [

@@ -5,6 +5,26 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.9] - 2026-01-21
+
+### ✨ New Features
+
+- **Network Error Handling**: Smart detection and logging of network outages.
+  - `NetworkErrorTracker` singleton tracks network status globally
+  - Single "NETWORK DOWN" warning instead of hundreds of error logs
+  - Status update every 60 seconds while network is unavailable
+  - "NETWORK RESTORED" notification when connectivity returns
+  - Bots automatically pause trading when network is down
+  - Reduces log spam from hundreds of errors to a few clean warnings
+
+### 🐛 Bug Fixes
+
+- **BotManager Shutdown Fix**: Fixed `'BotManager' object has no attribute 'bots'` error.
+  - Added `bots` property for backwards compatibility
+  - Fixed `stop_all_bots()` -> `stop_all()` method call in cleanup
+
+---
+
 ## [2.1.8] - 2026-01-21
 
 ### ✨ New Features
