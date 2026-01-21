@@ -971,6 +971,13 @@ class BotInstance:
         """Execute one trading cycle - analyze signals and execute trades."""
         from src.brokers.registry import get_broker_registry
         from src.brokers.base import OrderSide, OrderType, BrokerType
+        from src.utils.helpers import get_network_tracker
+        
+        # Check network availability first
+        network_tracker = get_network_tracker()
+        if not network_tracker.is_network_available:
+            # Network is down - skip this cycle silently (already logged)
+            return
         
         cycle_start = datetime.utcnow()
         self.stats.cycles_completed += 1

@@ -84,11 +84,60 @@ class AlpacaBroker(BaseBroker):
         self._consecutive_failures = 0
         self._max_consecutive_failures = 5
         
+        # Network error tracking - reduce log spam
+        self._network_error_logged = False
+        self._last_network_error_time: Optional[datetime] = None
+        self._network_error_log_interval = 60  # Only log network errors every 60 seconds
+        
         # Thread-safe lock to prevent concurrent API calls (connection pool exhaustion)
         # Using threading.Lock instead of asyncio.Lock because bots run in different event loops
         self._api_lock = threading.Lock()
         
         logger.debug(f"AlpacaBroker initialized: paper={paper}, base_url={self.base_url}")
+    
+    def _is_network_error(self, error: Exception) -> bool:
+        """Check if an error is a network connectivity issue."""
+        error_str = str(error).lower()
+        network_indicators = [
+            'nodename nor servname',
+            'name resolution',
+            'failed to resolve',
+            'connection refused',
+            'network is unreachable',
+            'no route to host',
+            'temporary failure in name resolution',
+            'getaddrinfo failed',
+            'max retries exceeded',
+        ]
+        return any(indicator in error_str for indicator in network_indicators)
+    
+    def _should_log_network_error(self) -> bool:
+        """Check if we should log a network error (to reduce spam)."""
+        now = datetime.now()
+        if self._last_network_error_time is None:
+            self._last_network_error_time = now
+            return True
+        
+        elapsed = (now - self._last_network_error_time).total_seconds()
+        if elapsed >= self._network_error_log_interval:
+            self._last_network_error_time = now
+            return True
+        return False
+    
+    def _log_network_error(self, context: str, error: Exception) -> None:
+        """Log network error with rate limiting to reduce spam."""
+        from src.utils.helpers import get_network_tracker
+        tracker = get_network_tracker()
+        tracker.record_error(f"alpaca.{context}", error)
+    
+    def _reset_network_error_state(self) -> None:
+        """Reset network error state after successful call."""
+        self._network_error_logged = False
+        self._last_network_error_time = None
+        # Notify global tracker of successful connection
+        from src.utils.helpers import get_network_tracker
+        tracker = get_network_tracker()
+        tracker.record_success("alpaca")
     
     @property
     def supports_fractional_shares(self) -> bool:
@@ -278,12 +327,16 @@ class AlpacaBroker(BaseBroker):
             
         except asyncio.TimeoutError:
             self._consecutive_failures += 1
-            logger.warning(f"Alpaca health check timed out (failures: {self._consecutive_failures})")
+            if self._should_log_network_error():
+                logger.warning(f"Alpaca health check timed out (failures: {self._consecutive_failures})")
             return self._consecutive_failures < self._max_consecutive_failures
             
         except Exception as e:
             self._consecutive_failures += 1
-            logger.warning(f"Alpaca health check failed: {e} (failures: {self._consecutive_failures})")
+            if self._is_network_error(e):
+                self._log_network_error("health_check", e)
+            else:
+                logger.warning(f"Alpaca health check failed: {e} (failures: {self._consecutive_failures})")
             return False
     
     async def get_accounts(self) -> List[AccountInfo]:
@@ -344,11 +397,17 @@ class AlpacaBroker(BaseBroker):
                 
                 logger.debug(f"Alpaca account: equity=${float(account.equity):,.2f}, buying_power=${float(account.buying_power):,.2f}")
                 
+                # Reset network error state on success
+                self._reset_network_error_state()
+                
                 return result
                 
             except Exception as e:
-                logger.error(f"Error getting Alpaca account: {e}")
                 self._consecutive_failures += 1
+                if self._is_network_error(e):
+                    self._log_network_error("get_accounts", e)
+                else:
+                    logger.error(f"Error getting Alpaca account: {e}")
                 return self._account_cache or []
     
     async def get_account_info(self, account_id: str) -> AccountInfo:
@@ -420,10 +479,16 @@ class AlpacaBroker(BaseBroker):
                 for p in result:
                     logger.debug(f"  {p.symbol}: {p.quantity} @ ${p.current_price:.2f} (P&L: ${p.unrealized_pnl:.2f})")
                 
+                # Reset network error state on success
+                self._reset_network_error_state()
+                
                 return result
                 
             except Exception as e:
-                logger.error(f"Error getting positions: {e}")
+                if self._is_network_error(e):
+                    self._log_network_error("get_positions", e)
+                else:
+                    logger.error(f"Error getting positions: {e}")
                 return self._positions_cache or []
     
     async def get_position(self, account_id: str, symbol: str) -> Optional[Position]:
@@ -455,11 +520,17 @@ class AlpacaBroker(BaseBroker):
             )
             
             logger.debug(f"Position {symbol}: {position.quantity} shares @ ${position.current_price:.2f}")
+            self._reset_network_error_state()
             return position
             
         except Exception as e:
             # Position not found is expected for symbols we don't hold
-            if "not found" not in str(e).lower():
+            error_str = str(e).lower()
+            if "not found" in error_str:
+                return None  # Normal case - no position
+            elif self._is_network_error(e):
+                self._log_network_error(f"get_position({symbol})", e)
+            else:
                 logger.debug(f"No position for {symbol}: {e}")
             return None
     
@@ -615,7 +686,9 @@ class AlpacaBroker(BaseBroker):
             error_str = str(e)
             
             # Parse common order errors
-            if "insufficient" in error_str.lower():
+            if self._is_network_error(e):
+                self._log_network_error(f"submit_order({symbol})", e)
+            elif "insufficient" in error_str.lower():
                 logger.error(f"❌ Insufficient buying power for {quantity} {symbol}")
             elif "not tradeable" in error_str.lower():
                 logger.error(f"❌ {symbol} is not tradeable")

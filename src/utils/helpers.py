@@ -163,3 +163,118 @@ def generate_order_id() -> str:
     unique = uuid.uuid4().hex[:8]
     return f"ORD-{timestamp}-{unique}"
 
+
+class NetworkErrorTracker:
+    """
+    Track network errors across the system to reduce log spam.
+    
+    When network is down, logs a single warning then suppresses
+    repeat errors until network recovers.
+    """
+    
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+    
+    def __init__(self):
+        if self._initialized:
+            return
+        self._initialized = True
+        self._last_error_time: dict[str, datetime] = {}
+        self._error_counts: dict[str, int] = {}
+        self._is_network_down = False
+        self._last_network_warning: datetime | None = None
+        self._warning_interval = 60  # Log warning every 60 seconds when network is down
+        self._network_indicators = [
+            'nodename nor servname',
+            'name resolution',
+            'failed to resolve',
+            'connection refused',
+            'network is unreachable',
+            'no route to host',
+            'temporary failure in name resolution',
+            'getaddrinfo failed',
+            'max retries exceeded',
+            'connection reset',
+            'connection timed out',
+        ]
+    
+    def is_network_error(self, error: Exception) -> bool:
+        """Check if an error is a network connectivity issue."""
+        error_str = str(error).lower()
+        return any(indicator in error_str for indicator in self._network_indicators)
+    
+    def record_error(self, source: str, error: Exception) -> bool:
+        """
+        Record a network error.
+        
+        Returns True if this error should be logged, False if suppressed.
+        """
+        from loguru import logger
+        
+        if not self.is_network_error(error):
+            return True  # Not a network error, should be logged normally
+        
+        now = datetime.now(timezone.utc)
+        self._error_counts[source] = self._error_counts.get(source, 0) + 1
+        
+        # Check if we should log
+        should_log = False
+        
+        if not self._is_network_down:
+            # First network error - log it and mark network as down
+            self._is_network_down = True
+            self._last_network_warning = now
+            should_log = True
+            logger.warning(
+                f"⚠️ NETWORK DOWN: Connection failed ({source}). "
+                f"Trading paused until connectivity restored. "
+                f"Check internet connection."
+            )
+        elif self._last_network_warning:
+            elapsed = (now - self._last_network_warning).total_seconds()
+            if elapsed >= self._warning_interval:
+                self._last_network_warning = now
+                total_errors = sum(self._error_counts.values())
+                logger.warning(
+                    f"⚠️ NETWORK STILL DOWN: {total_errors} errors since outage started. "
+                    f"Waiting for connectivity..."
+                )
+        
+        return should_log
+    
+    def record_success(self, source: str) -> None:
+        """Record a successful network call - resets network down state."""
+        from loguru import logger
+        
+        if self._is_network_down:
+            total_errors = sum(self._error_counts.values())
+            logger.info(
+                f"✅ NETWORK RESTORED: Connectivity recovered via {source}. "
+                f"Resuming normal operations. ({total_errors} errors during outage)"
+            )
+            self._is_network_down = False
+            self._error_counts.clear()
+            self._last_network_warning = None
+    
+    @property
+    def is_network_available(self) -> bool:
+        """Check if network appears to be available."""
+        return not self._is_network_down
+
+
+# Global singleton instance
+_network_tracker: NetworkErrorTracker | None = None
+
+
+def get_network_tracker() -> NetworkErrorTracker:
+    """Get the global network error tracker instance."""
+    global _network_tracker
+    if _network_tracker is None:
+        _network_tracker = NetworkErrorTracker()
+    return _network_tracker
+
