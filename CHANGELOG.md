@@ -5,6 +5,46 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.11] - 2026-01-22
+
+### ✨ New Features
+
+- **Bot State Persistence**: Bot configurations and state now persist across app restarts.
+  - `SavedBotsManager` class stores bot data in `~/.xfactor-bot/saved_bots.json`
+  - Bot configurations (symbols, strategies, parameters) are saved automatically
+  - Running state tracked - bots that were running auto-start on reload
+  - Position tracking persisted - knows which bot opened which position
+  - Auto-save triggers on bot create/delete and position changes
+
+- **Persistence API Endpoints**: New endpoints for managing bot persistence.
+  - `POST /api/bots/save` - Manually save all bot configurations
+  - `POST /api/bots/load` - Load saved bots (with auto_start option)
+  - `GET /api/bots/persistence` - Get persistence system status
+  - `POST /api/bots/persistence/auto-save` - Enable/disable auto-save
+  - `DELETE /api/bots/persistence/clear` - Clear all saved data
+
+- **Seamless Reconnection**: When app reconnects, bots resume from saved state.
+  - Loads saved bot configs instead of creating defaults
+  - Restores position tracking associations
+  - Auto-starts bots that were running before shutdown
+
+### 🐛 Bug Fixes
+
+- **Modal Input Fix**: Fixed all modal textboxes and buttons not working properly.
+  - Added proper `onClick` and `onKeyDown` event handlers to modal backdrops
+  - Added `stopPropagation()` on modal content to prevent click-through issues
+  - Fixed Glossary search input with proper attributes (`id`, `autoComplete`, `autoFocus`)
+  - Added Escape key support to close all modals
+  - Fixed modals: HelpModal, BotManager, UnlockModal, BotPerformanceChart, BrokerConfig, NewsFeed, ComplianceWarning, TradingModeSelector, Header, PositionPerformanceChart, CollapsiblePanel
+
+- **Agentic Tuner Bot Names**: Fixed bot names not showing in rankings.
+  - Backend now correctly reads `bot.config.name` instead of `bot.name`
+  - Champion names now display in the Champions card with medals (🥇🥈🥉)
+  - Bot names in rankings are clickable - opens a bot details modal
+  - Bot details modal shows: status, P&L, win rate, strategies, symbols, and configuration
+
+---
+
 ## [2.1.10] - 2026-01-22
 
 ### ✨ New Features

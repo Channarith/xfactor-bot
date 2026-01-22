@@ -18,7 +18,9 @@ import {
   XCircle,
   ChevronDown,
   ChevronUp,
-  Sparkles
+  Sparkles,
+  ExternalLink,
+  X
 } from 'lucide-react';
 import { getApiBaseUrl } from '../config/api';
 
@@ -51,6 +53,27 @@ interface BotRanking {
   win_rate: number;
   is_champion: boolean;
   is_active: boolean;
+}
+
+interface BotDetails {
+  id: string;
+  name: string;
+  description: string;
+  status: string;
+  config: {
+    symbols: string[];
+    strategies: string[];
+    max_position_size: number;
+    max_positions: number;
+    instrument_type?: string;
+  };
+  stats: {
+    trades_today: number;
+    daily_pnl: number;
+    total_pnl?: number;
+    win_rate?: number;
+    open_positions: number;
+  };
 }
 
 interface OptimizationTarget {
@@ -87,6 +110,9 @@ export function AgenticTuning() {
   const [stopping, setStopping] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showRankings, setShowRankings] = useState(false);
+  const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
+  const [botDetails, setBotDetails] = useState<BotDetails | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
 
   const fetchStatus = async () => {
     try {
@@ -184,6 +210,26 @@ export function AgenticTuning() {
     } catch (e) {
       console.error('Failed to force evaluation:', e);
     }
+  };
+
+  const fetchBotDetails = async (botId: string) => {
+    setLoadingDetails(true);
+    setSelectedBotId(botId);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/bots/${botId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setBotDetails(data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch bot details:', e);
+    }
+    setLoadingDetails(false);
+  };
+
+  const closeBotDetails = () => {
+    setSelectedBotId(null);
+    setBotDetails(null);
   };
 
   if (loading) {
@@ -353,9 +399,27 @@ export function AgenticTuning() {
             <div className="text-2xl font-bold text-yellow-400">
               {status.champions.length}
             </div>
-            <p className="text-xs text-yellow-400/70">
-              Top performers
-            </p>
+            {status.champions.length > 0 ? (
+              <div className="mt-1 space-y-0.5">
+                {rankings
+                  .filter(bot => bot.is_champion)
+                  .slice(0, 3)
+                  .map((bot, i) => (
+                    <button
+                      key={bot.bot_id}
+                      onClick={() => fetchBotDetails(bot.bot_id)}
+                      className="text-xs text-yellow-400/90 hover:text-yellow-300 hover:underline block truncate max-w-full text-left"
+                      title={bot.bot_name}
+                    >
+                      {i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'} {bot.bot_name}
+                    </button>
+                  ))}
+              </div>
+            ) : (
+              <p className="text-xs text-yellow-400/70">
+                Top performers
+              </p>
+            )}
           </div>
 
           {/* Compute Savings */}
@@ -430,8 +494,15 @@ export function AgenticTuning() {
                           <span className="text-muted-foreground">#{bot.rank}</span>
                         )}
                       </td>
-                      <td className="py-2 pr-4 font-medium text-foreground">
-                        {bot.bot_name}
+                      <td className="py-2 pr-4">
+                        <button
+                          onClick={() => fetchBotDetails(bot.bot_id)}
+                          className="font-medium text-foreground hover:text-primary hover:underline transition-colors flex items-center gap-1 group"
+                          title="View bot details"
+                        >
+                          {bot.bot_name}
+                          <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </button>
                       </td>
                       <td className="py-2 pr-4">
                         <span className="font-mono text-primary">
@@ -480,6 +551,150 @@ export function AgenticTuning() {
             <span className="font-medium text-primary">
               {targets.find(t => t.id === status.target)?.name || status.target}
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* Bot Details Modal */}
+      {selectedBotId && (
+        <div 
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
+          onClick={closeBotDetails}
+          onKeyDown={(e) => e.key === 'Escape' && closeBotDetails()}
+        >
+          <div 
+            className="bg-card rounded-xl border border-border max-w-lg w-full max-h-[80vh] overflow-y-auto shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b border-border bg-gradient-to-r from-purple-500/10 to-blue-500/10">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/20">
+                  <Brain className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-foreground">
+                    {loadingDetails ? 'Loading...' : botDetails?.name || 'Bot Details'}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">ID: {selectedBotId}</p>
+                </div>
+              </div>
+              <button
+                onClick={closeBotDetails}
+                className="p-2 rounded-lg hover:bg-secondary transition-colors"
+              >
+                <X className="h-5 w-5 text-muted-foreground" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            {loadingDetails ? (
+              <div className="p-8 flex items-center justify-center">
+                <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+              </div>
+            ) : botDetails ? (
+              <div className="p-4 space-y-4">
+                {/* Status */}
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                    botDetails.status === 'running' ? 'bg-green-500/20 text-green-400' :
+                    botDetails.status === 'paused' ? 'bg-yellow-500/20 text-yellow-400' :
+                    botDetails.status === 'error' ? 'bg-red-500/20 text-red-400' :
+                    'bg-secondary text-muted-foreground'
+                  }`}>
+                    {botDetails.status.toUpperCase()}
+                  </span>
+                  {botDetails.config.instrument_type && (
+                    <span className="px-2 py-1 rounded text-xs bg-secondary text-muted-foreground">
+                      {botDetails.config.instrument_type}
+                    </span>
+                  )}
+                </div>
+
+                {/* Description */}
+                {botDetails.description && (
+                  <p className="text-sm text-muted-foreground">{botDetails.description}</p>
+                )}
+
+                {/* Stats Grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 rounded-lg bg-secondary/50">
+                    <p className="text-xs text-muted-foreground">Daily P&L</p>
+                    <p className={`text-lg font-bold ${botDetails.stats.daily_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      ${botDetails.stats.daily_pnl?.toFixed(2) || '0.00'}
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-secondary/50">
+                    <p className="text-xs text-muted-foreground">Total P&L</p>
+                    <p className={`text-lg font-bold ${(botDetails.stats.total_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      ${botDetails.stats.total_pnl?.toFixed(2) || '0.00'}
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-secondary/50">
+                    <p className="text-xs text-muted-foreground">Win Rate</p>
+                    <p className="text-lg font-bold text-foreground">
+                      {botDetails.stats.win_rate?.toFixed(1) || '0.0'}%
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-secondary/50">
+                    <p className="text-xs text-muted-foreground">Open Positions</p>
+                    <p className="text-lg font-bold text-foreground">
+                      {botDetails.stats.open_positions || 0}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Strategies */}
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">Strategies</p>
+                  <div className="flex flex-wrap gap-1">
+                    {botDetails.config.strategies.slice(0, 6).map((strategy) => (
+                      <span key={strategy} className="px-2 py-0.5 rounded text-xs bg-primary/20 text-primary">
+                        {strategy}
+                      </span>
+                    ))}
+                    {botDetails.config.strategies.length > 6 && (
+                      <span className="px-2 py-0.5 rounded text-xs bg-secondary text-muted-foreground">
+                        +{botDetails.config.strategies.length - 6} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Symbols */}
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">Symbols ({botDetails.config.symbols.length})</p>
+                  <div className="flex flex-wrap gap-1">
+                    {botDetails.config.symbols.slice(0, 8).map((symbol) => (
+                      <span key={symbol} className="px-2 py-0.5 rounded text-xs bg-secondary text-foreground font-mono">
+                        {symbol}
+                      </span>
+                    ))}
+                    {botDetails.config.symbols.length > 8 && (
+                      <span className="px-2 py-0.5 rounded text-xs bg-secondary text-muted-foreground">
+                        +{botDetails.config.symbols.length - 8} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Config */}
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-muted-foreground">Max Position Size:</span>
+                    <span className="ml-2 text-foreground font-medium">${botDetails.config.max_position_size.toLocaleString()}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Max Positions:</span>
+                    <span className="ml-2 text-foreground font-medium">{botDetails.config.max_positions}</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-8 text-center text-muted-foreground">
+                Failed to load bot details
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -1,4 +1,4 @@
-name: Build Desktop Releases
+name: XFactor Bot v2.1.11 Release
 
 on:
   push:
@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v2.1.1)'
-        required: false
-        default: 'v2.1.10'
+        description: 'Version tag (e.g., v2.1.11)'
+        required: true
+        default: 'v2.1.11'
 
 permissions:
   contents: write  # Required to create releases
@@ -481,19 +481,44 @@ jobs:
       - name: Display structure
         run: ls -R artifacts
 
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${{ github.ref_name }}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Release version: $VERSION"
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          # Use input version for workflow_dispatch, or tag for tag push
-          tag_name: ${{ github.event.inputs.version || github.ref_name }}
-          name: "XFactor Bot ${{ github.event.inputs.version || github.ref_name }}"
+          tag_name: ${{ steps.version.outputs.VERSION }}
+          name: "XFactor Bot ${{ steps.version.outputs.VERSION }}"
+          body: |
+            ## XFactor Bot ${{ steps.version.outputs.VERSION }}
+            
+            ### Features
+            - Bot State Persistence: Configs saved to ~/.xfactor-bot/
+            - Auto-resume bots on app restart with position tracking
+            - New persistence API endpoints
+            
+            ### Bug Fixes
+            - Fixed modal inputs/buttons across all components
+            - Fixed Glossary search functionality
+            - Added Escape key support for all modals
+            
+            ### Agentic Tuner
+            - Fixed bot names display in rankings
+            - Champion names now clickable with details modal
           files: |
             artifacts/**/*.dmg
             artifacts/**/*.msi
             artifacts/**/*.exe
             artifacts/**/*.deb
           draft: true
-          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -712,6 +712,119 @@ async def resume_all_bots(admin: AdminUser = Depends(get_admin_user)):
 
 
 # =========================================================================
+# Persistence Routes - Save/Load bot configurations
+# =========================================================================
+
+@router.post("/save")
+async def save_all_bots(admin: AdminUser = Depends(get_admin_user)):
+    """
+    Save all bot configurations and state to disk.
+    
+    This persists:
+    - Bot configurations (symbols, strategies, parameters)
+    - Running state (which bots were running)
+    - Position tracking (which bot opened which position)
+    
+    Bots will be restored on next app startup.
+    """
+    manager = get_bot_manager()
+    
+    success_bots = manager.save_all_bots()
+    success_positions = manager.save_position_tracking()
+    
+    return {
+        "success": success_bots and success_positions,
+        "bots_saved": success_bots,
+        "positions_saved": success_positions,
+        "bots_count": manager.bot_count,
+        "message": "Bot configurations saved to disk" if success_bots else "Failed to save bots",
+    }
+
+
+@router.post("/load")
+async def load_saved_bots(
+    auto_start: bool = Query(True, description="Auto-start bots that were running when saved"),
+    admin: AdminUser = Depends(get_admin_user),
+):
+    """
+    Load saved bot configurations from disk.
+    
+    This will:
+    - Load previously saved bot configurations
+    - Optionally auto-start bots that were running
+    - Restore position tracking associations
+    
+    Note: Existing bots will NOT be affected. Use with caution.
+    """
+    manager = get_bot_manager()
+    
+    # Check if we already have bots
+    existing_count = manager.bot_count
+    
+    # Load bots
+    loaded = manager.load_saved_bots(auto_start=auto_start)
+    
+    # Load position tracking
+    positions = manager.load_position_tracking()
+    
+    return {
+        "success": loaded > 0,
+        "bots_loaded": loaded,
+        "positions_loaded": positions,
+        "existing_bots": existing_count,
+        "total_bots": manager.bot_count,
+        "message": f"Loaded {loaded} bots from saved state" if loaded > 0 else "No saved bots found",
+    }
+
+
+@router.get("/persistence")
+async def get_persistence_status():
+    """
+    Get status of the bot persistence system.
+    
+    Returns information about:
+    - Whether auto-save is enabled
+    - Last save time
+    - Saved bots summary
+    """
+    manager = get_bot_manager()
+    return manager.get_persistence_status()
+
+
+@router.post("/persistence/auto-save")
+async def set_auto_save(
+    enabled: bool = Query(True, description="Enable or disable auto-save"),
+    admin: AdminUser = Depends(get_admin_user),
+):
+    """Enable or disable automatic saving of bot configurations."""
+    manager = get_bot_manager()
+    manager.set_auto_save(enabled)
+    
+    return {
+        "success": True,
+        "auto_save_enabled": enabled,
+        "message": f"Auto-save {'enabled' if enabled else 'disabled'}",
+    }
+
+
+@router.delete("/persistence/clear")
+async def clear_saved_data(admin: AdminUser = Depends(get_admin_user)):
+    """
+    Clear all saved bot data from disk.
+    
+    WARNING: This will delete all saved bot configurations and position tracking.
+    The currently running bots will NOT be affected.
+    """
+    manager = get_bot_manager()
+    success = manager.clear_saved_data()
+    
+    return {
+        "success": success,
+        "message": "Saved data cleared" if success else "Failed to clear saved data",
+    }
+
+
+# =========================================================================
 # Parameterized Routes - MUST be AFTER static routes!
 # =========================================================================
 

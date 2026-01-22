@@ -40,8 +40,15 @@ export function CollapsiblePanel({
   // Maximized view - full screen overlay
   if (isMaximized) {
     return (
-      <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm overflow-auto p-6">
-        <div className="max-w-7xl mx-auto">
+      <div 
+        className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm overflow-auto p-6"
+        onClick={() => setIsMaximized(false)}
+        onKeyDown={(e) => e.key === 'Escape' && setIsMaximized(false)}
+      >
+        <div 
+          className="max-w-7xl mx-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className={`rounded-lg border border-border bg-card ${className}`}>
             {/* Header */}
             <div

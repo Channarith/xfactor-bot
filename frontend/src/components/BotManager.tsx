@@ -1203,8 +1203,15 @@ export function BotManager({ token = '' }: BotManagerProps) {
       
       {/* Bot Detail Modal */}
       {showBotDetail && selectedBot && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-card rounded-xl border border-border max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowBotDetail(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setShowBotDetail(false)}
+        >
+          <div 
+            className="bg-card rounded-xl border border-border max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Modal Header */}
             <div className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-card">
               <div className="flex items-center gap-3">
@@ -1385,8 +1392,15 @@ export function BotManager({ token = '' }: BotManagerProps) {
       
       {/* Auth Required Modal */}
       {showAuthModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-          <div className="bg-card rounded-xl border border-amber-500/50 max-w-md w-full shadow-2xl shadow-amber-500/10 animate-in fade-in zoom-in duration-200">
+        <div 
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
+          onClick={() => setShowAuthModal(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setShowAuthModal(false)}
+        >
+          <div 
+            className="bg-card rounded-xl border border-amber-500/50 max-w-md w-full shadow-2xl shadow-amber-500/10 animate-in fade-in zoom-in duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Modal Header */}
             <div className="flex items-center gap-3 p-5 border-b border-border bg-gradient-to-r from-amber-500/10 to-orange-500/10 rounded-t-xl">
               <div className="p-3 rounded-full bg-amber-500/20">

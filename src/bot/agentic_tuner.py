@@ -385,7 +385,11 @@ class AgenticTuner:
         bots = self._get_all_bots()
         for i, bot in enumerate(bots):
             bot_id = getattr(bot, 'id', str(i))
-            bot_name = getattr(bot, 'name', f'Bot_{i}')
+            # Bot name is in bot.config.name, not bot.name
+            if hasattr(bot, 'config') and hasattr(bot.config, 'name'):
+                bot_name = bot.config.name
+            else:
+                bot_name = getattr(bot, 'name', f'Bot_{i}')
             
             # Assign GPU and lane
             gpu_id = i // 5  # 5 bots per GPU

@@ -1,5 +1,10 @@
 """
 Bot Manager for managing multiple trading bot instances.
+
+Features:
+- Create and manage up to 100 bot instances
+- Persistent storage of bot configurations and state
+- Resume bots on app restart with saved positions
 """
 
 import threading
@@ -15,6 +20,7 @@ from src.bot.auto_optimizer import (
     OptimizationConfig,
     OptimizationMode,
 )
+from src.bot.saved_bots import get_saved_bots_manager, SavedBotsManager
 
 
 class BotManager:
@@ -53,6 +59,13 @@ class BotManager:
         # Auto-optimizer integration
         self._optimizer_manager = get_auto_optimizer_manager()
         
+        # Persistence manager for saving/loading bot state
+        self._saved_bots_manager: SavedBotsManager = get_saved_bots_manager()
+        
+        # Auto-save settings
+        self._auto_save_enabled = True
+        self._last_save_time: Optional[datetime] = None
+        
         logger.info(f"Bot Manager initialized with auto-optimizer support (multi_broker={self.DEFAULT_MULTI_BROKER})")
     
     def track_position_open(self, symbol: str, broker: str, bot_id: str, bot_name: str, quantity: float) -> None:
@@ -66,6 +79,9 @@ class BotManager:
                 "quantity": quantity,
             }
             logger.debug(f"Position tracked: {symbol} on {broker} opened by bot {bot_name} ({bot_id})")
+        
+        # Save position tracking to disk
+        self.save_position_tracking()
     
     def track_position_close(self, symbol: str, broker: str) -> None:
         """Remove position tracking when closed."""
@@ -74,6 +90,9 @@ class BotManager:
             if key in self._position_tracking:
                 del self._position_tracking[key]
                 logger.debug(f"Position tracking removed: {symbol} on {broker}")
+        
+        # Save position tracking to disk
+        self.save_position_tracking()
     
     def get_position_bot(self, symbol: str, broker: str) -> Optional[dict]:
         """Get the bot that opened a position."""
@@ -396,6 +415,10 @@ class BotManager:
             self._register_bot_optimizer(bot)
             
             logger.info(f"Created bot {bot.id}: {config.name} ({self.bot_count}/{self.MAX_BOTS})")
+            
+            # Auto-save after creating bot
+            self._auto_save()
+            
             return bot
     
     def get_bot(self, bot_id: str) -> Optional[BotInstance]:
@@ -430,7 +453,14 @@ class BotManager:
             # Unregister from auto-optimizer
             self._optimizer_manager.unregister_bot(bot_id)
             
+            # Remove from saved bots
+            self._saved_bots_manager.delete_bot(bot_id)
+            
             logger.info(f"Deleted bot {bot_id}")
+            
+            # Auto-save after deletion
+            self._auto_save()
+            
             return True
     
     def _register_bot_optimizer(self, bot: BotInstance) -> None:
@@ -630,6 +660,206 @@ class BotManager:
             }
             for bot in self._bots.values()
         ]
+    
+    # =========================================================================
+    # Persistence Methods - Save/Load bots and position tracking
+    # =========================================================================
+    
+    def save_all_bots(self) -> bool:
+        """
+        Save all bot configurations and state to disk.
+        
+        This should be called:
+        - When app is closing
+        - After creating/deleting bots
+        - Periodically for safety
+        
+        Returns:
+            True if saved successfully
+        """
+        try:
+            bots_data = []
+            for bot in self._bots.values():
+                bot_data = {
+                    'bot_id': bot.id,
+                    'config': bot.config.to_dict(),
+                    'is_running': bot.is_running,
+                    'auto_start': bot.is_running,  # Auto-start bots that were running
+                    'stats': {
+                        'trades_today': bot.stats.trades_today,
+                        'daily_pnl': bot.stats.daily_pnl,
+                        'total_pnl': getattr(bot.stats, 'total_pnl', 0.0),
+                        'win_rate': getattr(bot.stats, 'win_rate_pct', 50.0),
+                    },
+                }
+                bots_data.append(bot_data)
+            
+            success = self._saved_bots_manager.save_bots(bots_data)
+            
+            if success:
+                self._last_save_time = datetime.now()
+                logger.info(f"Saved {len(bots_data)} bots to persistent storage")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Error saving bots: {e}")
+            return False
+    
+    def save_single_bot(self, bot_id: str) -> bool:
+        """
+        Save a single bot's configuration and state.
+        
+        Args:
+            bot_id: ID of bot to save
+            
+        Returns:
+            True if saved successfully
+        """
+        bot = self._bots.get(bot_id)
+        if not bot:
+            return False
+        
+        try:
+            stats = {
+                'trades_today': bot.stats.trades_today,
+                'daily_pnl': bot.stats.daily_pnl,
+                'total_pnl': getattr(bot.stats, 'total_pnl', 0.0),
+            }
+            
+            return self._saved_bots_manager.save_single_bot(
+                bot_id=bot.id,
+                config=bot.config.to_dict(),
+                is_running=bot.is_running,
+                stats=stats,
+            )
+        except Exception as e:
+            logger.error(f"Error saving single bot {bot_id}: {e}")
+            return False
+    
+    def load_saved_bots(self, auto_start: bool = True) -> int:
+        """
+        Load saved bot configurations from disk and recreate bots.
+        
+        Args:
+            auto_start: If True, start bots that were running when saved
+            
+        Returns:
+            Number of bots loaded
+        """
+        try:
+            saved_states = self._saved_bots_manager.load_bots()
+            
+            if not saved_states:
+                logger.info("No saved bots found")
+                return 0
+            
+            loaded_count = 0
+            auto_started = 0
+            
+            for saved_state in saved_states:
+                try:
+                    # Reconstruct BotConfig from saved dict
+                    config = BotConfig.from_dict(saved_state.config)
+                    
+                    # Create the bot with the saved ID
+                    bot = self.create_bot(config, saved_state.bot_id)
+                    
+                    if bot:
+                        loaded_count += 1
+                        
+                        # Auto-start if was running and auto_start enabled
+                        if auto_start and saved_state.auto_start:
+                            if bot.start():
+                                auto_started += 1
+                                logger.info(f"Auto-started saved bot: {bot.config.name}")
+                    
+                except Exception as e:
+                    logger.error(f"Error loading bot {saved_state.bot_id}: {e}")
+            
+            logger.info(f"Loaded {loaded_count} saved bots ({auto_started} auto-started)")
+            return loaded_count
+            
+        except Exception as e:
+            logger.error(f"Error loading saved bots: {e}")
+            return 0
+    
+    def has_saved_bots(self) -> bool:
+        """Check if there are saved bots to load."""
+        return self._saved_bots_manager.has_saved_bots()
+    
+    def save_position_tracking(self) -> bool:
+        """Save position tracking data to disk."""
+        try:
+            positions = self.get_all_position_tracking()
+            return self._saved_bots_manager.save_position_tracking(positions)
+        except Exception as e:
+            logger.error(f"Error saving position tracking: {e}")
+            return False
+    
+    def load_position_tracking(self) -> int:
+        """
+        Load position tracking data from disk.
+        
+        Returns:
+            Number of positions loaded
+        """
+        try:
+            saved_positions = self._saved_bots_manager.load_position_tracking()
+            
+            if not saved_positions:
+                return 0
+            
+            with self._position_lock:
+                for key, tracking in saved_positions.items():
+                    # Parse key "SYMBOL@BROKER"
+                    parts = key.split('@')
+                    if len(parts) == 2:
+                        symbol, broker = parts
+                        self._position_tracking[(symbol.upper(), broker.upper())] = {
+                            'bot_id': tracking.bot_id,
+                            'bot_name': tracking.bot_name,
+                            'opened_at': tracking.opened_at,
+                            'quantity': tracking.quantity,
+                            'synced': tracking.synced,
+                        }
+            
+            logger.info(f"Loaded {len(saved_positions)} position tracking entries")
+            return len(saved_positions)
+            
+        except Exception as e:
+            logger.error(f"Error loading position tracking: {e}")
+            return 0
+    
+    def _auto_save(self) -> None:
+        """Trigger auto-save if enabled."""
+        if self._auto_save_enabled:
+            # Don't save too frequently (min 5 seconds between saves)
+            if self._last_save_time:
+                elapsed = (datetime.now() - self._last_save_time).total_seconds()
+                if elapsed < 5:
+                    return
+            
+            self.save_all_bots()
+            self.save_position_tracking()
+    
+    def set_auto_save(self, enabled: bool) -> None:
+        """Enable or disable auto-save."""
+        self._auto_save_enabled = enabled
+        logger.info(f"Bot auto-save {'enabled' if enabled else 'disabled'}")
+    
+    def get_persistence_status(self) -> dict:
+        """Get status of persistence system."""
+        return {
+            'auto_save_enabled': self._auto_save_enabled,
+            'last_save_time': self._last_save_time.isoformat() if self._last_save_time else None,
+            'has_saved_bots': self.has_saved_bots(),
+            'saved_bots_info': self._saved_bots_manager.to_dict(),
+        }
+    
+    def clear_saved_data(self) -> bool:
+        """Clear all saved bot data (use with caution)."""
+        return self._saved_bots_manager.clear_all()
 
 
 # Global bot manager instance
@@ -1775,10 +2005,48 @@ def get_bot_manager() -> BotManager:
     if _bot_manager is None:
         _bot_manager = BotManager()
     
-    # Initialize with default bots on first access
+    # Initialize on first access
     if not _initialized and _bot_manager.bot_count == 0:
         _initialized = True
-        _create_default_bots(_bot_manager)
+        
+        # Try to load saved bots first
+        if _bot_manager.has_saved_bots():
+            logger.info("Loading saved bot configurations...")
+            loaded = _bot_manager.load_saved_bots(auto_start=True)
+            
+            # Also load saved position tracking
+            _bot_manager.load_position_tracking()
+            
+            if loaded > 0:
+                logger.info(f"Restored {loaded} bots from saved state")
+            else:
+                # Fall back to defaults if loading failed
+                logger.warning("Failed to load saved bots, creating defaults...")
+                _create_default_bots(_bot_manager)
+        else:
+            # No saved bots, create defaults
+            logger.info("No saved bots found, creating default bots...")
+            _create_default_bots(_bot_manager)
     
     return _bot_manager
+
+
+def reset_bot_manager() -> None:
+    """
+    Reset the global bot manager (useful for testing or full reset).
+    
+    WARNING: This will stop all bots and clear the manager.
+    """
+    global _bot_manager, _initialized
+    
+    if _bot_manager is not None:
+        # Stop all bots
+        _bot_manager.stop_all()
+        
+        # Save state before reset
+        _bot_manager.save_all_bots()
+    
+    _bot_manager = None
+    _initialized = False
+    logger.info("Bot manager reset")
 

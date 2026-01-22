@@ -1,12 +1,12 @@
-name: Build Legacy Mac Only
+name: XFactor Bot v2.1.11 Legacy Mac
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v2.1.1)'
-        required: false
-        default: 'v2.1.1'
+        description: 'Version tag (e.g., v2.1.11)'
+        required: true
+        default: 'v2.1.11'
 
 permissions:
   contents: write
@@ -105,9 +105,13 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.event.inputs.version || 'v1.1.9' }}
-          name: "XFactor Bot ${{ github.event.inputs.version || 'v1.1.9' }} - Legacy Mac Hotfix"
-          draft: false
+          tag_name: ${{ github.event.inputs.version }}
+          name: "XFactor Bot ${{ github.event.inputs.version }} - Legacy Mac"
+          body: |
+            ## XFactor Bot ${{ github.event.inputs.version }} - Legacy Mac Build
+            
+            Intel Mac (x86_64) build for macOS Catalina and later.
+          draft: true
           prerelease: false
           files: |
             desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.dmg

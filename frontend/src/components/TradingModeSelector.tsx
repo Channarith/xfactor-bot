@@ -184,8 +184,15 @@ export function TradingModeSelector() {
 
       {/* Live Mode Warning Modal */}
       {showLiveWarning && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-          <div className="bg-card rounded-xl border-2 border-loss/50 max-w-md w-full shadow-2xl animate-in fade-in zoom-in duration-200">
+        <div 
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
+          onClick={() => setShowLiveWarning(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setShowLiveWarning(false)}
+        >
+          <div 
+            className="bg-card rounded-xl border-2 border-loss/50 max-w-md w-full shadow-2xl animate-in fade-in zoom-in duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Header */}
             <div className="flex items-center gap-3 p-5 border-b border-border bg-loss/10 rounded-t-xl">
               <div className="p-3 rounded-full bg-loss/20">

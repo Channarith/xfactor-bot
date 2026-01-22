@@ -3025,8 +3025,15 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-slate-900 rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden border border-slate-700">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+      onKeyDown={(e) => e.key === 'Escape' && onClose()}
+    >
+      <div 
+        className="bg-slate-900 rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden border border-slate-700"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700 bg-gradient-to-r from-blue-600/20 to-purple-600/20">
           <div className="flex items-center gap-3">
@@ -3140,9 +3147,14 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 pointer-events-none" />
                   <input
                     type="text"
+                    id="glossary-search"
+                    name="glossary-search"
+                    autoComplete="off"
+                    autoFocus={activeTab === 'glossary'}
                     placeholder={isListening ? "Listening... say a term" : "Search 500+ trading terms, indicators, strategies..."}
                     value={glossarySearch}
                     onChange={(e) => setGlossarySearch(e.target.value)}
+                    onKeyDown={(e) => e.stopPropagation()}
                     className={`w-full pl-12 pr-4 py-3 bg-slate-800/50 border rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-lg ${
                       isListening ? 'border-red-500' : 'border-slate-700'
                     }`}
