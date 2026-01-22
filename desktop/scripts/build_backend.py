@@ -94,6 +94,26 @@ def main():
     # Change to project root for imports to work
     os.chdir(PROJECT_ROOT)
     
+    # CRITICAL: Add project root to PYTHONPATH so PyInstaller can find src package
+    current_pythonpath = os.environ.get('PYTHONPATH', '')
+    os.environ['PYTHONPATH'] = str(PROJECT_ROOT) + os.pathsep + current_pythonpath
+    print(f"[INFO] Set PYTHONPATH to include: {PROJECT_ROOT}")
+    
+    # Also add to sys.path for the current process
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    
+    # Verify src package is importable
+    try:
+        import src
+        import src.bot.agentic_tuner
+        print(f"[OK] src package is importable from: {src.__file__}")
+        print(f"[OK] src.bot.agentic_tuner is importable")
+    except ImportError as e:
+        print(f"[ERROR] Cannot import src package: {e}")
+        print(f"[ERROR] This will cause PyInstaller to fail!")
+        print(f"[INFO] Current sys.path: {sys.path[:5]}")
+    
     # PyInstaller command
     cmd = [
         sys.executable, "-m", "PyInstaller",
@@ -103,10 +123,13 @@ def main():
         "--workpath", str(DESKTOP_DIR / "build"),
         "--specpath", str(DESKTOP_DIR / "build"),
         # =====================================================================
-        # CRITICAL: Add paths so PyInstaller can find the src package
-        # Without this, PyInstaller cannot locate local packages
+        # CRITICAL: Multiple approaches to ensure src package is bundled
         # =====================================================================
         "--paths", str(PROJECT_ROOT),
+        "--paths", ".",
+        # Collect ALL submodules of the src package
+        "--collect-submodules", "src",
+        "--collect-data", "src",
         # =====================================================================
         # CRITICAL: Include ALL src.* modules as hidden imports
         # PyInstaller doesn't auto-discover these from dynamic imports
