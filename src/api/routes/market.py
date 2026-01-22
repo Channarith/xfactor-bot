@@ -988,3 +988,33 @@ async def get_analyst_actions(
         "lastUpdated": datetime.now().isoformat(),
     }
 
+
+# ============================================================================
+# Market Hours Status
+# ============================================================================
+
+@router.get("/hours")
+async def get_market_hours_status():
+    """
+    Get current market hours status and quiet mode information.
+    
+    Returns information about:
+    - Whether the market is open
+    - Whether we're in the active trading window
+    - Whether quiet mode is enabled (reduced polling during off-hours)
+    - Next active window start time
+    """
+    from src.utils.market_hours import get_market_hours_manager
+    
+    manager = get_market_hours_manager()
+    status = manager.get_status()
+    
+    return {
+        **status,
+        "description": (
+            "Active window runs from 40 minutes before market open "
+            "to 40 minutes after market close. During quiet mode, "
+            "polling and analytics are reduced to save computing resources."
+        ),
+    }
+

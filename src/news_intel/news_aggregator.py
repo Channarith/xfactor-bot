@@ -1,5 +1,7 @@
 """
 News Aggregator for collecting news from 200+ sources.
+
+Includes quiet mode support - reduces polling during off-hours.
 """
 
 import asyncio
@@ -14,6 +16,7 @@ from loguru import logger
 
 from src.config.settings import get_settings
 from src.data.redis_cache import RedisCache
+from src.utils.market_hours import is_quiet_mode, get_poll_interval
 
 
 @dataclass
@@ -152,11 +155,20 @@ class NewsAggregator:
         self._callbacks.append(callback)
     
     async def _polling_loop(self) -> None:
-        """Main polling loop for RSS feeds."""
+        """Main polling loop for RSS feeds with quiet mode support."""
         while self._running:
             try:
+                # During quiet mode, reduce polling frequency significantly
+                if is_quiet_mode():
+                    # Poll every 10 minutes during off-hours
+                    await asyncio.sleep(600)
+                    # Still fetch but less frequently
+                    await self._fetch_all_feeds()
+                    continue
+                
+                # Active window - normal polling
                 await self._fetch_all_feeds()
-                await asyncio.sleep(60)  # Poll every minute
+                await asyncio.sleep(60)  # Poll every minute during active hours
             except Exception as e:
                 logger.error(f"Error in polling loop: {e}")
                 await asyncio.sleep(30)

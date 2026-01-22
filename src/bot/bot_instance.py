@@ -1,5 +1,8 @@
 """
 Individual bot instance that runs in its own thread.
+
+Includes quiet mode support - bots pause during off-hours
+unless configured for extended hours trading.
 """
 
 import asyncio
@@ -14,6 +17,8 @@ import uuid
 import numpy as np
 import pandas as pd
 from loguru import logger
+
+from src.utils.market_hours import is_quiet_mode, is_active_window, get_poll_interval
 
 # Global activity log for debugging (thread-safe circular buffer)
 _bot_activity_log: deque = deque(maxlen=1000)
@@ -935,7 +940,7 @@ class BotInstance:
                     pass  # Ignore errors during cleanup
     
     async def _run_async(self) -> None:
-        """Main async trading loop."""
+        """Main async trading loop with quiet mode support."""
         self.status = BotStatus.RUNNING
         self._started_at = datetime.utcnow()
         self._emit("on_start")
@@ -944,12 +949,31 @@ class BotInstance:
         logger.info(f"  Symbols: {self.config.symbols}")
         logger.info(f"  Strategies: {self.config.strategies}")
         
+        # Track if we've logged quiet mode status
+        _quiet_mode_logged = False
+        
         while not self._stop_event.is_set():
             try:
                 # Check if paused
                 if self._pause_event.is_set():
                     await asyncio.sleep(1)
                     continue
+                
+                # Quiet mode check - skip trading cycles during off-hours
+                # UNLESS bot is configured for extended hours (crypto, forex, etc.)
+                if is_quiet_mode() and not self.config.enable_extended_hours:
+                    if not _quiet_mode_logged:
+                        logger.info(f"Bot {self.id} entering quiet mode (off-hours)")
+                        _quiet_mode_logged = True
+                    # Sleep longer during quiet mode (5 minutes)
+                    await asyncio.sleep(get_poll_interval())
+                    # Still update uptime
+                    self.stats.uptime_seconds = self.uptime
+                    continue
+                else:
+                    if _quiet_mode_logged:
+                        logger.info(f"Bot {self.id} resuming active trading")
+                        _quiet_mode_logged = False
                 
                 # Run trading cycle
                 await self._trading_cycle()

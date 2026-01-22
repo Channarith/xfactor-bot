@@ -29,6 +29,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Timestamp tracking for cache age display
   - Events emitted for cache load/save for component coordination
 
+### ⚡ Performance
+
+- **Quiet Mode During Off-Hours**: Backend now reduces polling and analytics outside trading hours.
+  - Active window: 40 minutes before market open (8:50 AM ET) to 40 minutes after close (4:40 PM ET)
+  - During quiet mode (off-hours), polling intervals increase from 30s to 5 minutes
+  - Affected components: TradingScheduler, MomentumScanScheduler, NewsAggregator, BotInstances
+  - Bots configured for extended hours (crypto, forex) continue normal operation
+  - Logs "🟢 Entering ACTIVE mode" and "🌙 Entering QUIET mode" on transitions
+  - Significant reduction in CPU/network usage during off-hours
+  - New API endpoint: `GET /api/market/hours` - returns current market hours status
+
 ### 🔧 Technical
 
 - New utility: `frontend/src/utils/botDataStore.ts`
@@ -37,6 +48,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `formatLastSaved()`: Human-readable cache age ("5m ago", "2h ago")
   - Event emitters for cache coordination between components
   - Tauri Store plugin integration with localStorage fallback
+
+- New utility: `src/utils/market_hours.py`
+  - `MarketHoursManager`: Centralized market hours and quiet mode manager
+  - `is_active_window()`: Check if within active trading window
+  - `is_quiet_mode()`: Check if system should reduce polling
+  - `get_poll_interval()`: Get appropriate interval for current mode
+  - Singleton pattern for consistent state across components
 
 ---
 

@@ -6,6 +6,7 @@ Manages scheduled bot execution based on:
 - Custom schedules per bot
 - Interval-based execution
 - Pre-market and after-hours support
+- Quiet mode during off-hours (40 min before/after market)
 """
 
 import asyncio
@@ -17,41 +18,18 @@ from zoneinfo import ZoneInfo
 
 from loguru import logger
 
-
-# US Eastern timezone for market hours
-ET = ZoneInfo("America/New_York")
-
-# Market hours
-MARKET_OPEN = time(9, 30)  # 9:30 AM ET
-MARKET_CLOSE = time(16, 0)  # 4:00 PM ET
-PRE_MARKET_OPEN = time(4, 0)  # 4:00 AM ET
-AFTER_HOURS_CLOSE = time(20, 0)  # 8:00 PM ET
-
-# Market holidays (US stock market) - 2025-2026
-MARKET_HOLIDAYS = {
-    # 2025
-    "2025-01-01",  # New Year's Day
-    "2025-01-20",  # MLK Day
-    "2025-02-17",  # Presidents Day
-    "2025-04-18",  # Good Friday
-    "2025-05-26",  # Memorial Day
-    "2025-06-19",  # Juneteenth
-    "2025-07-04",  # Independence Day
-    "2025-09-01",  # Labor Day
-    "2025-11-27",  # Thanksgiving
-    "2025-12-25",  # Christmas
-    # 2026
-    "2026-01-01",  # New Year's Day
-    "2026-01-19",  # MLK Day
-    "2026-02-16",  # Presidents Day
-    "2026-04-03",  # Good Friday
-    "2026-05-25",  # Memorial Day
-    "2026-06-19",  # Juneteenth
-    "2026-07-03",  # Independence Day (observed)
-    "2026-09-07",  # Labor Day
-    "2026-11-26",  # Thanksgiving
-    "2026-12-25",  # Christmas
-}
+from src.utils.market_hours import (
+    get_market_hours_manager,
+    is_active_window,
+    is_quiet_mode,
+    get_poll_interval,
+    MARKET_HOLIDAYS,
+    ET,
+    MARKET_OPEN,
+    MARKET_CLOSE,
+    PRE_MARKET_OPEN,
+    AFTER_HOURS_CLOSE,
+)
 
 
 class ScheduleType(str, Enum):
@@ -173,12 +151,19 @@ class TradingScheduler:
         return self._bot_schedules.get(bot_id)
     
     async def _scheduler_loop(self) -> None:
-        """Main scheduler loop."""
+        """Main scheduler loop with quiet mode support."""
         while self._running:
             try:
                 now = datetime.now(ET)
                 self._last_check = now
                 
+                # During quiet mode (outside active window), reduce polling
+                if is_quiet_mode():
+                    # Still check schedules but less frequently
+                    await asyncio.sleep(get_poll_interval())  # 5 minutes in quiet mode
+                    continue
+                
+                # Active window - normal scheduling
                 for bot_id, schedule in self._bot_schedules.items():
                     try:
                         action = self._check_schedule(bot_id, schedule, now)
@@ -187,8 +172,8 @@ class TradingScheduler:
                     except Exception as e:
                         logger.error(f"Error checking schedule for {bot_id}: {e}")
                 
-                # Sleep until next check (every 30 seconds)
-                await asyncio.sleep(30)
+                # Sleep until next check (30 seconds during active window)
+                await asyncio.sleep(get_poll_interval())
                 
             except asyncio.CancelledError:
                 break
@@ -380,10 +365,16 @@ class MomentumScanScheduler:
         logger.info("MomentumScanScheduler stopped")
     
     async def _scan_loop(self) -> None:
-        """Main scanning loop."""
+        """Main scanning loop with quiet mode support."""
         while self._running:
             try:
                 now = datetime.now(ET)
+                
+                # During quiet mode, skip scans and sleep longer
+                if is_quiet_mode():
+                    # Sleep for 5 minutes during quiet mode
+                    await asyncio.sleep(get_poll_interval())
+                    continue
                 
                 # Check if market day (not weekend/holiday)
                 is_market_day = now.weekday() < 5 and now.strftime("%Y-%m-%d") not in MARKET_HOLIDAYS
@@ -391,7 +382,7 @@ class MomentumScanScheduler:
                 if is_market_day:
                     await self._check_and_run_scans(now)
                 
-                # Sleep for 1 minute between checks
+                # Sleep for 1 minute between checks during active window
                 await asyncio.sleep(60)
                 
             except asyncio.CancelledError:
