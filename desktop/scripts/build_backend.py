@@ -103,6 +103,11 @@ def main():
         "--workpath", str(DESKTOP_DIR / "build"),
         "--specpath", str(DESKTOP_DIR / "build"),
         # =====================================================================
+        # CRITICAL: Add paths so PyInstaller can find the src package
+        # Without this, PyInstaller cannot locate local packages
+        # =====================================================================
+        "--paths", str(PROJECT_ROOT),
+        # =====================================================================
         # CRITICAL: Include ALL src.* modules as hidden imports
         # PyInstaller doesn't auto-discover these from dynamic imports
         # =====================================================================

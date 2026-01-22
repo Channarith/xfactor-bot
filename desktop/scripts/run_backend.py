@@ -42,6 +42,52 @@ import sqlalchemy
 # Scheduling
 import apscheduler
 
+# =========================================================================
+# CRITICAL: Explicit imports for all src.* modules
+# PyInstaller needs these to properly trace and bundle local packages
+# =========================================================================
+try:
+    # Core modules
+    import src
+    import src.utils.helpers
+    import src.utils.logger
+    # API
+    import src.api
+    import src.api.main
+    import src.api.auth
+    import src.api.routes
+    import src.api.routes.agentic_tuning
+    import src.api.routes.bots
+    import src.api.routes.positions
+    # Bot modules (including the missing one!)
+    import src.bot
+    import src.bot.agentic_tuner  # This was the missing import!
+    import src.bot.auto_optimizer
+    import src.bot.bot_instance
+    import src.bot.bot_manager
+    import src.bot.momentum_bots
+    import src.bot.risk_manager
+    # Brokers
+    import src.brokers
+    import src.brokers.base
+    import src.brokers.registry
+    import src.brokers.alpaca_broker
+    import src.brokers.ibkr_broker
+    # Strategies
+    import src.strategies
+    import src.strategies.templates
+    import src.strategies.technical
+    # Config
+    import src.config
+    import src.config.settings
+    # Monitoring
+    import src.monitoring
+    import src.monitoring.metrics
+except ImportError as e:
+    # This is expected when running from PyInstaller bundle
+    # The actual imports happen at runtime
+    pass
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
