@@ -1,9 +1,16 @@
 /**
  * Bot Performance Data Store
  * 
- * Persists bot performance data to disk when app closes,
- * and reloads it on startup for immediate display.
+ * Persists TRADE DATA (not bot definitions) to disk when app closes,
+ * and reloads it on startup to show previous trading state.
  * Uses Tauri's store plugin for desktop, falls back to localStorage for web.
+ * 
+ * IMPORTANT: Bot definitions (all 50 bots) always come from the backend.
+ * This store only caches:
+ * - Trade history (open/closed positions)
+ * - P&L data per bot
+ * - Agentic tuning metrics
+ * - Portfolio state
  * 
  * @version 2.1.13
  */
@@ -13,13 +20,42 @@ const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI__
 
 // Store keys
 const STORE_KEYS = {
-  BOTS_SUMMARY: 'bots_summary',
+  BOTS_TRADE_DATA: 'bots_trade_data',  // Trade data per bot (NOT bot definitions)
   BOTS_PERFORMANCE: 'bots_performance',
   PORTFOLIO_DATA: 'portfolio_data',
   LAST_SAVED: 'last_saved_timestamp',
 } as const
 
 // Type definitions
+
+/**
+ * Trade data for a single bot - this is what gets cached
+ * Bot definitions (name, strategies, symbols) come from backend
+ */
+export interface BotTradeData {
+  botId: string
+  daily_pnl: number
+  total_pnl: number
+  win_rate: number
+  open_positions: number
+  trades_today: number
+  last_trade_time: string | null
+  // Trade history with AI reasoning
+  trade_history: Array<{
+    timestamp: string
+    symbol: string
+    side: string
+    quantity: number
+    price: number
+    pnl: number
+    reasoning: string
+    confidence: number
+  }>
+}
+
+/**
+ * Summary of a bot - used for display, combines backend definition + cached trade data
+ */
 export interface BotSummary {
   id: string
   name: string
@@ -61,7 +97,7 @@ export interface PortfolioData {
 }
 
 export interface CachedBotData {
-  botsSummary: BotSummary[]
+  botsTradeData: Record<string, BotTradeData>  // Trade data keyed by bot ID
   botsPerformance: Record<string, BotPerformanceData>
   portfolioData: PortfolioData | null
   lastSaved: string
@@ -166,54 +202,81 @@ function isDataStale(lastSaved: string, maxAgeMinutes: number = 60): boolean {
 // ============ Public API ============
 
 /**
- * Save all bot performance data
+ * Save trade data for all bots (NOT bot definitions - those come from backend)
+ * This saves: trade history, P&L, open positions, agentic metrics
+ */
+export async function saveBotTradeData(
+  botsTradeData: Record<string, BotTradeData>,
+  botsPerformance: Record<string, BotPerformanceData> = {},
+  portfolioData: PortfolioData | null = null
+): Promise<void> {
+  const timestamp = new Date().toISOString()
+  
+  console.log('[BotDataStore] Saving bot TRADE data (not definitions)...', {
+    botsWithTradeData: Object.keys(botsTradeData).length,
+    performanceRecords: Object.keys(botsPerformance).length,
+    hasPortfolio: !!portfolioData,
+  })
+  
+  await Promise.all([
+    saveToStorage(STORE_KEYS.BOTS_TRADE_DATA, botsTradeData),
+    saveToStorage(STORE_KEYS.BOTS_PERFORMANCE, botsPerformance),
+    saveToStorage(STORE_KEYS.PORTFOLIO_DATA, portfolioData),
+    saveToStorage(STORE_KEYS.LAST_SAVED, timestamp),
+  ])
+  
+  console.log('[BotDataStore] Bot trade data saved at', timestamp)
+}
+
+/**
+ * Legacy function for backward compatibility - converts BotSummary to BotTradeData
  */
 export async function saveBotPerformanceData(
   botsSummary: BotSummary[],
   botsPerformance: Record<string, BotPerformanceData> = {},
   portfolioData: PortfolioData | null = null
 ): Promise<void> {
-  const timestamp = new Date().toISOString()
-  
-  console.log('[BotDataStore] Saving bot performance data...', {
-    botsCount: botsSummary.length,
-    performanceRecords: Object.keys(botsPerformance).length,
-    hasPortfolio: !!portfolioData,
-  })
-  
-  await Promise.all([
-    saveToStorage(STORE_KEYS.BOTS_SUMMARY, botsSummary),
-    saveToStorage(STORE_KEYS.BOTS_PERFORMANCE, botsPerformance),
-    saveToStorage(STORE_KEYS.PORTFOLIO_DATA, portfolioData),
-    saveToStorage(STORE_KEYS.LAST_SAVED, timestamp),
-  ])
-  
-  console.log('[BotDataStore] Bot performance data saved at', timestamp)
+  // Convert bot summaries to trade data (only save trade-relevant info)
+  const botsTradeData: Record<string, BotTradeData> = {}
+  for (const bot of botsSummary) {
+    botsTradeData[bot.id] = {
+      botId: bot.id,
+      daily_pnl: bot.daily_pnl,
+      total_pnl: 0, // Not in summary, will be refreshed from backend
+      win_rate: 0,
+      open_positions: 0,
+      trades_today: 0,
+      last_trade_time: null,
+      trade_history: [],
+    }
+  }
+  await saveBotTradeData(botsTradeData, botsPerformance, portfolioData)
 }
 
 /**
- * Load all cached bot performance data
+ * Load cached bot trade data
+ * NOTE: Bot definitions (all 50 bots) always come from backend API
  */
 export async function loadBotPerformanceData(): Promise<CachedBotData> {
-  console.log('[BotDataStore] Loading cached bot performance data...')
+  console.log('[BotDataStore] Loading cached bot TRADE data...')
   
-  const [botsSummary, botsPerformance, portfolioData, lastSaved] = await Promise.all([
-    loadFromStorage<BotSummary[]>(STORE_KEYS.BOTS_SUMMARY),
+  const [botsTradeData, botsPerformance, portfolioData, lastSaved] = await Promise.all([
+    loadFromStorage<Record<string, BotTradeData>>(STORE_KEYS.BOTS_TRADE_DATA),
     loadFromStorage<Record<string, BotPerformanceData>>(STORE_KEYS.BOTS_PERFORMANCE),
     loadFromStorage<PortfolioData>(STORE_KEYS.PORTFOLIO_DATA),
     loadFromStorage<string>(STORE_KEYS.LAST_SAVED),
   ])
   
   const cachedData: CachedBotData = {
-    botsSummary: botsSummary || [],
+    botsTradeData: botsTradeData || {},
     botsPerformance: botsPerformance || {},
     portfolioData: portfolioData,
     lastSaved: lastSaved || '',
     isStale: isDataStale(lastSaved || ''),
   }
   
-  console.log('[BotDataStore] Loaded cached data:', {
-    botsCount: cachedData.botsSummary.length,
+  console.log('[BotDataStore] Loaded cached trade data:', {
+    botsWithTradeData: Object.keys(cachedData.botsTradeData).length,
     performanceRecords: Object.keys(cachedData.botsPerformance).length,
     hasPortfolio: !!cachedData.portfolioData,
     lastSaved: cachedData.lastSaved,

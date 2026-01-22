@@ -10,10 +10,11 @@ import DemoModeBanner from './components/DemoModeBanner'
 import { getWsBaseUrl, getApiBaseUrl } from './config/api'
 import { 
   loadBotPerformanceData, 
-  saveBotPerformanceData, 
+  saveBotTradeData,
   emitCacheLoaded,
   emitCacheSaved,
-  type CachedBotData 
+  type CachedBotData,
+  type BotTradeData 
 } from './utils/botDataStore'
 
 // Page types
@@ -53,17 +54,20 @@ function App() {
         setCachedBotData(cached)
         setCacheLoaded(true)
         
-        // Emit event so child components can use the cached data
-        if (cached.botsSummary.length > 0 || cached.portfolioData) {
-          console.log('[App] Cached data loaded:', {
-            bots: cached.botsSummary.length,
+        // Emit event so child components can use the cached TRADE data
+        // NOTE: Bot definitions (all 50) always come from backend API
+        const tradeDataCount = Object.keys(cached.botsTradeData || {}).length
+        if (tradeDataCount > 0 || cached.portfolioData) {
+          console.log('[App] Cached TRADE data loaded:', {
+            botsWithTradeData: tradeDataCount,
             hasPortfolio: !!cached.portfolioData,
             isStale: cached.isStale,
             lastSaved: cached.lastSaved,
           })
+          console.log('[App] Bot definitions will load from backend (all 50 bots always available)')
           emitCacheLoaded(cached)
         } else {
-          console.log('[App] No cached data found')
+          console.log('[App] No cached trade data found')
         }
       } catch (e) {
         console.warn('[App] Failed to load cached data:', e)
@@ -124,27 +128,45 @@ function App() {
     }
   }, [])
 
-  // Save current bot performance data before closing
+  // Save current bot TRADE data before closing (not bot definitions)
+  // Bot definitions always come from backend - we only cache trade history and P&L
   const saveBotDataBeforeClose = useCallback(async () => {
-    console.log('[Cleanup] Saving bot performance data before close...')
+    console.log('[Cleanup] Saving bot TRADE data before close...')
+    console.log('[Cleanup] (Bot definitions are NOT cached - all 50 bots load from backend)')
     
     try {
       // Fetch latest bot data from API if backend is available
       const baseUrl = getApiBaseUrl()
       
-      // Fetch bots summary
-      let botsSummary: any[] = []
+      // Fetch detailed bot data (includes trade history)
+      let botsTradeData: Record<string, BotTradeData> = {}
       try {
-        const botsResponse = await fetch(`${baseUrl}/api/bots/summary`, {
+        const botsResponse = await fetch(`${baseUrl}/api/bots/`, {
           signal: AbortSignal.timeout(3000), // 3s timeout
         })
         if (botsResponse.ok) {
           const botsData = await botsResponse.json()
-          botsSummary = botsData.bots || []
+          const bots = botsData.bots || []
+          
+          // Extract trade data from each bot (not the bot definition itself)
+          for (const bot of bots) {
+            const stats = bot.stats || {}
+            botsTradeData[bot.id] = {
+              botId: bot.id,
+              daily_pnl: stats.daily_pnl || 0,
+              total_pnl: stats.total_pnl || 0,
+              win_rate: stats.win_rate || 0,
+              open_positions: stats.open_positions || 0,
+              trades_today: stats.trades_today || 0,
+              last_trade_time: stats.last_trade_time || null,
+              trade_history: stats.trade_history || [],
+            }
+          }
+          console.log(`[Cleanup] Extracted trade data from ${Object.keys(botsTradeData).length} bots`)
         }
       } catch (e) {
-        console.warn('[Cleanup] Could not fetch bots summary, using cached data')
-        botsSummary = cachedBotData?.botsSummary || []
+        console.warn('[Cleanup] Could not fetch bot trade data, using cached data')
+        botsTradeData = cachedBotData?.botsTradeData || {}
       }
       
       // Fetch portfolio data
@@ -169,17 +191,17 @@ function App() {
         portfolioData = cachedBotData?.portfolioData || null
       }
       
-      // Save all data
-      await saveBotPerformanceData(
-        botsSummary,
+      // Save trade data (NOT bot definitions - those always come from backend)
+      await saveBotTradeData(
+        botsTradeData,
         cachedBotData?.botsPerformance || {},
         portfolioData
       )
       
       emitCacheSaved()
-      console.log('[Cleanup] Bot performance data saved successfully')
+      console.log('[Cleanup] Bot trade data saved successfully')
     } catch (e) {
-      console.warn('[Cleanup] Failed to save bot performance data:', e)
+      console.warn('[Cleanup] Failed to save bot trade data:', e)
     }
   }, [cachedBotData])
 

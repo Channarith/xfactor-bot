@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { 
   Bot, Play, Pause, Square, Plus, Trash2,
   ChevronDown, ChevronUp,
@@ -10,7 +10,7 @@ import { BotPerformanceChart } from './BotPerformanceChart'
 import { getApiBaseUrl } from '../config/api'
 import { 
   type CachedBotData, 
-  type BotSummary as CachedBotSummary,
+  type BotTradeData,
   formatLastSaved 
 } from '../utils/botDataStore'
 
@@ -73,7 +73,9 @@ export function BotManager({ token = '' }: BotManagerProps) {
   const [error, setError] = useState('')
   const [showAuthModal, setShowAuthModal] = useState(false)
   
-  // Cache state - tracks if we're showing cached data
+  // Cache state - tracks cached TRADE data (not bot definitions)
+  // All 50 bots always come from backend, cache only stores trade/position data
+  const [cachedTradeData, setCachedTradeData] = useState<Record<string, BotTradeData>>({})
   const [usingCachedData, setUsingCachedData] = useState(false)
   const [cacheLastSaved, setCacheLastSaved] = useState<string>('')
   const [isRefreshingFromBrokerage, setIsRefreshingFromBrokerage] = useState(false)
@@ -256,17 +258,23 @@ export function BotManager({ token = '' }: BotManagerProps) {
     Authorization: `Bearer ${token}`,
   }
   
-  // Listen for cached bot data from App.tsx on startup
+  // Listen for cached TRADE data from App.tsx on startup
+  // NOTE: Bot definitions (all 50) always come from backend API
+  // Cache only contains trade history, P&L data, and positions for display enrichment
   useEffect(() => {
     const handleCacheLoaded = (event: CustomEvent<CachedBotData>) => {
       const cached = event.detail
-      if (cached.botsSummary && cached.botsSummary.length > 0) {
-        console.log('[BotManager] Loaded', cached.botsSummary.length, 'bots from cache')
-        // Convert cached data to our format (types should match)
-        setBots(cached.botsSummary as BotSummary[])
-        setUsingCachedData(true)
+      if (cached.botsTradeData && Object.keys(cached.botsTradeData).length > 0) {
+        console.log('[BotManager] Loaded cached TRADE data for', Object.keys(cached.botsTradeData).length, 'bots')
+        console.log('[BotManager] Bot definitions will come from backend API (all 50 bots)')
+        // Store trade data separately - will be merged with backend bots for display
+        setCachedTradeData(cached.botsTradeData)
         setCacheLastSaved(cached.lastSaved)
-        setError('') // Clear any errors since we have cached data
+        // Note: we don't setBots here - bots always come from backend
+        // usingCachedData will be set if we have trade data to show
+        if (cached.portfolioData) {
+          setUsingCachedData(true)
+        }
       }
     }
     

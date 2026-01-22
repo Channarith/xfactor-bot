@@ -52,6 +52,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automatic reconnection logic always active
   - Enables seamless day-after-day autonomous trading without manual intervention
 
+- **Bot Data Persistence Clarification**: All 50 bots always available from backend.
+  - Bot definitions (names, strategies, symbols) always load from backend API
+  - Cache only stores TRADE data: open positions, closed trades, P&L, agentic tuning
+  - Cached trade data merges with backend bots on display
+  - Ensures all 50 bots are visible in Bot Manager regardless of trading activity
+
 ### 🔧 Technical
 
 - New utility: `frontend/src/utils/botDataStore.ts`
