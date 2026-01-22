@@ -3,6 +3,10 @@ Broker Registry - Manages all broker connections.
 Allows connecting to multiple brokers simultaneously.
 Includes automatic reconnection for dropped connections.
 Supports saving connections for auto-connect on startup.
+
+IMPORTANT: The connection monitor runs independently of quiet mode.
+Even when quiet mode is enabled (reducing trading activity during off-hours),
+broker connections are maintained to enable seamless day-to-day autonomous trading.
 """
 
 import asyncio
@@ -329,11 +333,22 @@ class BrokerRegistry:
             logger.info("Stopped broker connection monitor")
     
     async def _connection_monitor_loop(self):
-        """Background task that monitors broker connections and reconnects if needed."""
-        logger.info("Connection monitor started - will check every {self._health_check_interval}s")
+        """
+        Background task that monitors broker connections and reconnects if needed.
+        
+        IMPORTANT: This monitor runs INDEPENDENTLY of quiet mode.
+        Even during off-hours when quiet mode reduces trading activity,
+        broker connections are maintained to enable seamless autonomous trading.
+        
+        This is critical for day-after-day autonomous operation.
+        """
+        logger.info(f"Connection monitor started - will check every {self._health_check_interval}s")
+        logger.info("Connection monitor runs INDEPENDENTLY of quiet mode - connections maintained 24/7")
         
         while True:
             try:
+                # NOTE: This sleep interval is NOT affected by quiet mode
+                # We always want to maintain broker connections for autonomous trading
                 await asyncio.sleep(self._health_check_interval)
                 
                 if not self._auto_reconnect_enabled:

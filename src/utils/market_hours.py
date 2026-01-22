@@ -7,6 +7,20 @@ runs from 40 minutes before market open to 40 minutes after market close.
 During off-hours (outside the active window), background polling and analytics
 are reduced to save computing resources.
 
+IMPORTANT: Quiet mode ONLY affects:
+- Trading bot cycles (paused during off-hours unless extended hours enabled)
+- News aggregator polling (reduced from 1 min to 10 min)
+- Momentum scanner cycles (paused)
+- Scheduler intervals (increased)
+
+Quiet mode does NOT affect:
+- Broker connections (maintained 24/7 for autonomous trading)
+- BrokerRegistry connection monitor (runs independently every 2 minutes)
+- Reconnection logic (always active)
+- Health checks (always active)
+
+This design enables seamless day-after-day autonomous trading.
+
 @version 2.1.13
 """
 

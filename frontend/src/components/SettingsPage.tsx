@@ -200,7 +200,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                   Active window: {marketHoursStatus?.active_window_start || '08:50:00'} - {marketHoursStatus?.active_window_end || '16:40:00'} ET
                   <br />
                   {quietModeEnabled 
-                    ? 'During off-hours, polling is reduced to 5 minutes to save resources.'
+                    ? 'During off-hours, trading is paused and polling reduced. Broker connections remain active for seamless day-to-day autonomous trading.'
                     : 'System runs at full speed 24/7 (higher CPU/network usage).'
                   }
                 </div>

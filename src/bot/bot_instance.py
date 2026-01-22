@@ -951,6 +951,8 @@ class BotInstance:
         
         # Track if we've logged quiet mode status
         _quiet_mode_logged = False
+        _last_broker_check = datetime.utcnow()
+        _broker_check_interval = 300  # Check broker connection every 5 minutes during quiet mode
         
         while not self._stop_event.is_set():
             try:
@@ -963,12 +965,22 @@ class BotInstance:
                 # UNLESS bot is configured for extended hours (crypto, forex, etc.)
                 if is_quiet_mode() and not self.config.enable_extended_hours:
                     if not _quiet_mode_logged:
-                        logger.info(f"Bot {self.id} entering quiet mode (off-hours)")
+                        logger.info(f"Bot {self.id} entering quiet mode (off-hours) - broker connection maintained")
                         _quiet_mode_logged = True
+                    
                     # Sleep longer during quiet mode (5 minutes)
                     await asyncio.sleep(get_poll_interval())
+                    
                     # Still update uptime
                     self.stats.uptime_seconds = self.uptime
+                    
+                    # Periodically verify broker connection is alive during quiet mode
+                    # This ensures seamless day-to-day autonomous trading
+                    now = datetime.utcnow()
+                    if (now - _last_broker_check).total_seconds() >= _broker_check_interval:
+                        await self._verify_broker_connection_quiet_mode()
+                        _last_broker_check = now
+                    
                     continue
                 else:
                     if _quiet_mode_logged:
@@ -990,6 +1002,35 @@ class BotInstance:
                 self.stats.errors_count += 1
                 logger.error(f"Bot {self.id} cycle error: {e}")
                 await asyncio.sleep(5)  # Brief pause on error
+    
+    async def _verify_broker_connection_quiet_mode(self) -> None:
+        """
+        Verify broker connection is still alive during quiet mode.
+        This is a lightweight check to ensure seamless day-to-day autonomous trading.
+        The main reconnection logic is handled by BrokerRegistry's connection monitor.
+        """
+        try:
+            from src.brokers.registry import get_broker_registry
+            
+            registry = get_broker_registry()
+            broker_type_str = self.config.broker_type
+            
+            if broker_type_str:
+                from src.brokers.base import BrokerType
+                try:
+                    broker_type = BrokerType(broker_type_str)
+                    broker = registry.get_broker(broker_type)
+                    
+                    if broker:
+                        is_connected = await broker.health_check()
+                        if not is_connected:
+                            logger.warning(f"Bot {self.id}: Broker connection lost during quiet mode - registry will handle reconnection")
+                    else:
+                        logger.debug(f"Bot {self.id}: No broker connected during quiet mode")
+                except ValueError:
+                    pass  # Invalid broker type, skip check
+        except Exception as e:
+            logger.debug(f"Bot {self.id}: Quiet mode broker check error: {e}")
     
     async def _trading_cycle(self) -> None:
         """Execute one trading cycle - analyze signals and execute trades."""

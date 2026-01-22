@@ -46,6 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Default: ON (quiet mode enabled)
   - API endpoints: `GET /api/market/hours`, `POST /api/market/hours/quiet-mode`
 
+- **Broker Connections Maintained During Quiet Mode**: Connections stay active 24/7 for autonomous trading.
+  - BrokerRegistry connection monitor runs independently of quiet mode (every 2 minutes)
+  - Bots verify broker connection every 5 minutes during quiet mode
+  - Automatic reconnection logic always active
+  - Enables seamless day-after-day autonomous trading without manual intervention
+
 ### 🔧 Technical
 
 - New utility: `frontend/src/utils/botDataStore.ts`
