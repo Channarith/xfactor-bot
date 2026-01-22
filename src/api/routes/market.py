@@ -1018,3 +1018,35 @@ async def get_market_hours_status():
         ),
     }
 
+
+class QuietModeRequest(BaseModel):
+    """Request body for setting quiet mode."""
+    enabled: bool
+
+
+@router.post("/hours/quiet-mode")
+async def set_quiet_mode(request: QuietModeRequest):
+    """
+    Enable or disable quiet mode.
+    
+    When quiet mode is enabled (default), the system reduces polling
+    and analytics during off-hours (outside 8:50 AM - 4:40 PM ET).
+    
+    When disabled, the system runs at full speed 24/7.
+    """
+    from src.utils.market_hours import get_market_hours_manager
+    
+    manager = get_market_hours_manager()
+    manager.set_quiet_mode_enabled(request.enabled)
+    
+    return {
+        "success": True,
+        "quiet_mode_enabled": request.enabled,
+        "message": f"Quiet mode {'enabled' if request.enabled else 'disabled'}",
+        "effect": (
+            "System will reduce polling during off-hours to save resources"
+            if request.enabled
+            else "System will run at full speed 24/7 (higher resource usage)"
+        ),
+    }
+

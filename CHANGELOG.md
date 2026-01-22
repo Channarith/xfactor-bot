@@ -38,7 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Bots configured for extended hours (crypto, forex) continue normal operation
   - Logs "🟢 Entering ACTIVE mode" and "🌙 Entering QUIET mode" on transitions
   - Significant reduction in CPU/network usage during off-hours
-  - New API endpoint: `GET /api/market/hours` - returns current market hours status
+
+- **Quiet Mode Toggle in Settings**: User can enable/disable quiet mode from frontend.
+  - New "System Settings" panel in Settings page with toggle switch
+  - Displays current mode status (🌙 Quiet / 🟢 Active)
+  - Shows market status (Open/Closed), poll interval, and current time (ET)
+  - Default: ON (quiet mode enabled)
+  - API endpoints: `GET /api/market/hours`, `POST /api/market/hours/quiet-mode`
 
 ### 🔧 Technical
 

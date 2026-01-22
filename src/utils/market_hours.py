@@ -73,6 +73,8 @@ class MarketHoursManager:
     The active trading window runs from 40 minutes before market open
     to 40 minutes after market close. Outside this window, the system
     enters "quiet mode" where polling and analytics are reduced.
+    
+    Quiet mode can be enabled/disabled from the frontend.
     """
     
     _instance: Optional["MarketHoursManager"] = None
@@ -89,7 +91,24 @@ class MarketHoursManager:
         self._initialized = True
         self._quiet_mode_logged = False
         self._active_mode_logged = False
+        self._quiet_mode_enabled = True  # Default: ON - quiet mode is enabled
         logger.info(f"MarketHoursManager initialized - Active window: {ACTIVE_WINDOW_START} to {ACTIVE_WINDOW_END} ET")
+        logger.info(f"Quiet mode: {'ENABLED' if self._quiet_mode_enabled else 'DISABLED'}")
+    
+    def set_quiet_mode_enabled(self, enabled: bool) -> None:
+        """Enable or disable quiet mode."""
+        old_value = self._quiet_mode_enabled
+        self._quiet_mode_enabled = enabled
+        if old_value != enabled:
+            status = "ENABLED" if enabled else "DISABLED"
+            logger.info(f"Quiet mode {status} by user")
+            # Reset logging flags to re-announce state
+            self._quiet_mode_logged = False
+            self._active_mode_logged = False
+    
+    def is_quiet_mode_enabled(self) -> bool:
+        """Check if quiet mode is enabled (user setting)."""
+        return self._quiet_mode_enabled
     
     def is_market_day(self, dt: Optional[datetime] = None) -> bool:
         """Check if the given date is a trading day (not weekend or holiday)."""
@@ -153,7 +172,21 @@ class MarketHoursManager:
         return is_active
     
     def is_quiet_mode(self) -> bool:
-        """Check if the system should be in quiet mode (opposite of active window)."""
+        """
+        Check if the system should be in quiet mode.
+        
+        Returns True if:
+        - Quiet mode is enabled (user setting) AND we're outside the active window
+        
+        Returns False if:
+        - Quiet mode is disabled by user, OR
+        - We're within the active trading window
+        """
+        # If quiet mode is disabled by user, never enter quiet mode
+        if not self._quiet_mode_enabled:
+            return False
+        
+        # Otherwise, quiet mode is active outside the trading window
         return not self.is_active_window()
     
     def get_poll_interval(self) -> int:
@@ -180,6 +213,7 @@ class MarketHoursManager:
             "is_market_open": self.is_market_open(),
             "is_active_window": self.is_active_window(),
             "is_quiet_mode": self.is_quiet_mode(),
+            "quiet_mode_enabled": self._quiet_mode_enabled,  # User setting
             "active_window_start": str(ACTIVE_WINDOW_START),
             "active_window_end": str(ACTIVE_WINDOW_END),
             "market_open": str(MARKET_OPEN),
@@ -273,3 +307,13 @@ def is_market_open(include_extended: bool = False) -> bool:
 def is_market_day() -> bool:
     """Check if today is a trading day."""
     return get_market_hours_manager().is_market_day()
+
+
+def set_quiet_mode_enabled(enabled: bool) -> None:
+    """Enable or disable quiet mode."""
+    get_market_hours_manager().set_quiet_mode_enabled(enabled)
+
+
+def is_quiet_mode_enabled() -> bool:
+    """Check if quiet mode is enabled (user setting)."""
+    return get_market_hours_manager().is_quiet_mode_enabled()
