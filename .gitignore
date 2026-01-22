@@ -27,6 +27,7 @@ wheels/
 # PyInstaller
 *.manifest
 *.spec
+!desktop/scripts/backend.spec
 
 # Installer logs
 pip-log.txt
