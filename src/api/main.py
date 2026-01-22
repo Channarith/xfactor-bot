@@ -37,6 +37,18 @@ async def cleanup_all_resources():
     """Clean up all resources on shutdown."""
     logger.info("Cleaning up all resources...")
     
+    # Save bot state BEFORE stopping (to preserve running state)
+    try:
+        from src.bot.bot_manager import get_bot_manager
+        bot_mgr = get_bot_manager()
+        if bot_mgr:
+            logger.info("Saving bot configurations and state...")
+            bot_mgr.save_all_bots()
+            bot_mgr.save_position_tracking()
+            logger.info("Bot state saved successfully")
+    except Exception as e:
+        logger.warning(f"Error saving bot state: {e}")
+    
     # Stop all bots
     try:
         from src.bot.bot_manager import get_bot_manager

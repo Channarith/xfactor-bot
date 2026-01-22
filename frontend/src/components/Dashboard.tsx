@@ -105,7 +105,8 @@ export function Dashboard() {
     }
     
     fetchPortfolio()
-    const interval = setInterval(fetchPortfolio, 15000)
+    // Reduced from 15s to 30s to prevent API rate limiting
+    const interval = setInterval(fetchPortfolio, 30000)
     return () => clearInterval(interval)
   }, [broker.isConnected, broker.portfolioValue, selectedBroker])
   

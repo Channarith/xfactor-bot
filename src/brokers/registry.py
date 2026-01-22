@@ -33,17 +33,20 @@ class BrokerRegistry:
         # Store connection configs for auto-reconnection
         self._connection_configs: Dict[BrokerType, Dict[str, Any]] = {}
         
-        # Auto-reconnection settings
+        # Auto-reconnection settings with exponential backoff
         self._auto_reconnect_enabled = True
-        self._reconnect_interval = 30  # seconds between reconnection attempts
+        self._base_reconnect_interval = 30  # Base seconds between reconnection attempts
+        self._max_reconnect_interval = 300  # Max 5 minutes between attempts
         self._max_reconnect_attempts = 10
-        self._health_check_interval = 60  # seconds between health checks
+        self._health_check_interval = 120  # Increased to 2 minutes between health checks
         
         # Monitoring state
         self._monitor_task: Optional[asyncio.Task] = None
         self._reconnect_attempts: Dict[BrokerType, int] = {}
         self._last_health_check: Optional[datetime] = None
         self._connection_events: List[Dict] = []  # Log of connection events
+        self._last_reconnect_time: Dict[BrokerType, datetime] = {}  # Track last reconnect per broker
+        self._is_network_issue: bool = False  # Track if we're in a network outage
     
     def register_broker_class(
         self,
@@ -381,8 +384,35 @@ class BrokerRegistry:
             logger.error(f"Error checking broker {broker_type.value}: {e}")
             self._log_connection_event(broker_type, "error", f"Health check error: {e}")
     
+    def _get_backoff_delay(self, attempts: int) -> float:
+        """Calculate exponential backoff delay based on attempt count."""
+        # Exponential backoff: 30s, 60s, 120s, 240s, 300s (max)
+        delay = min(
+            self._base_reconnect_interval * (2 ** attempts),
+            self._max_reconnect_interval
+        )
+        return delay
+    
+    def _is_dns_or_network_error(self, error: Exception) -> bool:
+        """Check if error is a DNS or network connectivity issue."""
+        error_str = str(error).lower()
+        network_indicators = [
+            'nodename nor servname',
+            'name resolution',
+            'getaddrinfo failed',
+            'connection refused',
+            'network is unreachable',
+            'no route to host',
+            'temporary failure in name resolution',
+            'errno 8',
+            'errno 11',
+            'errno 60',
+            'timed out',
+        ]
+        return any(indicator in error_str for indicator in network_indicators)
+    
     async def _attempt_reconnect(self, broker_type: BrokerType):
-        """Attempt to reconnect to a broker."""
+        """Attempt to reconnect to a broker with exponential backoff."""
         if broker_type not in self._connection_configs:
             logger.debug(f"No stored config for {broker_type.value}, cannot reconnect")
             return
@@ -393,10 +423,22 @@ class BrokerRegistry:
             logger.warning(f"Max reconnect attempts ({self._max_reconnect_attempts}) reached for {broker_type.value}")
             return
         
+        # Check if we should wait due to exponential backoff
+        last_attempt = self._last_reconnect_time.get(broker_type)
+        if last_attempt:
+            backoff_delay = self._get_backoff_delay(attempts)
+            elapsed = (datetime.now() - last_attempt).total_seconds()
+            if elapsed < backoff_delay:
+                remaining = int(backoff_delay - elapsed)
+                logger.debug(f"Backoff: waiting {remaining}s before next reconnect for {broker_type.value}")
+                return
+        
         self._reconnect_attempts[broker_type] = attempts + 1
+        self._last_reconnect_time[broker_type] = datetime.now()
         
         config = self._connection_configs[broker_type]
-        logger.info(f"Attempting to reconnect to {broker_type.value} (attempt {attempts + 1}/{self._max_reconnect_attempts})")
+        backoff = self._get_backoff_delay(attempts)
+        logger.info(f"Attempting to reconnect to {broker_type.value} (attempt {attempts + 1}/{self._max_reconnect_attempts}, next backoff: {backoff}s)")
         self._log_connection_event(broker_type, "reconnecting", f"Attempt {attempts + 1}")
         
         try:
@@ -406,6 +448,7 @@ class BrokerRegistry:
             if await broker.connect():
                 self._brokers[broker_type] = broker
                 self._reconnect_attempts[broker_type] = 0
+                self._is_network_issue = False
                 
                 self._log_connection_event(broker_type, "reconnected", "Successfully reconnected")
                 logger.info(f"Successfully reconnected to {broker_type.value}")
@@ -418,12 +461,23 @@ class BrokerRegistry:
                 await self._sync_positions_on_connect(broker_type)
             else:
                 error_msg = getattr(broker, '_error_message', None) or "Unknown error"
-                self._log_connection_event(broker_type, "reconnect_failed", error_msg)
-                logger.warning(f"Reconnection to {broker_type.value} failed: {error_msg}")
+                
+                # Check if this is a network/DNS issue
+                if self._is_dns_or_network_error(Exception(error_msg)):
+                    self._is_network_issue = True
+                    logger.warning(f"Network issue detected for {broker_type.value}: {error_msg}")
+                else:
+                    self._log_connection_event(broker_type, "reconnect_failed", error_msg)
+                    logger.warning(f"Reconnection to {broker_type.value} failed: {error_msg}")
                 
         except Exception as e:
-            self._log_connection_event(broker_type, "reconnect_error", str(e))
-            logger.error(f"Reconnection error for {broker_type.value}: {e}")
+            # Check if this is a network/DNS issue
+            if self._is_dns_or_network_error(e):
+                self._is_network_issue = True
+                logger.warning(f"Network issue during reconnect to {broker_type.value}: {e}")
+            else:
+                self._log_connection_event(broker_type, "reconnect_error", str(e))
+                logger.error(f"Reconnection error for {broker_type.value}: {e}")
     
     async def force_reconnect(self, broker_type: BrokerType) -> bool:
         """Force a reconnection attempt for a specific broker."""

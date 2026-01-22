@@ -299,7 +299,8 @@ export function BotManager({ token = '' }: BotManagerProps) {
 
   useEffect(() => {
     fetchBots()
-    const interval = setInterval(fetchBots, 5000)
+    // Reduced from 5s to 15s to prevent API rate limiting
+    const interval = setInterval(fetchBots, 15000)
     return () => clearInterval(interval)
   }, [])
 

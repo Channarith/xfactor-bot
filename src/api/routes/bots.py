@@ -1051,3 +1051,130 @@ def format_duration(seconds: float) -> str:
         days = int(seconds / 86400)
         hours = int((seconds % 86400) / 3600)
         return f"{days}d {hours}h"
+
+
+# =============================================================================
+# Persistence API Endpoints
+# =============================================================================
+
+class LoadBotsRequest(BaseModel):
+    """Request to load saved bots."""
+    auto_start: bool = Field(default=True, description="Auto-start bots that were running")
+
+
+class AutoSaveRequest(BaseModel):
+    """Request to enable/disable auto-save."""
+    enabled: bool = Field(..., description="Whether auto-save is enabled")
+
+
+@router.post("/save")
+async def save_all_bots(admin: AdminUser = Depends(get_admin_user)):
+    """
+    Save all bot configurations and state to persistent storage.
+    
+    Call this to manually save all bots. Also happens automatically on:
+    - Bot creation/deletion
+    - App shutdown
+    """
+    bot_manager = get_bot_manager()
+    
+    success = bot_manager.save_all_bots()
+    
+    if success:
+        return {
+            "success": True,
+            "message": f"Saved {bot_manager.bot_count} bots to persistent storage",
+            "bots_saved": bot_manager.bot_count,
+        }
+    else:
+        raise HTTPException(status_code=500, detail="Failed to save bots")
+
+
+@router.post("/load")
+async def load_saved_bots(
+    request: LoadBotsRequest = LoadBotsRequest(),
+    admin: AdminUser = Depends(get_admin_user)
+):
+    """
+    Load saved bot configurations from persistent storage.
+    
+    Args:
+        auto_start: If true, bots that were running when saved will auto-start
+        
+    Note: This will NOT delete existing bots, only add saved ones.
+    """
+    bot_manager = get_bot_manager()
+    
+    loaded_count = bot_manager.load_saved_bots(auto_start=request.auto_start)
+    
+    return {
+        "success": True,
+        "message": f"Loaded {loaded_count} bots from persistent storage",
+        "bots_loaded": loaded_count,
+        "auto_start": request.auto_start,
+        "total_bots": bot_manager.bot_count,
+    }
+
+
+@router.get("/persistence")
+async def get_persistence_status(admin: AdminUser = Depends(get_admin_user)):
+    """
+    Get the status of the bot persistence system.
+    
+    Returns information about:
+    - Auto-save status
+    - Last save time
+    - Number of saved bots
+    - Storage location
+    """
+    bot_manager = get_bot_manager()
+    
+    return {
+        "success": True,
+        **bot_manager.get_persistence_status(),
+    }
+
+
+@router.post("/persistence/auto-save")
+async def set_auto_save(
+    request: AutoSaveRequest,
+    admin: AdminUser = Depends(get_admin_user)
+):
+    """
+    Enable or disable automatic saving of bot state.
+    
+    When enabled, bots are automatically saved on:
+    - Bot creation
+    - Bot deletion
+    - Position changes
+    """
+    bot_manager = get_bot_manager()
+    
+    bot_manager.set_auto_save(request.enabled)
+    
+    return {
+        "success": True,
+        "auto_save_enabled": request.enabled,
+        "message": f"Auto-save {'enabled' if request.enabled else 'disabled'}",
+    }
+
+
+@router.delete("/persistence/clear")
+async def clear_saved_data(admin: AdminUser = Depends(get_admin_user)):
+    """
+    Clear all saved bot data from persistent storage.
+    
+    WARNING: This cannot be undone. All saved bot configurations
+    and position tracking data will be deleted.
+    """
+    bot_manager = get_bot_manager()
+    
+    success = bot_manager.clear_saved_data()
+    
+    if success:
+        return {
+            "success": True,
+            "message": "All saved bot data cleared",
+        }
+    else:
+        raise HTTPException(status_code=500, detail="Failed to clear saved data")

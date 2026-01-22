@@ -127,7 +127,8 @@ export function PositionsTable() {
 
   useEffect(() => {
     fetchPositions()
-    const interval = setInterval(fetchPositions, 15000) // Refresh every 15s
+    // Reduced from 15s to 30s to prevent API rate limiting
+    const interval = setInterval(fetchPositions, 30000)
     return () => clearInterval(interval)
   }, [])
 

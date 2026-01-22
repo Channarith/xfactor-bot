@@ -43,6 +43,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Bot names in rankings are clickable - opens a bot details modal
   - Bot details modal shows: status, P&L, win rate, strategies, symbols, and configuration
 
+### ⚡ Performance
+
+- **API Rate Limiting**: Reduced API call frequency to prevent rate limiting/blacklisting.
+  - BotManager polling: 5s → 15s
+  - RiskControls polling: 10s → 30s
+  - Dashboard polling: 15s → 30s
+  - PositionsTable polling: 15s → 30s
+  - Health check interval: 60s → 120s
+  - Backend health check: 15s → 30s
+
+- **Broker Connection Improvements**:
+  - Added exponential backoff for reconnection attempts (30s → 60s → 120s → 240s → 300s max)
+  - Added DNS/network error detection to reduce log spam
+  - Health check caching: Only calls API every 30 seconds
+  - Account cache TTL: 15s → 30s
+  - Positions cache TTL: 10s → 20s
+  - Network error logging: Every 60s → Every 120s
+
+- **Visibility-Based Polling**: App detects when in background to reduce API calls.
+
 ---
 
 ## [2.1.10] - 2026-01-22

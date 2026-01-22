@@ -80,7 +80,8 @@ export function RiskControls({ token = '' }: RiskControlsProps) {
 
   useEffect(() => {
     fetchRiskData()
-    const interval = setInterval(fetchRiskData, 10000) // Refresh every 10s
+    // Reduced from 10s to 30s to prevent API rate limiting
+    const interval = setInterval(fetchRiskData, 30000)
     return () => clearInterval(interval)
   }, [])
 

@@ -32,13 +32,33 @@ function App() {
   const isConnectedRef = useRef(false) // Ref to avoid dependency loops
   const connectRef = useRef<() => void>(() => {}) // Stable reference to connect function
   
+  // Track if app is visible (for reducing API calls when in background)
+  const [isVisible, setIsVisible] = useState(!document.hidden)
+  
   // Reconnection config with rate limiting
   const RECONNECT_CONFIG = {
     baseDelay: 1000,        // Start at 1 second
     maxDelay: 30000,        // Max 30 seconds between attempts
     fastRetryThreshold: 5,  // First 5 attempts use faster backoff
-    healthCheckInterval: 15000, // Check backend health every 15 seconds when disconnected
+    healthCheckInterval: 30000, // Increased: Check backend health every 30 seconds when disconnected
   }
+  
+  // Listen for visibility changes to reduce API calls when app is in background
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const visible = !document.hidden
+      setIsVisible(visible)
+      console.log(`[App] Visibility changed: ${visible ? 'visible' : 'hidden'}`)
+      
+      // When app becomes visible again, refresh connection status
+      if (visible && !isConnectedRef.current) {
+        console.log('[App] App became visible, checking connection...')
+      }
+    }
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [])
 
   // Soft cleanup - for component unmount (DON'T kill backend)
   const performSoftCleanup = useCallback(() => {

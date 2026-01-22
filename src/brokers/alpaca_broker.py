@@ -70,24 +70,33 @@ class AlpacaBroker(BaseBroker):
         self._data_client = None
         self._error_message: Optional[str] = None
         
-        # Caching to prevent excessive API calls
+        # Caching to prevent excessive API calls (increased TTLs)
         self._account_cache: Optional[List[AccountInfo]] = None
         self._account_cache_time: Optional[datetime] = None
-        self._account_cache_ttl = 15  # seconds - increased to reduce API calls
+        self._account_cache_ttl = 30  # seconds - increased to reduce API calls
         
         self._positions_cache: Optional[List[Position]] = None
         self._positions_cache_time: Optional[datetime] = None
-        self._positions_cache_ttl = 10  # seconds - increased to reduce API calls
+        self._positions_cache_ttl = 20  # seconds - increased to reduce API calls
+        
+        # Health check throttling
+        self._last_health_check: Optional[datetime] = None
+        self._health_check_ttl = 30  # Only check health every 30 seconds
+        self._last_health_result: bool = True
         
         # Connection tracking
         self._last_successful_call: Optional[datetime] = None
         self._consecutive_failures = 0
         self._max_consecutive_failures = 5
         
+        # Rate limiting - prevent API flooding
+        self._min_api_interval = 1.0  # Minimum 1 second between API calls
+        self._last_api_call: Optional[datetime] = None
+        
         # Network error tracking - reduce log spam
         self._network_error_logged = False
         self._last_network_error_time: Optional[datetime] = None
-        self._network_error_log_interval = 60  # Only log network errors every 60 seconds
+        self._network_error_log_interval = 120  # Only log network errors every 2 minutes
         
         # Thread-safe lock to prevent concurrent API calls (connection pool exhaustion)
         # Using threading.Lock instead of asyncio.Lock because bots run in different event loops
@@ -307,12 +316,22 @@ class AlpacaBroker(BaseBroker):
         logger.info("Disconnected from Alpaca")
     
     async def health_check(self) -> bool:
-        """Check Alpaca connection health with detailed logging."""
+        """Check Alpaca connection health with throttling and caching."""
         if not self._trading_client:
             logger.debug("Health check failed: No trading client")
             return False
         
+        # Throttle health checks - return cached result if checked recently
+        now = datetime.now()
+        if self._last_health_check:
+            elapsed = (now - self._last_health_check).total_seconds()
+            if elapsed < self._health_check_ttl:
+                logger.debug(f"Using cached health check result (age: {elapsed:.1f}s)")
+                return self._last_health_result
+        
         try:
+            self._last_health_check = now
+            
             loop = asyncio.get_event_loop()
             account = await asyncio.wait_for(
                 loop.run_in_executor(None, self._trading_client.get_account),
@@ -321,18 +340,21 @@ class AlpacaBroker(BaseBroker):
             
             self._last_successful_call = datetime.now()
             self._consecutive_failures = 0
+            self._last_health_result = True
             
             logger.debug(f"Alpaca health check OK - Account status: {account.status}")
             return True
             
         except asyncio.TimeoutError:
             self._consecutive_failures += 1
+            self._last_health_result = self._consecutive_failures < self._max_consecutive_failures
             if self._should_log_network_error():
                 logger.warning(f"Alpaca health check timed out (failures: {self._consecutive_failures})")
-            return self._consecutive_failures < self._max_consecutive_failures
+            return self._last_health_result
             
         except Exception as e:
             self._consecutive_failures += 1
+            self._last_health_result = False
             if self._is_network_error(e):
                 self._log_network_error("health_check", e)
             else:

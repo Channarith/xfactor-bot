@@ -104,6 +104,31 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '2.1.11',
+    date: 'January 22, 2026',
+    changes: [
+      '💾 Bot State Persistence',
+      '',
+      '• Bot configurations saved to ~/.xfactor-bot/',
+      '• Running state tracked - auto-resume on restart',
+      '• Position tracking persisted across sessions',
+      '• New API: /bots/save, /bots/load, /bots/persistence',
+      '',
+      '🔧 Bug Fixes',
+      '',
+      '• Fixed modal inputs/buttons in all components',
+      '• Fixed Glossary search with proper attributes',
+      '• Added Escape key support for all modals',
+      '• Fixed Agentic Tuner bot names display',
+      '',
+      '⚡ Performance',
+      '',
+      '• Reduced API polling frequency (5s→15s)',
+      '• Added exponential backoff for reconnection',
+      '• Health check caching (every 30s)',
+    ]
+  },
+  {
     version: '2.1.10',
     date: 'January 22, 2026',
     changes: [
