@@ -1,13 +1,18 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { 
   Bot, Play, Pause, Square, Plus, Trash2,
   ChevronDown, ChevronUp,
   Search, SortAsc, SortDesc, X, RefreshCw,
   Activity, TrendingUp, TrendingDown, Clock, AlertCircle, Target, BarChart3,
-  Lock, ShieldAlert, LineChart
+  Lock, ShieldAlert, LineChart, Database
 } from 'lucide-react'
 import { BotPerformanceChart } from './BotPerformanceChart'
 import { getApiBaseUrl } from '../config/api'
+import { 
+  type CachedBotData, 
+  type BotSummary as CachedBotSummary,
+  formatLastSaved 
+} from '../utils/botDataStore'
 
 interface BotSummary {
   id: string
@@ -67,6 +72,11 @@ export function BotManager({ token = '' }: BotManagerProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showAuthModal, setShowAuthModal] = useState(false)
+  
+  // Cache state - tracks if we're showing cached data
+  const [usingCachedData, setUsingCachedData] = useState(false)
+  const [cacheLastSaved, setCacheLastSaved] = useState<string>('')
+  const [isRefreshingFromBrokerage, setIsRefreshingFromBrokerage] = useState(false)
   
   // Search, Sort, Filter state
   const [searchQuery, setSearchQuery] = useState('')
@@ -245,9 +255,33 @@ export function BotManager({ token = '' }: BotManagerProps) {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
   }
+  
+  // Listen for cached bot data from App.tsx on startup
+  useEffect(() => {
+    const handleCacheLoaded = (event: CustomEvent<CachedBotData>) => {
+      const cached = event.detail
+      if (cached.botsSummary && cached.botsSummary.length > 0) {
+        console.log('[BotManager] Loaded', cached.botsSummary.length, 'bots from cache')
+        // Convert cached data to our format (types should match)
+        setBots(cached.botsSummary as BotSummary[])
+        setUsingCachedData(true)
+        setCacheLastSaved(cached.lastSaved)
+        setError('') // Clear any errors since we have cached data
+      }
+    }
+    
+    window.addEventListener('bot-cache-loaded', handleCacheLoaded as EventListener)
+    return () => {
+      window.removeEventListener('bot-cache-loaded', handleCacheLoaded as EventListener)
+    }
+  }, [])
 
-  const fetchBots = async () => {
+  const fetchBots = useCallback(async (isManualRefresh: boolean = false) => {
     try {
+      if (isManualRefresh) {
+        setIsRefreshingFromBrokerage(true)
+      }
+      
       // Use explicit URL for desktop app compatibility
       const baseUrl = getApiBaseUrl();
       const url = baseUrl ? `${baseUrl}/api/bots/summary` : '/api/bots/summary';
@@ -270,9 +304,13 @@ export function BotManager({ token = '' }: BotManagerProps) {
       }
       
       const data = await response.json();
-      console.log('[BotManager] Fetched', data.bots?.length || 0, 'bots successfully');
+      console.log('[BotManager] Fetched', data.bots?.length || 0, 'bots successfully (live data)');
       setBots(data.bots || []);
       setError(''); // Clear any previous errors
+      
+      // Mark that we now have live data (not cached)
+      setUsingCachedData(false)
+      setIsRefreshingFromBrokerage(false)
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
       const errorStack = e instanceof Error ? e.stack : '';
@@ -293,16 +331,20 @@ export function BotManager({ token = '' }: BotManagerProps) {
         console.error('[BotManager] Health check also failed - backend is unreachable');
       }
       
-      setError(`Failed to fetch bots: ${errorMessage}`);
+      // Only show error if we don't have cached data to display
+      if (!usingCachedData && bots.length === 0) {
+        setError(`Failed to fetch bots: ${errorMessage}`);
+      }
+      setIsRefreshingFromBrokerage(false)
     }
-  }
+  }, [usingCachedData, bots.length])
 
   useEffect(() => {
-    fetchBots()
+    fetchBots(false)
     // Reduced from 5s to 15s to prevent API rate limiting
-    const interval = setInterval(fetchBots, 15000)
+    const interval = setInterval(() => fetchBots(false), 15000)
     return () => clearInterval(interval)
-  }, [])
+  }, [fetchBots])
 
   const createBot = async () => {
     setLoading(true)
@@ -458,6 +500,26 @@ export function BotManager({ token = '' }: BotManagerProps) {
 
   return (
     <div>
+      {/* Cache Indicator Banner */}
+      {usingCachedData && (
+        <div className="mb-3 p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-amber-500 text-xs">
+            <Database className="h-3.5 w-3.5" />
+            <span>
+              Showing cached data from {formatLastSaved(cacheLastSaved)}
+            </span>
+          </div>
+          <button
+            onClick={() => fetchBots(true)}
+            disabled={isRefreshingFromBrokerage}
+            className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-500 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3 w-3 ${isRefreshingFromBrokerage ? 'animate-spin' : ''}`} />
+            {isRefreshingFromBrokerage ? 'Refreshing...' : 'Refresh from brokerage'}
+          </button>
+        </div>
+      )}
+      
       {/* Quick Actions Bar */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
@@ -467,9 +529,21 @@ export function BotManager({ token = '' }: BotManagerProps) {
           <span className="text-xs text-muted-foreground">
             ({bots.filter(b => b.status === 'running').length} running)
           </span>
+          {!usingCachedData && bots.length > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-500">
+              Live
+            </span>
+          )}
         </div>
         
         <div className="flex gap-2">
+          <button
+            onClick={() => fetchBots(true)}
+            className="p-1.5 rounded bg-secondary hover:bg-secondary/80"
+            title="Refresh bots"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshingFromBrokerage ? 'animate-spin' : ''}`} />
+          </button>
           <button
             onClick={() => controlAllBots('start-all')}
             className="p-1.5 rounded bg-profit/20 text-profit hover:bg-profit/30"

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { 
   TrendingUp, 
   Bot, 
@@ -14,7 +14,9 @@ import {
   CandlestickChart,
   Crosshair,
   Activity,
-  Layers
+  Layers,
+  Database,
+  RefreshCw
 } from 'lucide-react'
 import { PortfolioCard } from './PortfolioCard'
 import { PositionsTable } from './PositionsTable'
@@ -35,6 +37,7 @@ import StockAnalyzer from './StockAnalyzer'
 import { useTradingMode } from '../context/TradingModeContext'
 import { MomentumDashboard } from './MomentumDashboard'
 import { ETFWidget } from './ETFWidget'
+import { type CachedBotData, formatLastSaved } from '../utils/botDataStore'
 
 export function Dashboard() {
   const { broker } = useTradingMode()
@@ -42,6 +45,11 @@ export function Dashboard() {
   // Broker selector state
   const [selectedBroker, setSelectedBroker] = useState<string>('all')
   const [connectedBrokers, setConnectedBrokers] = useState<Array<{broker: string, equity: number}>>([])
+  
+  // Cache state - tracks if we're showing cached data
+  const [usingCachedData, setUsingCachedData] = useState(false)
+  const [cacheLastSaved, setCacheLastSaved] = useState<string>('')
+  const [isRefreshingFromBrokerage, setIsRefreshingFromBrokerage] = useState(false)
   
   // Portfolio data - will be populated when broker is connected
   const [portfolioData, setPortfolioData] = useState({
@@ -52,63 +60,100 @@ export function Dashboard() {
     exposure: 0,
   })
   
-  // Fetch portfolio summary with broker filter
+  // Listen for cached data on startup
   useEffect(() => {
-    const fetchPortfolio = async () => {
-      try {
-        const brokerParam = selectedBroker !== 'all' ? `?broker=${selectedBroker}` : ''
-        const res = await fetch(`/api/positions/summary${brokerParam}`)
-        if (res.ok) {
-          const data = await res.json()
-          // Use API data if available, otherwise fall back to broker context
-          const totalValue = data.total_value || broker.portfolioValue || 0
-          const dailyPnL = data.daily_pnl || 0
-          
-          setPortfolioData({
-            totalValue,
-            dailyPnL,
-            dailyPnLPct: totalValue > 0 ? (dailyPnL / totalValue) * 100 : 0,
-            openPositions: data.position_count || 0,
-            exposure: data.positions_value || 0,
-          })
-          
-          // Update connected brokers list (for the selector)
-          if (data.broker_details && data.broker_details.length > 0) {
-            setConnectedBrokers(data.broker_details.map((b: {broker: string, equity: number}) => ({
-              broker: b.broker,
-              equity: b.equity,
-            })))
-          }
-        } else if (broker.isConnected && broker.portfolioValue) {
-          // Fallback to broker context if API fails
-          setPortfolioData({
-            totalValue: broker.portfolioValue,
-            dailyPnL: 0,
-            dailyPnLPct: 0,
-            openPositions: 0,
-            exposure: 0,
-          })
+    const handleCacheLoaded = (event: CustomEvent<CachedBotData>) => {
+      const cached = event.detail
+      if (cached.portfolioData) {
+        console.log('[Dashboard] Loaded portfolio from cache:', cached.portfolioData)
+        setPortfolioData({
+          totalValue: cached.portfolioData.totalValue,
+          dailyPnL: cached.portfolioData.dailyPnL,
+          dailyPnLPct: cached.portfolioData.dailyPnLPct,
+          openPositions: cached.portfolioData.openPositions,
+          exposure: cached.portfolioData.exposure,
+        })
+        if (cached.portfolioData.connectedBrokers) {
+          setConnectedBrokers(cached.portfolioData.connectedBrokers)
         }
-      } catch (e) {
-        console.error('Failed to fetch portfolio:', e)
-        // Fallback to broker context on error
-        if (broker.isConnected && broker.portfolioValue) {
-          setPortfolioData({
-            totalValue: broker.portfolioValue,
-            dailyPnL: 0,
-            dailyPnLPct: 0,
-            openPositions: 0,
-            exposure: 0,
-          })
-        }
+        setUsingCachedData(true)
+        setCacheLastSaved(cached.lastSaved)
       }
     }
     
-    fetchPortfolio()
-    // Reduced from 15s to 30s to prevent API rate limiting
-    const interval = setInterval(fetchPortfolio, 30000)
-    return () => clearInterval(interval)
+    window.addEventListener('bot-cache-loaded', handleCacheLoaded as EventListener)
+    return () => {
+      window.removeEventListener('bot-cache-loaded', handleCacheLoaded as EventListener)
+    }
+  }, [])
+  
+  // Fetch portfolio summary with broker filter
+  const fetchPortfolio = useCallback(async (isManualRefresh: boolean = false) => {
+    try {
+      if (isManualRefresh) {
+        setIsRefreshingFromBrokerage(true)
+      }
+      
+      const brokerParam = selectedBroker !== 'all' ? `?broker=${selectedBroker}` : ''
+      const res = await fetch(`/api/positions/summary${brokerParam}`)
+      if (res.ok) {
+        const data = await res.json()
+        // Use API data if available, otherwise fall back to broker context
+        const totalValue = data.total_value || broker.portfolioValue || 0
+        const dailyPnL = data.daily_pnl || 0
+        
+        setPortfolioData({
+          totalValue,
+          dailyPnL,
+          dailyPnLPct: totalValue > 0 ? (dailyPnL / totalValue) * 100 : 0,
+          openPositions: data.position_count || 0,
+          exposure: data.positions_value || 0,
+        })
+        
+        // Update connected brokers list (for the selector)
+        if (data.broker_details && data.broker_details.length > 0) {
+          setConnectedBrokers(data.broker_details.map((b: {broker: string, equity: number}) => ({
+            broker: b.broker,
+            equity: b.equity,
+          })))
+        }
+        
+        // Mark as live data (not cached)
+        setUsingCachedData(false)
+        setIsRefreshingFromBrokerage(false)
+      } else if (broker.isConnected && broker.portfolioValue) {
+        // Fallback to broker context if API fails
+        setPortfolioData({
+          totalValue: broker.portfolioValue,
+          dailyPnL: 0,
+          dailyPnLPct: 0,
+          openPositions: 0,
+          exposure: 0,
+        })
+        setIsRefreshingFromBrokerage(false)
+      }
+    } catch (e) {
+      console.error('Failed to fetch portfolio:', e)
+      // Fallback to broker context on error
+      if (broker.isConnected && broker.portfolioValue) {
+        setPortfolioData({
+          totalValue: broker.portfolioValue,
+          dailyPnL: 0,
+          dailyPnLPct: 0,
+          openPositions: 0,
+          exposure: 0,
+        })
+      }
+      setIsRefreshingFromBrokerage(false)
+    }
   }, [broker.isConnected, broker.portfolioValue, selectedBroker])
+  
+  useEffect(() => {
+    fetchPortfolio(false)
+    // Reduced from 15s to 30s to prevent API rate limiting
+    const interval = setInterval(() => fetchPortfolio(false), 30000)
+    return () => clearInterval(interval)
+  }, [fetchPortfolio])
   
   // Get broker display name
   const getBrokerLabel = (brokerId: string) => {
@@ -124,6 +169,26 @@ export function Dashboard() {
 
   return (
     <div className="space-y-4">
+      {/* Cache Indicator Banner */}
+      {usingCachedData && portfolioData.totalValue > 0 && (
+        <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-amber-500 text-sm">
+            <Database className="h-4 w-4" />
+            <span>
+              Showing cached data from {formatLastSaved(cacheLastSaved)} — will refresh once connected to brokerage
+            </span>
+          </div>
+          <button
+            onClick={() => fetchPortfolio(true)}
+            disabled={isRefreshingFromBrokerage}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-500 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshingFromBrokerage ? 'animate-spin' : ''}`} />
+            {isRefreshingFromBrokerage ? 'Refreshing...' : 'Refresh now'}
+          </button>
+        </div>
+      )}
+      
       {/* Broker Selector - Only show if multiple brokers connected */}
       {connectedBrokers.length > 1 && (
         <div className="flex items-center gap-3 p-3 bg-secondary/30 rounded-lg border border-border">
@@ -157,9 +222,11 @@ export function Dashboard() {
           value={`$${portfolioData.totalValue.toLocaleString()}`}
           subtitle={
             portfolioData.totalValue > 0 
-              ? selectedBroker === 'all' && connectedBrokers.length > 1
-                ? `Combined from ${connectedBrokers.length} brokers`
-                : `Live from ${getBrokerLabel(selectedBroker)}`
+              ? usingCachedData
+                ? `📦 Cached from ${formatLastSaved(cacheLastSaved)}`
+                : selectedBroker === 'all' && connectedBrokers.length > 1
+                  ? `🟢 Live - Combined from ${connectedBrokers.length} brokers`
+                  : `🟢 Live from ${getBrokerLabel(selectedBroker)}`
               : "Connect broker to see data"
           }
           trend={portfolioData.totalValue > 0 ? "up" : "neutral"}

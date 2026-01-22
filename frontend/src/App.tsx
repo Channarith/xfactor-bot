@@ -8,6 +8,13 @@ import { TradingModeProvider } from './context/TradingModeContext'
 import { DemoModeProvider } from './contexts/DemoModeContext'
 import DemoModeBanner from './components/DemoModeBanner'
 import { getWsBaseUrl, getApiBaseUrl } from './config/api'
+import { 
+  loadBotPerformanceData, 
+  saveBotPerformanceData, 
+  emitCacheLoaded,
+  emitCacheSaved,
+  type CachedBotData 
+} from './utils/botDataStore'
 
 // Page types
 type PageType = 'dashboard' | 'settings'
@@ -22,6 +29,8 @@ function App() {
   const [connected, setConnected] = useState(false)
   const [wsState, setWsState] = useState<WSState>('disconnected')
   const [currentPage, setCurrentPage] = useState<PageType>('dashboard')
+  const [cachedBotData, setCachedBotData] = useState<CachedBotData | null>(null)
+  const [cacheLoaded, setCacheLoaded] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectAttempts = useRef(0)
@@ -34,6 +43,36 @@ function App() {
   
   // Track if app is visible (for reducing API calls when in background)
   const [isVisible, setIsVisible] = useState(!document.hidden)
+  
+  // Load cached bot performance data on startup
+  useEffect(() => {
+    const loadCache = async () => {
+      console.log('[App] Loading cached bot performance data...')
+      try {
+        const cached = await loadBotPerformanceData()
+        setCachedBotData(cached)
+        setCacheLoaded(true)
+        
+        // Emit event so child components can use the cached data
+        if (cached.botsSummary.length > 0 || cached.portfolioData) {
+          console.log('[App] Cached data loaded:', {
+            bots: cached.botsSummary.length,
+            hasPortfolio: !!cached.portfolioData,
+            isStale: cached.isStale,
+            lastSaved: cached.lastSaved,
+          })
+          emitCacheLoaded(cached)
+        } else {
+          console.log('[App] No cached data found')
+        }
+      } catch (e) {
+        console.warn('[App] Failed to load cached data:', e)
+        setCacheLoaded(true)
+      }
+    }
+    
+    loadCache()
+  }, [])
   
   // Reconnection config with rate limiting
   const RECONNECT_CONFIG = {
@@ -85,6 +124,65 @@ function App() {
     }
   }, [])
 
+  // Save current bot performance data before closing
+  const saveBotDataBeforeClose = useCallback(async () => {
+    console.log('[Cleanup] Saving bot performance data before close...')
+    
+    try {
+      // Fetch latest bot data from API if backend is available
+      const baseUrl = getApiBaseUrl()
+      
+      // Fetch bots summary
+      let botsSummary: any[] = []
+      try {
+        const botsResponse = await fetch(`${baseUrl}/api/bots/summary`, {
+          signal: AbortSignal.timeout(3000), // 3s timeout
+        })
+        if (botsResponse.ok) {
+          const botsData = await botsResponse.json()
+          botsSummary = botsData.bots || []
+        }
+      } catch (e) {
+        console.warn('[Cleanup] Could not fetch bots summary, using cached data')
+        botsSummary = cachedBotData?.botsSummary || []
+      }
+      
+      // Fetch portfolio data
+      let portfolioData = null
+      try {
+        const portfolioResponse = await fetch(`${baseUrl}/api/positions/summary`, {
+          signal: AbortSignal.timeout(3000), // 3s timeout
+        })
+        if (portfolioResponse.ok) {
+          const data = await portfolioResponse.json()
+          portfolioData = {
+            totalValue: data.total_value || 0,
+            dailyPnL: data.daily_pnl || 0,
+            dailyPnLPct: data.total_value > 0 ? (data.daily_pnl / data.total_value) * 100 : 0,
+            openPositions: data.position_count || 0,
+            exposure: data.positions_value || 0,
+            connectedBrokers: data.broker_details || [],
+          }
+        }
+      } catch (e) {
+        console.warn('[Cleanup] Could not fetch portfolio, using cached data')
+        portfolioData = cachedBotData?.portfolioData || null
+      }
+      
+      // Save all data
+      await saveBotPerformanceData(
+        botsSummary,
+        cachedBotData?.botsPerformance || {},
+        portfolioData
+      )
+      
+      emitCacheSaved()
+      console.log('[Cleanup] Bot performance data saved successfully')
+    } catch (e) {
+      console.warn('[Cleanup] Failed to save bot performance data:', e)
+    }
+  }, [cachedBotData])
+
   // Hard cleanup - ONLY for actual app/window close (kills backend)
   const performHardCleanup = useCallback(async (reason: string) => {
     if (cleanupDone.current) {
@@ -94,6 +192,9 @@ function App() {
     cleanupDone.current = true
     
     console.log(`[Cleanup] Hard cleanup triggered: ${reason}`)
+    
+    // FIRST: Save bot performance data before closing
+    await saveBotDataBeforeClose()
     
     // Send cleanup signal via WebSocket if connected
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -133,7 +234,7 @@ function App() {
     }
     
     console.log('[Cleanup] Hard cleanup completed')
-  }, [performSoftCleanup])
+  }, [performSoftCleanup, saveBotDataBeforeClose])
 
   // Exponential backoff for reconnection with rate limiting
   const getReconnectDelay = useCallback(() => {

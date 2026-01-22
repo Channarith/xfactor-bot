@@ -5,6 +5,41 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.13] - 2026-01-22
+
+### ✨ New Features
+
+- **Bot Performance Data Persistence on App Close**: App now saves bot performance data when closing and restores it on startup.
+  - Saves bot summary data (status, P&L, uptime, strategies) before app exit
+  - Saves portfolio data (total value, daily P&L, positions, exposure) before app exit
+  - Uses Tauri's secure Store plugin for desktop app persistence
+  - Falls back to localStorage for browser-based access
+  - Cache stored in `bot-performance-cache.json` in app data directory
+
+- **Cached Data Display on Startup**: Shows cached data immediately while connecting to brokerage.
+  - BotManager displays cached bot list with "Showing cached data from X ago" banner
+  - Dashboard displays cached portfolio values with cache indicator
+  - Visual "📦 Cached" indicator in Portfolio Value card subtitle
+  - "🟢 Live" indicator when connected and showing live data
+  - Manual "Refresh from brokerage" button to force update
+
+- **Seamless Cache-to-Live Transition**: Cached data automatically replaced when live data arrives.
+  - Auto-refresh attempts every 15-30 seconds
+  - Cache staleness detection (data older than 60 minutes marked as stale)
+  - Timestamp tracking for cache age display
+  - Events emitted for cache load/save for component coordination
+
+### 🔧 Technical
+
+- New utility: `frontend/src/utils/botDataStore.ts`
+  - `saveBotPerformanceData()`: Save bots, performance, and portfolio
+  - `loadBotPerformanceData()`: Load all cached data on startup
+  - `formatLastSaved()`: Human-readable cache age ("5m ago", "2h ago")
+  - Event emitters for cache coordination between components
+  - Tauri Store plugin integration with localStorage fallback
+
+---
+
 ## [2.1.12] - 2026-01-22
 
 ### ⚡ Performance
