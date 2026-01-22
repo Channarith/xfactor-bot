@@ -1,4 +1,4 @@
-name: XFactor Bot v2.1.11 Legacy Mac
+name: XFactor Bot Legacy Mac
 
 on:
   workflow_dispatch:
