@@ -1,6 +1,6 @@
 {
   "name": "xfactor-bot-dashboard",
-  "version": "2.1.9",
+  "version": "2.1.10",
   "private": true,
   "type": "module",
   "scripts": {

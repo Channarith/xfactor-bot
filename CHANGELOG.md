@@ -5,6 +5,37 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.10] - 2026-01-22
+
+### ✨ New Features
+
+- **Expanded Trading Regulations Glossary**: 17 new compliance terms added.
+  - Regulation T (Reg T): Initial margin requirement of 50%
+  - Initial Margin vs Maintenance Margin differences
+  - Settled Funds vs Unsettled Funds
+  - Cash Liquidation Violation
+  - 90-Day Restriction penalties for violations
+  - Short Selling Restrictions (HTB, Borrow Fees, Locate)
+  - Options Levels (broker approval requirements)
+  - PDT Reset options
+  - Margin Interest calculations
+  - Overnight Margin (2x) vs Intraday (4x)
+  - Excess Margin / SMA
+  - Concentrated Position restrictions
+  - Free Riding violations
+
+### 🐛 Bug Fixes
+
+- **Prometheus Metrics Duplicate Error**: Fixed `ValueError: Duplicated timeseries in CollectorRegistry`.
+  - `MetricsCollector` now uses singleton pattern
+  - Prevents re-registration of metrics on module reimport
+
+- **PyInstaller Module Discovery**: Added `--paths` flag.
+  - Explicitly tells PyInstaller where to find `src` package
+  - Adds explicit imports in `run_backend.py` for all src modules
+
+---
+
 ## [2.1.9] - 2026-01-21
 
 ### ✨ New Features

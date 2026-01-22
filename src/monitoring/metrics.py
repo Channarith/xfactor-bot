@@ -2,17 +2,36 @@
 Prometheus metrics collection.
 """
 
-from prometheus_client import Counter, Gauge, Histogram, Info, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Counter, Gauge, Histogram, Info, generate_latest, CONTENT_TYPE_LATEST, REGISTRY
 from loguru import logger
+
+
+# Singleton instance
+_metrics_instance = None
 
 
 class MetricsCollector:
     """
     Collect and expose Prometheus metrics.
+    Uses singleton pattern to prevent duplicate metric registration.
     """
     
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls):
+        """Ensure only one instance exists (singleton pattern)."""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
     def __init__(self):
-        """Initialize metrics."""
+        """Initialize metrics (only once due to singleton)."""
+        # Skip if already initialized
+        if MetricsCollector._initialized:
+            return
+        MetricsCollector._initialized = True
+        
         # Trading metrics
         self.orders_total = Counter(
             'trading_orders_total',
@@ -181,4 +200,12 @@ class MetricsCollector:
     def get_content_type(self) -> str:
         """Get content type for metrics endpoint."""
         return CONTENT_TYPE_LATEST
+
+
+def get_metrics_collector() -> MetricsCollector:
+    """Get the singleton MetricsCollector instance."""
+    global _metrics_instance
+    if _metrics_instance is None:
+        _metrics_instance = MetricsCollector()
+    return _metrics_instance
 

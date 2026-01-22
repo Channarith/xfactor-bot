@@ -9,7 +9,7 @@ on:
       version:
         description: 'Version tag (e.g., v2.1.1)'
         required: false
-        default: 'v2.1.9'
+        default: 'v2.1.10'
 
 permissions:
   contents: write  # Required to create releases
