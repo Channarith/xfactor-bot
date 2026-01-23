@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { X, HelpCircle, Zap, Bot, LineChart, Shield, Settings, Cpu, Globe, Calendar, Book, TrendingUp, TrendingDown, BarChart3, Activity, Target, Layers, Search, ChevronDown, ChevronUp, Mic, MicOff, Volume2, AlertTriangle } from 'lucide-react';
 import { createSpeechRecognition, speak, isSpeechRecognitionSupported, isSpeechSynthesisSupported, stopSpeaking } from '../utils/audio';
 
@@ -3047,14 +3047,25 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
     setExpandedTerms(newExpanded);
   };
 
-  const filteredGlossaryTerms = glossaryTerms.filter(term => {
-    const matchesCategory = glossaryCategory === 'all' || term.category === glossaryCategory;
-    const matchesSearch = glossarySearch === '' || 
-      term.term.toLowerCase().includes(glossarySearch.toLowerCase()) ||
-      term.shortDef.toLowerCase().includes(glossarySearch.toLowerCase()) ||
-      term.fullExplanation.toLowerCase().includes(glossarySearch.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+  // Memoize filtered terms to ensure consistent filtering
+  const filteredGlossaryTerms = useMemo(() => {
+    const searchLower = glossarySearch.toLowerCase().trim();
+    
+    return glossaryTerms.filter(term => {
+      // Category filter
+      const matchesCategory = glossaryCategory === 'all' || term.category === glossaryCategory;
+      if (!matchesCategory) return false;
+      
+      // Search filter (check all fields)
+      if (searchLower === '') return true;
+      
+      return (
+        term.term.toLowerCase().includes(searchLower) ||
+        term.shortDef.toLowerCase().includes(searchLower) ||
+        (term.fullExplanation && term.fullExplanation.toLowerCase().includes(searchLower))
+      );
+    });
+  }, [glossaryCategory, glossarySearch]);
 
   return (
     <div 
@@ -3240,8 +3251,11 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
                 Showing {filteredGlossaryTerms.length} of {glossaryTerms.length} terms
               </div>
               
-              {/* Terms List */}
-              <div className="space-y-2">
+              {/* Terms List - key forces re-render when filters change */}
+              <div 
+                key={`glossary-${glossaryCategory}-${glossarySearch}`}
+                className="space-y-2"
+              >
                 {filteredGlossaryTerms.map((term) => (
                   <GlossaryTermCard
                     key={term.term}
