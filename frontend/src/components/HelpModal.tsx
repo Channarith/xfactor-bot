@@ -3035,19 +3035,7 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
     speak(text, { rate: 0.95 });
   };
 
-  if (!isOpen) return null;
-
-  const toggleTerm = (term: string) => {
-    const newExpanded = new Set(expandedTerms);
-    if (newExpanded.has(term)) {
-      newExpanded.delete(term);
-    } else {
-      newExpanded.add(term);
-    }
-    setExpandedTerms(newExpanded);
-  };
-
-  // Memoize filtered terms to ensure consistent filtering
+  // Memoize filtered terms - MUST be before early return (React hooks rule)
   const filteredGlossaryTerms = useMemo(() => {
     const searchLower = glossarySearch.toLowerCase().trim();
     
@@ -3066,6 +3054,19 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
       );
     });
   }, [glossaryCategory, glossarySearch]);
+
+  // Early return AFTER all hooks
+  if (!isOpen) return null;
+
+  const toggleTerm = (term: string) => {
+    const newExpanded = new Set(expandedTerms);
+    if (newExpanded.has(term)) {
+      newExpanded.delete(term);
+    } else {
+      newExpanded.add(term);
+    }
+    setExpandedTerms(newExpanded);
+  };
 
   return (
     <div 
