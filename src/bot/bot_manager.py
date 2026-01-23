@@ -788,6 +788,84 @@ class BotManager:
         """Check if there are saved bots to load."""
         return self._saved_bots_manager.has_saved_bots()
     
+    def restore_trade_data_from_saved(self) -> int:
+        """
+        Restore trade data (P&L, positions, stats) from saved state to existing bots.
+        
+        This does NOT create new bots - it only restores trade-related data
+        to bots that already exist (created from default definitions).
+        
+        Bot definitions (name, symbols, strategies) always come from _create_default_bots.
+        Only trade data is persisted and restored.
+        
+        Returns:
+            Number of bots with restored trade data
+        """
+        try:
+            saved_states = self._saved_bots_manager.load_bots()
+            
+            if not saved_states:
+                logger.info("No saved trade data to restore")
+                return 0
+            
+            restored_count = 0
+            
+            for saved_state in saved_states:
+                # Find matching bot by name (since IDs change on restart)
+                matching_bot = None
+                for bot in self._bots.values():
+                    if bot.config.name == saved_state.name:
+                        matching_bot = bot
+                        break
+                
+                if matching_bot:
+                    # Restore trade data to this bot
+                    try:
+                        # Restore stats if available
+                        if saved_state.stats:
+                            matching_bot.stats.daily_pnl = saved_state.stats.get('daily_pnl', 0)
+                            matching_bot.stats.total_pnl = saved_state.stats.get('total_pnl', 0)
+                            matching_bot.stats.win_rate = saved_state.stats.get('win_rate', 0)
+                            matching_bot.stats.trades_today = saved_state.stats.get('trades_today', 0)
+                            matching_bot.stats.open_positions = saved_state.stats.get('open_positions', 0)
+                            
+                            # Restore trade history if available
+                            trade_history = saved_state.stats.get('trade_history', [])
+                            if trade_history:
+                                from src.bot.bot_instance import TradeRecord
+                                for trade in trade_history[-20:]:  # Keep last 20 trades
+                                    try:
+                                        record = TradeRecord(
+                                            timestamp=trade.get('timestamp', ''),
+                                            symbol=trade.get('symbol', ''),
+                                            side=trade.get('side', ''),
+                                            quantity=trade.get('quantity', 0),
+                                            price=trade.get('price', 0),
+                                            pnl=trade.get('pnl', 0),
+                                            reasoning=trade.get('reasoning', ''),
+                                            confidence=trade.get('confidence', 0),
+                                        )
+                                        matching_bot.stats.trade_history.append(record)
+                                    except Exception:
+                                        pass
+                        
+                        restored_count += 1
+                        logger.debug(f"Restored trade data for bot: {matching_bot.config.name}")
+                        
+                    except Exception as e:
+                        logger.warning(f"Error restoring trade data for {saved_state.name}: {e}")
+                else:
+                    logger.debug(f"No matching bot found for saved state: {saved_state.name}")
+            
+            if restored_count > 0:
+                logger.info(f"Restored trade data for {restored_count} bots")
+            
+            return restored_count
+            
+        except Exception as e:
+            logger.error(f"Error restoring trade data: {e}")
+            return 0
+    
     def save_position_tracking(self) -> bool:
         """Save position tracking data to disk."""
         try:
@@ -2009,24 +2087,20 @@ def get_bot_manager() -> BotManager:
     if not _initialized and _bot_manager.bot_count == 0:
         _initialized = True
         
-        # Try to load saved bots first
+        # ALWAYS create default bots first (all 50+ bots should be available)
+        # Bot definitions are never saved/loaded - only trade data is persisted
+        logger.info("Creating default bots (all 50+ bots always available)...")
+        _create_default_bots(_bot_manager)
+        
+        # Then restore trade data (positions, P&L) from saved state if available
         if _bot_manager.has_saved_bots():
-            logger.info("Loading saved bot configurations...")
-            loaded = _bot_manager.load_saved_bots(auto_start=True)
-            
-            # Also load saved position tracking
-            _bot_manager.load_position_tracking()
-            
-            if loaded > 0:
-                logger.info(f"Restored {loaded} bots from saved state")
-            else:
-                # Fall back to defaults if loading failed
-                logger.warning("Failed to load saved bots, creating defaults...")
-                _create_default_bots(_bot_manager)
-        else:
-            # No saved bots, create defaults
-            logger.info("No saved bots found, creating default bots...")
-            _create_default_bots(_bot_manager)
+            logger.info("Restoring trade data from saved state...")
+            _bot_manager.restore_trade_data_from_saved()
+        
+        # Also load saved position tracking
+        _bot_manager.load_position_tracking()
+        
+        logger.info(f"Bot Manager ready with {_bot_manager.bot_count} bots")
     
     return _bot_manager
 

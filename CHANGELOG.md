@@ -52,11 +52,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automatic reconnection logic always active
   - Enables seamless day-after-day autonomous trading without manual intervention
 
-- **Bot Data Persistence Clarification**: All 50 bots always available from backend.
-  - Bot definitions (names, strategies, symbols) always load from backend API
-  - Cache only stores TRADE data: open positions, closed trades, P&L, agentic tuning
-  - Cached trade data merges with backend bots on display
-  - Ensures all 50 bots are visible in Bot Manager regardless of trading activity
+- **Bot Data Persistence Clarification**: All 50+ bots always available from backend.
+  - Bot definitions (names, strategies, symbols) ALWAYS created from defaults on startup
+  - Saved state only contains TRADE data: positions, P&L, trade history, agentic tuning
+  - Trade data is restored and merged with default bots on startup
+  - Ensures all 50+ bots are visible in Bot Manager regardless of trading activity
+  - Users cannot accidentally reduce bot count by saving/loading state
 
 ### 🔧 Technical
 
