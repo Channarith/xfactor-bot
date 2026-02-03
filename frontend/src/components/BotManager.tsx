@@ -21,6 +21,8 @@ interface BotSummary {
   symbols_count: number
   strategies: string[]
   daily_pnl: number
+  daily_pnl_pct: number
+  total_pnl: number
   uptime_seconds: number
 }
 
@@ -704,9 +706,14 @@ export function BotManager({ token = '' }: BotManagerProps) {
               </div>
               
               <div className="flex items-center gap-2">
-                <span className={`text-xs ${bot.daily_pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
-                  {bot.daily_pnl >= 0 ? '+' : ''}${bot.daily_pnl.toFixed(2)}
-                </span>
+                <div className="text-right">
+                  <div className={`text-xs font-medium ${bot.daily_pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
+                    {bot.daily_pnl >= 0 ? '+' : ''}${bot.daily_pnl.toFixed(2)}
+                  </div>
+                  <div className={`text-[10px] ${bot.daily_pnl_pct >= 0 ? 'text-profit' : 'text-loss'}`}>
+                    {bot.daily_pnl_pct >= 0 ? '+' : ''}{bot.daily_pnl_pct.toFixed(2)}%
+                  </div>
+                </div>
                 
                 {/* Control buttons */}
                 {bot.status === 'running' ? (

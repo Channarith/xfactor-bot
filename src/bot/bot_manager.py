@@ -68,7 +68,7 @@ class BotManager:
         
         logger.info(f"Bot Manager initialized with auto-optimizer support (multi_broker={self.DEFAULT_MULTI_BROKER})")
     
-    def track_position_open(self, symbol: str, broker: str, bot_id: str, bot_name: str, quantity: float) -> None:
+    def track_position_open(self, symbol: str, broker: str, bot_id: str, bot_name: str, quantity: float, strategy: str = None) -> None:
         """Track which bot opened a position."""
         with self._position_lock:
             key = (symbol.upper(), broker.upper())
@@ -77,8 +77,9 @@ class BotManager:
                 "bot_name": bot_name,
                 "opened_at": datetime.now().isoformat(),
                 "quantity": quantity,
+                "strategy": strategy or "Unknown",
             }
-            logger.debug(f"Position tracked: {symbol} on {broker} opened by bot {bot_name} ({bot_id})")
+            logger.debug(f"Position tracked: {symbol} on {broker} opened by bot {bot_name} ({bot_id}) using {strategy or 'Unknown'} strategy")
         
         # Save position tracking to disk
         self.save_position_tracking()
@@ -648,18 +649,30 @@ class BotManager:
     
     def get_bot_summary(self) -> list[dict]:
         """Get summary of all bots (lightweight)."""
-        return [
-            {
+        summaries = []
+        for bot in self._bots.values():
+            # Calculate daily P&L percentage
+            total_pnl = getattr(bot.stats, 'total_pnl', 0.0)
+            daily_pnl_pct = 0.0
+            if total_pnl > 0:
+                # Calculate percentage based on total portfolio value (estimate)
+                portfolio_value = 1000000.0  # Default assumption
+                if hasattr(bot.stats, 'portfolio_value') and bot.stats.portfolio_value > 0:
+                    portfolio_value = bot.stats.portfolio_value
+                daily_pnl_pct = (bot.stats.daily_pnl / portfolio_value) * 100
+            
+            summaries.append({
                 "id": bot.id,
                 "name": bot.config.name,
                 "status": bot.status.value,
                 "symbols_count": len(bot.config.symbols),
                 "strategies": bot.config.strategies,
                 "daily_pnl": bot.stats.daily_pnl,
+                "daily_pnl_pct": round(daily_pnl_pct, 2),
+                "total_pnl": total_pnl,
                 "uptime_seconds": bot.uptime,
-            }
-            for bot in self._bots.values()
-        ]
+            })
+        return summaries
     
     # =========================================================================
     # Persistence Methods - Save/Load bots and position tracking

@@ -1396,7 +1396,8 @@ class BotInstance:
                                 from src.bot.bot_manager import get_bot_manager
                                 manager = get_bot_manager()
                                 if manager:
-                                    manager.track_position_open(symbol, broker.name, self.id, self.config.name, quantity)
+                                    strategy_name = signal.get('strategy', 'Unknown')
+                                    manager.track_position_open(symbol, broker.name, self.id, self.config.name, quantity, strategy_name)
                             except Exception as e:
                                 logger.debug(f"Could not track position for bot: {e}")
                             
@@ -2515,7 +2516,10 @@ class BotInstance:
         """
         Evaluate 22+ indicators across 7 categories and return (signal_type, confidence, reasoning).
         
-        Categories and their max contributions:
+        NOW WITH STRATEGY-SPECIFIC WEIGHTS:
+        Each bot's strategy_weights configuration adjusts how much each indicator category contributes.
+        
+        Categories and their base max contributions:
         1. Momentum Indicators (3 points): RSI, Stochastic, Williams %R
         2. Trend Indicators (4 points): MA Crossover, MACD, ADX, Golden/Death Cross
         3. Volatility Indicators (2 points): Bollinger Bands, Keltner Channels
@@ -2524,8 +2528,52 @@ class BotInstance:
         6. Market Sentiment (4 points): News, Social Media, Top Traders
         7. Chart Patterns (4 points): H&S, Wedges, Flags, Triangles, Double Top/Bottom, Pennants
         
-        Total max score: 22 points per side (bullish/bearish)
+        Strategy weights multiplier applied per category based on bot configuration.
         """
+        # Get strategy-specific weights from bot config
+        weights = self.config.strategy_weights
+        
+        # Map strategies to indicator categories
+        momentum_weight = max(
+            weights.get('Momentum', 0.5),
+            weights.get('RSI', 0.5),
+            weights.get('Scalping', 0.3)
+        )
+        
+        trend_weight = max(
+            weights.get('Technical', 0.6),
+            weights.get('TrendFollowing', 0.5),
+            weights.get('MACD', 0.5),
+            weights.get('MovingAverageCrossover', 0.5)
+        )
+        
+        volatility_weight = max(
+            weights.get('MeanReversion', 0.4),
+            weights.get('BollingerBands', 0.4),
+            weights.get('SwingTrading', 0.5)
+        )
+        
+        volume_weight = max(
+            weights.get('VWAP', 0.4),
+            weights.get('Breakout', 0.5)
+        )
+        
+        pattern_weight = max(
+            weights.get('Technical', 0.6),
+            weights.get('Breakout', 0.5)
+        )
+        
+        sentiment_weight = max(
+            weights.get('NewsSentiment', 0.4),
+            weights.get('SocialSentiment', 0.3),
+            weights.get('InsiderFollowing', 0.3)
+        )
+        
+        chart_pattern_weight = max(
+            weights.get('Technical', 0.6),
+            weights.get('SwingTrading', 0.5)
+        )
+        
         bullish_score = 0.0
         bearish_score = 0.0
         max_score = 22.0  # Maximum possible score (updated for chart patterns)
@@ -2537,101 +2585,101 @@ class BotInstance:
         sentiment = sentiment or {}
         
         # =====================================================================
-        # 1. MOMENTUM INDICATORS (max 3 points)
+        # 1. MOMENTUM INDICATORS (base max 3 points × momentum_weight)
         # =====================================================================
         
         # 1a. RSI (14-period)
         rsi = indicators.get('rsi', 50)
         if rsi < 30:
-            bullish_score += 1.0
-            bullish_reasons.append(f"📊 RSI oversold ({rsi:.1f}<30)")
+            bullish_score += 1.0 * momentum_weight
+            bullish_reasons.append(f"📊 RSI oversold ({rsi:.1f}<30) [weight: {momentum_weight:.1f}x]")
         elif rsi > 70:
-            bearish_score += 1.0
-            bearish_reasons.append(f"📊 RSI overbought ({rsi:.1f}>70)")
+            bearish_score += 1.0 * momentum_weight
+            bearish_reasons.append(f"📊 RSI overbought ({rsi:.1f}>70) [weight: {momentum_weight:.1f}x]")
         elif rsi < 40:
-            bullish_score += 0.5
+            bullish_score += 0.5 * momentum_weight
             bullish_reasons.append(f"RSI approaching oversold ({rsi:.1f})")
         elif rsi > 60:
-            bearish_score += 0.5
+            bearish_score += 0.5 * momentum_weight
             bearish_reasons.append(f"RSI approaching overbought ({rsi:.1f})")
         
         # 1b. Stochastic Oscillator
         if indicators.get('stoch_bullish'):
-            bullish_score += 1.0
+            bullish_score += 1.0 * momentum_weight
             stoch_k = indicators.get('stoch_k', 0)
             bullish_reasons.append(f"📈 Stochastic bullish crossover (K={stoch_k:.1f})")
         elif indicators.get('stoch_bearish'):
-            bearish_score += 1.0
+            bearish_score += 1.0 * momentum_weight
             stoch_k = indicators.get('stoch_k', 0)
             bearish_reasons.append(f"📉 Stochastic bearish crossover (K={stoch_k:.1f})")
         
         # 1c. Williams %R
         if indicators.get('williams_bullish'):
-            bullish_score += 1.0
+            bullish_score += 1.0 * momentum_weight
             williams = indicators.get('williams_r', 0)
             bullish_reasons.append(f"📊 Williams %R oversold ({williams:.1f})")
         elif indicators.get('williams_bearish'):
-            bearish_score += 1.0
+            bearish_score += 1.0 * momentum_weight
             williams = indicators.get('williams_r', 0)
             bearish_reasons.append(f"📊 Williams %R overbought ({williams:.1f})")
         
         # =====================================================================
-        # 2. TREND INDICATORS (max 4 points)
+        # 2. TREND INDICATORS (base max 4 points × trend_weight)
         # =====================================================================
         
         # 2a. Moving Average Alignment
         if indicators.get('ma_bullish'):
-            bullish_score += 1.0
-            bullish_reasons.append("📈 Price > SMA20 > SMA50 (bullish MA stack)")
+            bullish_score += 1.0 * trend_weight
+            bullish_reasons.append(f"📈 Price > SMA20 > SMA50 [trend: {trend_weight:.1f}x]")
         elif indicators.get('ma_bearish'):
-            bearish_score += 1.0
-            bearish_reasons.append("📉 Price < SMA20 < SMA50 (bearish MA stack)")
+            bearish_score += 1.0 * trend_weight
+            bearish_reasons.append(f"📉 Price < SMA20 < SMA50 [trend: {trend_weight:.1f}x]")
         
         # 2b. Golden Cross / Death Cross
         if indicators.get('golden_cross'):
-            bullish_score += 1.5
-            bullish_reasons.append("⭐ GOLDEN CROSS detected (SMA50 > SMA200)")
+            bullish_score += 1.5 * trend_weight
+            bullish_reasons.append(f"⭐ GOLDEN CROSS [trend: {trend_weight:.1f}x]")
         elif indicators.get('death_cross'):
-            bearish_score += 1.5
-            bearish_reasons.append("💀 DEATH CROSS detected (SMA50 < SMA200)")
+            bearish_score += 1.5 * trend_weight
+            bearish_reasons.append(f"💀 DEATH CROSS [trend: {trend_weight:.1f}x]")
         
         # 2c. MACD
         if indicators.get('macd_bullish'):
-            bullish_score += 1.0
-            bullish_reasons.append("📈 MACD bullish crossover, histogram rising")
+            bullish_score += 1.0 * trend_weight
+            bullish_reasons.append("📈 MACD bullish crossover")
         elif indicators.get('macd_bearish'):
-            bearish_score += 1.0
-            bearish_reasons.append("📉 MACD bearish crossover, histogram falling")
+            bearish_score += 1.0 * trend_weight
+            bearish_reasons.append("📉 MACD bearish crossover")
         
         # 2d. ADX Trend Strength
         adx = indicators.get('adx', 20)
         if indicators.get('strong_trend') and adx > 30:
             # Strong trend amplifies other signals
             if bullish_score > bearish_score:
-                bullish_score += 0.5
+                bullish_score += 0.5 * trend_weight
                 bullish_reasons.append(f"💪 Strong trend (ADX={adx:.1f})")
             elif bearish_score > bullish_score:
-                bearish_score += 0.5
+                bearish_score += 0.5 * trend_weight
                 bearish_reasons.append(f"💪 Strong downtrend (ADX={adx:.1f})")
         
         # =====================================================================
-        # 3. VOLATILITY INDICATORS (max 2 points)
+        # 3. VOLATILITY INDICATORS (base max 2 points × volatility_weight)
         # =====================================================================
         
         # 3a. Bollinger Bands
         bb_position = indicators.get('bb_position', 0.5)
         if bb_position < 0.15:
-            bullish_score += 1.0
-            bullish_reasons.append(f"📊 Price at lower Bollinger Band ({bb_position:.0%})")
+            bullish_score += 1.0 * volatility_weight
+            bullish_reasons.append(f"📊 Lower BB ({bb_position:.0%}) [vol: {volatility_weight:.1f}x]")
         elif bb_position > 0.85:
-            bearish_score += 1.0
-            bearish_reasons.append(f"📊 Price at upper Bollinger Band ({bb_position:.0%})")
+            bearish_score += 1.0 * volatility_weight
+            bearish_reasons.append(f"📊 Upper BB ({bb_position:.0%}) [vol: {volatility_weight:.1f}x]")
         elif bb_position < 0.3:
-            bullish_score += 0.5
-            bullish_reasons.append(f"Price near lower BB ({bb_position:.0%})")
+            bullish_score += 0.5 * volatility_weight
+            bullish_reasons.append(f"Near lower BB ({bb_position:.0%})")
         elif bb_position > 0.7:
-            bearish_score += 0.5
-            bearish_reasons.append(f"Price near upper BB ({bb_position:.0%})")
+            bearish_score += 0.5 * volatility_weight
+            bearish_reasons.append(f"Near upper BB ({bb_position:.0%})")
         
         # Bollinger Band squeeze (low volatility breakout potential)
         if indicators.get('bb_squeeze'):
@@ -2639,14 +2687,14 @@ class BotInstance:
         
         # 3b. Keltner Channels
         if indicators.get('below_keltner'):
-            bullish_score += 1.0
-            bullish_reasons.append("📉 Below Keltner Channel (oversold)")
+            bullish_score += 1.0 * volatility_weight
+            bullish_reasons.append("📉 Below Keltner (oversold)")
         elif indicators.get('above_keltner'):
-            bearish_score += 1.0
-            bearish_reasons.append("📈 Above Keltner Channel (extended)")
+            bearish_score += 1.0 * volatility_weight
+            bearish_reasons.append("📈 Above Keltner (extended)")
         
         # =====================================================================
-        # 4. VOLUME INDICATORS (max 2 points)
+        # 4. VOLUME INDICATORS (base max 2 points × volume_weight)
         # =====================================================================
         
         volume_ratio = indicators.get('volume_ratio', 1.0)
@@ -2655,104 +2703,104 @@ class BotInstance:
         if indicators.get('volume_surge'):
             # High volume confirms direction
             if bullish_score > bearish_score:
-                bullish_score += 0.5
-                bullish_reasons.append(f"🔊 Volume surge confirms ({volume_ratio:.1f}x avg)")
+                bullish_score += 0.5 * volume_weight
+                bullish_reasons.append(f"🔊 Volume surge ({volume_ratio:.1f}x) [vol: {volume_weight:.1f}x]")
             elif bearish_score > bullish_score:
-                bearish_score += 0.5
-                bearish_reasons.append(f"🔊 Volume surge confirms selling ({volume_ratio:.1f}x avg)")
+                bearish_score += 0.5 * volume_weight
+                bearish_reasons.append(f"🔊 Volume surge selling ({volume_ratio:.1f}x)")
         elif volume_ratio > 1.3:
             if bullish_score > bearish_score:
-                bullish_score += 0.25
+                bullish_score += 0.25 * volume_weight
                 bullish_reasons.append(f"📊 Above avg volume ({volume_ratio:.1f}x)")
         
         # 4b. OBV (On-Balance Volume)
         if indicators.get('obv_bullish'):
-            bullish_score += 0.5
+            bullish_score += 0.5 * volume_weight
             bullish_reasons.append("📈 OBV rising (accumulation)")
         elif indicators.get('obv_bearish'):
-            bearish_score += 0.5
+            bearish_score += 0.5 * volume_weight
             bearish_reasons.append("📉 OBV falling (distribution)")
         
         # 4c. VWAP
         if indicators.get('above_vwap'):
-            bullish_score += 0.5
+            bullish_score += 0.5 * volume_weight
             vwap = indicators.get('vwap', 0)
-            bullish_reasons.append(f"📈 Price above VWAP (${vwap:.2f})")
+            bullish_reasons.append(f"📈 Above VWAP (${vwap:.2f})")
         elif indicators.get('below_vwap'):
-            bearish_score += 0.5
+            bearish_score += 0.5 * volume_weight
             vwap = indicators.get('vwap', 0)
-            bearish_reasons.append(f"📉 Price below VWAP (${vwap:.2f})")
+            bearish_reasons.append(f"📉 Below VWAP (${vwap:.2f})")
         
         # =====================================================================
-        # 5. CHART PATTERNS & PIVOTS (max 3 points)
+        # 5. CHART PATTERNS & PIVOTS (base max 3 points × pattern_weight)
         # =====================================================================
         
         # 5a. Pivot Point Support/Resistance
         if indicators.get('near_support'):
-            bullish_score += 1.0
+            bullish_score += 1.0 * pattern_weight
             s1 = indicators.get('s1', 0)
-            bullish_reasons.append(f"🎯 Near pivot support S1 (${s1:.2f})")
+            bullish_reasons.append(f"🎯 Near support S1 (${s1:.2f})")
         elif indicators.get('near_resistance'):
-            bearish_score += 1.0
+            bearish_score += 1.0 * pattern_weight
             r1 = indicators.get('r1', 0)
-            bearish_reasons.append(f"🎯 Near pivot resistance R1 (${r1:.2f})")
+            bearish_reasons.append(f"🎯 Near resistance R1 (${r1:.2f})")
         
         # 5b. Channel Breakouts (Donchian)
         if indicators.get('channel_breakout_up'):
-            bullish_score += 1.0
-            bullish_reasons.append("🚀 20-day high breakout!")
+            bullish_score += 1.0 * pattern_weight
+            bullish_reasons.append(f"🚀 20-day breakout! [pattern: {pattern_weight:.1f}x]")
         elif indicators.get('channel_breakout_down'):
-            bearish_score += 1.0
-            bearish_reasons.append("💥 20-day low breakdown!")
+            bearish_score += 1.0 * pattern_weight
+            bearish_reasons.append(f"💥 20-day breakdown! [pattern: {pattern_weight:.1f}x]")
         
         # 5c. Momentum (5-day and 10-day)
         momentum_5d = indicators.get('momentum_5d', 0)
         momentum_10d = indicators.get('momentum_10d', 0)
         if momentum_5d > 5 and momentum_10d > 8:
-            bullish_score += 0.5
+            bullish_score += 0.5 * momentum_weight
             bullish_reasons.append(f"🚀 Strong momentum (5d: +{momentum_5d:.1f}%, 10d: +{momentum_10d:.1f}%)")
         elif momentum_5d < -5 and momentum_10d < -8:
-            bearish_score += 0.5
+            bearish_score += 0.5 * momentum_weight
             bearish_reasons.append(f"📉 Weak momentum (5d: {momentum_5d:.1f}%, 10d: {momentum_10d:.1f}%)")
         elif momentum_5d > 3:
-            bullish_score += 0.25
+            bullish_score += 0.25 * momentum_weight
             bullish_reasons.append(f"📈 5-day momentum +{momentum_5d:.1f}%")
         elif momentum_5d < -3:
-            bearish_score += 0.25
+            bearish_score += 0.25 * momentum_weight
             bearish_reasons.append(f"📉 5-day momentum {momentum_5d:.1f}%")
         
         # 5d. Rate of Change (ROC)
         roc = indicators.get('roc', 0)
         if roc > 10:
-            bullish_score += 0.5
+            bullish_score += 0.5 * momentum_weight
             bullish_reasons.append(f"📈 High ROC (+{roc:.1f}%)")
         elif roc < -10:
-            bearish_score += 0.5
+            bearish_score += 0.5 * momentum_weight
             bearish_reasons.append(f"📉 Negative ROC ({roc:.1f}%)")
         
         # =====================================================================
-        # 6. MARKET SENTIMENT (max 4 points)
+        # 6. MARKET SENTIMENT (base max 4 points × sentiment_weight)
         # =====================================================================
         
         # 6a. News Sentiment
         if sentiment.get('news_bullish'):
-            bullish_score += 1.0
+            bullish_score += 1.0 * sentiment_weight
             news_sent = sentiment.get('news_sentiment', 0)
-            bullish_reasons.append(f"📰 Positive news sentiment (+{news_sent:.2f})")
+            bullish_reasons.append(f"📰 Positive news (+{news_sent:.2f}) [sent: {sentiment_weight:.1f}x]")
         elif sentiment.get('news_bearish'):
-            bearish_score += 1.0
+            bearish_score += 1.0 * sentiment_weight
             news_sent = sentiment.get('news_sentiment', 0)
-            bearish_reasons.append(f"📰 Negative news sentiment ({news_sent:.2f})")
+            bearish_reasons.append(f"📰 Negative news ({news_sent:.2f}) [sent: {sentiment_weight:.1f}x]")
         
         # 6b. Social Media Buzz
         if sentiment.get('social_trending'):
             social_buzz = sentiment.get('social_buzz', 0)
-            bullish_score += 1.0
-            bullish_reasons.append(f"🔥 Social media trending (buzz: {social_buzz})")
+            bullish_score += 1.0 * sentiment_weight
+            bullish_reasons.append(f"🔥 Social trending (buzz: {social_buzz})")
         
         # 6c. Top Trader / Momentum Following
         if sentiment.get('momentum_bullish'):
-            bullish_score += 1.0
+            bullish_score += 1.0 * sentiment_weight
             rank = sentiment.get('momentum_rank', 0)
             bullish_reasons.append(f"👑 Top momentum rank #{rank}")
         
@@ -2760,11 +2808,11 @@ class BotInstance:
         news_volume = sentiment.get('news_volume', 0)
         if news_volume >= 5:
             if bullish_score > bearish_score:
-                bullish_score += 0.5
+                bullish_score += 0.5 * sentiment_weight
                 bullish_reasons.append(f"📢 High news volume ({news_volume} articles)")
         
         # =====================================================================
-        # 7. CHART PATTERNS (max 4 points)
+        # 7. CHART PATTERNS (base max 4 points × chart_pattern_weight)
         # =====================================================================
         
         if indicators.get('pattern_detected'):
@@ -2774,14 +2822,14 @@ class BotInstance:
             pattern_desc = indicators.get('pattern_description', '')
             
             # Score based on pattern confidence and type
-            pattern_score = pattern_confidence * 3  # Max ~2.5 points per pattern
+            pattern_score = pattern_confidence * 3 * chart_pattern_weight  # Apply weight
             
             if pattern_type == 'bullish':
                 bullish_score += pattern_score
-                bullish_reasons.append(f"📐 {pattern_name}: {pattern_desc}")
+                bullish_reasons.append(f"📐 {pattern_name}: {pattern_desc} [chart: {chart_pattern_weight:.1f}x]")
             elif pattern_type == 'bearish':
                 bearish_score += pattern_score
-                bearish_reasons.append(f"📐 {pattern_name}: {pattern_desc}")
+                bearish_reasons.append(f"📐 {pattern_name}: {pattern_desc} [chart: {chart_pattern_weight:.1f}x]")
             elif pattern_type == 'neutral':
                 # Neutral patterns add to momentum direction
                 if bullish_score > bearish_score:
@@ -2798,10 +2846,10 @@ class BotInstance:
                 bearish_patterns = [p for p in all_patterns if p['type'] == 'bearish']
                 
                 if len(bullish_patterns) >= 2:
-                    bullish_score += 1.0
+                    bullish_score += 1.0 * chart_pattern_weight
                     bullish_reasons.append(f"🎯 Multiple bullish patterns ({len(bullish_patterns)})")
                 if len(bearish_patterns) >= 2:
-                    bearish_score += 1.0
+                    bearish_score += 1.0 * chart_pattern_weight
                     bearish_reasons.append(f"🎯 Multiple bearish patterns ({len(bearish_patterns)})")
         
         # =====================================================================

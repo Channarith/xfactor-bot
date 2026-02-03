@@ -13,6 +13,9 @@ interface Position {
   unrealized_pnl_pct: number
   sector?: string
   strategy?: string
+  bot_id?: string
+  bot_name?: string
+  opened_at?: string
 }
 
 interface PortfolioSummary {
@@ -416,6 +419,7 @@ export function PositionsTable() {
                       Change <SortIcon field="unrealized_pnl_pct" />
                     </button>
                   </th>
+                  <th className="pb-2">Bot</th>
                   <th className="pb-2">Strategy</th>
                 </tr>
               </thead>
@@ -471,16 +475,29 @@ export function PositionsTable() {
                         </div>
                       </td>
                       <td className="py-2">
-                        <span className="px-2 py-0.5 text-xs rounded bg-secondary text-muted-foreground">
-                          {pos.strategy}
-                        </span>
+                        {pos.bot_name ? (
+                          <span className="px-2 py-0.5 text-xs rounded bg-violet-500/20 text-violet-400 font-medium" title={`Bot ID: ${pos.bot_id}`}>
+                            {pos.bot_name}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Manual</span>
+                        )}
+                      </td>
+                      <td className="py-2">
+                        {pos.strategy ? (
+                          <span className="px-2 py-0.5 text-xs rounded bg-secondary text-foreground">
+                            {pos.strategy}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </td>
                     </tr>
                   )
                 })}
                 {filteredPositions.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="py-4 text-center text-muted-foreground">
+                    <td colSpan={9} className="py-4 text-center text-muted-foreground">
                       {searchQuery ? 'No positions match your search' : 'No open positions'}
                     </td>
                   </tr>

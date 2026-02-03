@@ -158,9 +158,15 @@ export function AgenticTuning() {
     };
     loadAll();
 
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchStatus, 30000);
-    return () => clearInterval(interval);
+    // Refresh status every 30 seconds
+    const statusInterval = setInterval(fetchStatus, 30000);
+    // Refresh rankings every 60 seconds (more expensive query)
+    const rankingsInterval = setInterval(fetchRankings, 60000);
+    
+    return () => {
+      clearInterval(statusInterval);
+      clearInterval(rankingsInterval);
+    };
   }, []);
 
   const handleStart = async () => {

@@ -132,10 +132,63 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     except Exception as e:
         logger.warning(f"Broker auto-connect initialization: {e}")
     
+    # Start background equity tracking
+    try:
+        from src.utils.equity_tracker import get_equity_tracker
+        from src.brokers.registry import get_broker_registry
+        
+        async def track_equity_continuously():
+            """Background task to track equity every 5 minutes."""
+            tracker = get_equity_tracker()
+            registry = get_broker_registry()
+            
+            await asyncio.sleep(10)  # Initial delay
+            
+            while True:
+                try:
+                    total_equity = 0.0
+                    
+                    # Get equity from all connected brokers
+                    for broker_type in registry.connected_brokers:
+                        broker = registry.get_broker(broker_type)
+                        if broker and broker.is_connected:
+                            try:
+                                accounts = await broker.get_accounts()
+                                for account in accounts:
+                                    total_equity += account.equity
+                            except Exception as e:
+                                logger.debug(f"Error fetching equity from {broker_type.value}: {e}")
+                    
+                    # Record equity if we have any
+                    if total_equity > 0:
+                        tracker.record_equity(total_equity)
+                        logger.debug(f"Background equity tracked: ${total_equity:,.2f}")
+                    
+                except Exception as e:
+                    logger.error(f"Error in equity tracking background task: {e}")
+                
+                # Wait 5 minutes before next check
+                await asyncio.sleep(300)
+        
+        asyncio.create_task(track_equity_continuously())
+        logger.info("Background equity tracking started (5min intervals)")
+    except Exception as e:
+        logger.warning(f"Equity tracking initialization: {e}")
+    
     yield
     
     # Shutdown - clean up all resources
     logger.info("👋 Shutting down XFactor Bot API...")
+    
+    # Save equity tracker before shutdown
+    try:
+        from src.utils.equity_tracker import get_equity_tracker
+        tracker = get_equity_tracker()
+        tracker.save()
+        logger.info("Equity history saved")
+    except Exception as e:
+        logger.warning(f"Error saving equity history: {e}")
+    
     await cleanup_all_resources()
     logger.info("XFactor Bot API shutdown complete")
 

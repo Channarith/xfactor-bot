@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from loguru import logger
 
 from src.brokers.registry import get_broker_registry
+from src.utils.equity_tracker import get_equity_tracker
 
 router = APIRouter()
 
@@ -77,6 +78,7 @@ async def get_all_positions() -> Dict[str, Any]:
                             "broker": broker_type.value,
                             "bot_id": bot_info.get("bot_id"),
                             "bot_name": bot_info.get("bot_name"),
+                            "strategy": bot_info.get("strategy", "Unknown"),
                             "opened_at": bot_info.get("opened_at"),
                         })
                         total_value += pos.market_value
@@ -354,14 +356,15 @@ async def get_equity_history() -> Dict[str, Any]:
     """
     Get equity history for chart.
     
-    For now, returns current equity as a single point.
-    In production, this would fetch historical data from a database.
+    Returns historical equity data from persistent storage.
+    Also records current equity if connected to broker.
     """
     registry = get_broker_registry()
+    tracker = get_equity_tracker()
     
     current_equity = 0.0
     
-    # Get current equity from connected brokers
+    # Get current equity from connected brokers and record it
     for broker_type in registry.connected_brokers:
         broker = registry.get_broker(broker_type)
         if broker and broker.is_connected:
@@ -372,27 +375,31 @@ async def get_equity_history() -> Dict[str, Any]:
             except Exception as e:
                 logger.error(f"Error fetching equity from {broker_type.value}: {e}")
     
-    # Generate history points (for chart display)
-    # In production, this would come from a database
-    history = []
-    
+    # Record current equity if we have any
     if current_equity > 0:
+        tracker.record_equity(current_equity)
+    
+    # Get historical data from tracker
+    history = tracker.get_history()
+    
+    # If we have no history but have current equity, generate recent history
+    if len(history) == 0 and current_equity > 0:
         today = datetime.now().date()
-        # Create a simple history with current value
-        # This gives the chart something to display
+        # Create simple history showing current value
         for i in range(90, -1, -1):
-            date = today - timedelta(days=i)
+            past_date = today - timedelta(days=i)
             # Slight variation for visual effect (within 0.5%)
             variation = 1.0 + (i % 7 - 3) * 0.001
             value = current_equity * variation if i > 0 else current_equity
             history.append({
-                "date": date.isoformat(),
+                "date": past_date.isoformat(),
                 "value": round(value, 2),
             })
     
     return {
         "history": history,
         "current_equity": round(current_equity, 2),
+        "data_points": len(history),
     }
 
 
