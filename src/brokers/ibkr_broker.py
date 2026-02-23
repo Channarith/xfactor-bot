@@ -617,9 +617,14 @@ class IBKRBroker(BaseBroker):
             try:
                 loop = asyncio.get_event_loop()
                 
+                # Use passed account_id (from API) so we always query the correct account
+                acc = account_id or self.account_id
+                if not acc:
+                    logger.warning("IBKR get_positions: no account_id available")
+                    return []
                 def fetch_portfolio():
                     with _ibkr_lock:
-                        return self._ib.portfolio(self.account_id)
+                        return self._ib.portfolio(acc)
                 
                 portfolio_items = await asyncio.wait_for(
                     loop.run_in_executor(_ib_executor, fetch_portfolio),

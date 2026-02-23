@@ -5,6 +5,35 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-01-23
+
+### ✨ New Features
+
+- **Portfolio visible on connect**: All positions in the account are listed as soon as you connect to a broker. Positions table refetches immediately when broker connects; empty state shows "Connect a broker to see your portfolio and positions" when disconnected.
+- **Performance since purchase**: Open Positions table shows each position's buy price, current price, unrealized P&L ("If Sold"), and percent change since purchase. Data comes from connected broker.
+
+### 🔧 Fixes & Improvements
+
+- **IBKR client ID on disconnect/reconnect**: Disconnecting clears stored connection config so reconnecting uses the new client ID from the textbox. Connecting again disconnects any existing broker first so the new client ID is applied and the old one is released.
+- **Bot Manager % and performance persistence**: Fixed restore of saved trade data (use `config.name` and `stats_snapshot`). Bot daily P&L, total P&L, win rate, and trade history now persist and carry over after disconnect/restart.
+- **Agentic Tuning data carryover**: Rankings and bot scores are saved to `~/.xfactor-bot/agentic_tuning_rankings.json` and loaded on startup. Top performing bots persist day-to-day and after disconnect so you can review performance without losing history.
+- **Clean disconnect**: On broker disconnect, bot state and position tracking are saved automatically. Stored connection config is cleared so reconnects use fresh params (e.g. new client ID).
+- **Position tracking strategy**: Strategy field is persisted and restored so the Strategy column in Open Positions is correct after reconnect.
+- **IBKR positions with correct account**: Positions API uses the account ID from the connected broker when requesting portfolio so all positions are returned.
+- **Shutdown persistence**: Agentic tuning rankings are saved on app shutdown when the tuner has been used.
+
+### 🔧 Technical
+
+- `BrokerRegistry.disconnect_broker()` clears `_connection_configs`, `_reconnect_attempts`, `_last_reconnect_time` for that broker.
+- `BrokerRegistry.connect_broker()` disconnects existing broker of same type before creating a new one with request config.
+- `restore_trade_data_from_saved()` matches bots by `saved_state.config.name` and restores from `stats_snapshot`.
+- `AgenticTuner`: `_load_persisted_scores()`, `_save_persisted_scores()`, `BotScore.from_dict()`; rankings loaded in `_initialize_scores()`, saved after evaluation and on stop.
+- `SavedPositionTracking` and position save/load include `strategy`.
+- Integrations API: on disconnect, calls `save_all_bots()` and `save_position_tracking()`.
+- `PositionsTable` effect depends on `broker.isConnected`; refetches when broker connects.
+
+---
+
 ## [2.1.13] - 2026-01-22
 
 ### ✨ New Features

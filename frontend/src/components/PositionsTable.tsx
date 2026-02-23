@@ -128,12 +128,18 @@ export function PositionsTable() {
     setLoading(false)
   }
 
+  // Fetch positions on mount and when broker connects so portfolio is visible immediately
   useEffect(() => {
+    if (!broker.isConnected) {
+      setPositions([])
+      setSummary(emptySummary)
+      setCompletedTrades([])
+      return
+    }
     fetchPositions()
-    // Reduced from 15s to 30s to prevent API rate limiting
     const interval = setInterval(fetchPositions, 30000)
     return () => clearInterval(interval)
-  }, [])
+  }, [broker.isConnected])
 
   // Filtered and sorted positions
   const filteredPositions = useMemo(() => {
@@ -498,7 +504,11 @@ export function PositionsTable() {
                 {filteredPositions.length === 0 && (
                   <tr>
                     <td colSpan={9} className="py-4 text-center text-muted-foreground">
-                      {searchQuery ? 'No positions match your search' : 'No open positions'}
+                      {!broker.isConnected
+                        ? 'Connect a broker to see your portfolio and positions'
+                        : searchQuery
+                          ? 'No positions match your search'
+                          : 'No open positions'}
                     </td>
                   </tr>
                 )}

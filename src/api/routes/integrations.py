@@ -213,7 +213,7 @@ async def credential_login(request: CredentialLoginRequest) -> Dict[str, Any]:
 
 @router.post("/brokers/disconnect/{broker_type}")
 async def disconnect_broker(broker_type: str) -> Dict[str, Any]:
-    """Disconnect from a broker."""
+    """Disconnect from a broker and persist bot/position state so data carries over on reconnect."""
     registry = get_broker_registry()
     
     try:
@@ -222,6 +222,18 @@ async def disconnect_broker(broker_type: str) -> Dict[str, Any]:
         raise HTTPException(400, f"Unknown broker type: {broker_type}")
     
     await registry.disconnect_broker(bt)
+    
+    # Persist bot stats and position tracking so Bot Manager % and Agentic data carry over
+    try:
+        from src.bot.bot_manager import get_bot_manager
+        bot_mgr = get_bot_manager()
+        if bot_mgr:
+            bot_mgr.save_all_bots()
+            bot_mgr.save_position_tracking()
+            logger.info("Saved bot state and position tracking on broker disconnect")
+    except Exception as e:
+        logger.warning(f"Could not save bot state on disconnect: {e}")
+    
     return {"status": "disconnected", "broker": broker_type}
 
 

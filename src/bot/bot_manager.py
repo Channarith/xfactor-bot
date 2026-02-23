@@ -702,7 +702,7 @@ class BotManager:
                         'trades_today': bot.stats.trades_today,
                         'daily_pnl': bot.stats.daily_pnl,
                         'total_pnl': getattr(bot.stats, 'total_pnl', 0.0),
-                        'win_rate': getattr(bot.stats, 'win_rate_pct', 50.0),
+                        'win_rate': getattr(bot.stats, 'win_rate', 0.0),
                     },
                 }
                 bots_data.append(bot_data)
@@ -824,26 +824,29 @@ class BotManager:
             restored_count = 0
             
             for saved_state in saved_states:
-                # Find matching bot by name (since IDs change on restart)
+                saved_name = (saved_state.config or {}).get('name', '')
+                if not saved_name:
+                    continue
+                # Find matching bot by name (since IDs may change on restart)
                 matching_bot = None
                 for bot in self._bots.values():
-                    if bot.config.name == saved_state.name:
+                    if bot.config.name == saved_name:
                         matching_bot = bot
                         break
                 
                 if matching_bot:
-                    # Restore trade data to this bot
+                    # Restore trade data to this bot (use stats_snapshot from SavedBotState)
                     try:
-                        # Restore stats if available
-                        if saved_state.stats:
-                            matching_bot.stats.daily_pnl = saved_state.stats.get('daily_pnl', 0)
-                            matching_bot.stats.total_pnl = saved_state.stats.get('total_pnl', 0)
-                            matching_bot.stats.win_rate = saved_state.stats.get('win_rate', 0)
-                            matching_bot.stats.trades_today = saved_state.stats.get('trades_today', 0)
-                            matching_bot.stats.open_positions = saved_state.stats.get('open_positions', 0)
+                        stats = getattr(saved_state, 'stats_snapshot', None) or {}
+                        if stats:
+                            matching_bot.stats.daily_pnl = stats.get('daily_pnl', 0)
+                            matching_bot.stats.total_pnl = stats.get('total_pnl', 0)
+                            matching_bot.stats.win_rate = stats.get('win_rate', 0)
+                            matching_bot.stats.trades_today = stats.get('trades_today', 0)
+                            matching_bot.stats.open_positions = stats.get('open_positions', 0)
                             
                             # Restore trade history if available
-                            trade_history = saved_state.stats.get('trade_history', [])
+                            trade_history = stats.get('trade_history', [])
                             if trade_history:
                                 from src.bot.bot_instance import TradeRecord
                                 for trade in trade_history[-20:]:  # Keep last 20 trades
@@ -866,9 +869,9 @@ class BotManager:
                         logger.debug(f"Restored trade data for bot: {matching_bot.config.name}")
                         
                     except Exception as e:
-                        logger.warning(f"Error restoring trade data for {saved_state.name}: {e}")
+                        logger.warning(f"Error restoring trade data for {saved_name}: {e}")
                 else:
-                    logger.debug(f"No matching bot found for saved state: {saved_state.name}")
+                    logger.debug(f"No matching bot found for saved state: {saved_name}")
             
             if restored_count > 0:
                 logger.info(f"Restored trade data for {restored_count} bots")
@@ -913,6 +916,7 @@ class BotManager:
                             'opened_at': tracking.opened_at,
                             'quantity': tracking.quantity,
                             'synced': tracking.synced,
+                            'strategy': getattr(tracking, 'strategy', None),
                         }
             
             logger.info(f"Loaded {len(saved_positions)} position tracking entries")

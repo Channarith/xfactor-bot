@@ -92,6 +92,12 @@ class BrokerRegistry:
             logger.error(f"Broker not registered: {broker_type.value}")
             return False, f"Broker not registered: {broker_type.value}"
         
+        # If already connected, disconnect first so we release the connection (e.g. IBKR clientID)
+        # and can connect with new config (e.g. new clientID from textbox).
+        if broker_type in self._brokers:
+            logger.info(f"Disconnecting existing {broker_type.value} before reconnecting with new config")
+            await self.disconnect_broker(broker_type)
+        
         try:
             broker_class = self._broker_classes[broker_type]
             broker = broker_class(**config)
@@ -217,14 +223,20 @@ class BrokerRegistry:
             self._connection_events = self._connection_events[-100:]
     
     async def disconnect_broker(self, broker_type: BrokerType) -> None:
-        """Disconnect from a broker."""
+        """Disconnect from a broker and clear stored connection config so reconnect uses fresh params (e.g. new clientID)."""
         if broker_type in self._brokers:
-            await self._brokers[broker_type].disconnect()
+            try:
+                await self._brokers[broker_type].disconnect()
+            except Exception as e:
+                logger.warning(f"Error during broker disconnect: {e}")
             del self._brokers[broker_type]
             logger.info(f"Disconnected from broker: {broker_type.value}")
-            
             if self._default_broker == broker_type:
                 self._default_broker = next(iter(self._brokers.keys()), None)
+        # Clear stored config so next connect uses fresh params from UI (e.g. new clientID)
+        self._connection_configs.pop(broker_type, None)
+        self._reconnect_attempts.pop(broker_type, None)
+        self._last_reconnect_time.pop(broker_type, None)
     
     async def disconnect_all(self) -> None:
         """Disconnect from all brokers."""

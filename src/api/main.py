@@ -37,7 +37,7 @@ async def cleanup_all_resources():
     """Clean up all resources on shutdown."""
     logger.info("Cleaning up all resources...")
     
-    # Save bot state BEFORE stopping (to preserve running state)
+    # Save bot state and agentic tuning BEFORE stopping (to preserve running state)
     try:
         from src.bot.bot_manager import get_bot_manager
         bot_mgr = get_bot_manager()
@@ -48,6 +48,14 @@ async def cleanup_all_resources():
             logger.info("Bot state saved successfully")
     except Exception as e:
         logger.warning(f"Error saving bot state: {e}")
+    try:
+        from src.bot.agentic_tuner import get_agentic_tuner
+        tuner = get_agentic_tuner()
+        if getattr(tuner, "_bot_scores", None):
+            tuner._save_persisted_scores()
+            logger.info("Agentic tuning rankings saved")
+    except Exception as e:
+        logger.warning(f"Error saving agentic tuning state: {e}")
     
     # Stop all bots
     try:

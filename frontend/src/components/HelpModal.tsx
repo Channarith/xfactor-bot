@@ -104,6 +104,24 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '2.3.0',
+    date: 'January 23, 2026',
+    changes: [
+      '✨ Portfolio on Connect',
+      '',
+      '• All positions listed when you connect to a broker',
+      '• Positions refetch immediately on connect',
+      '• Performance since purchase: buy price, P&L, % change per position',
+      '',
+      '🔧 IBKR & Disconnect/Reconnect',
+      '',
+      '• New client ID from textbox used on reconnect (disconnect clears config)',
+      '• Bot Manager % and stats persist after disconnect/restart',
+      '• Agentic Tuning rankings saved to disk and carry over day-to-day',
+      '• Clean disconnect: saves bot state and position tracking',
+    ]
+  },
+  {
     version: '2.1.12',
     date: 'January 22, 2026',
     changes: [

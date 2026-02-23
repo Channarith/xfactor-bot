@@ -14,11 +14,16 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Optional, Callable, Any
+from pathlib import Path
+from typing import Optional, Callable, Any, List
 import statistics
 import json
 
 from loguru import logger
+
+# Persistence path for agentic tuning rankings (carry over day-to-day after disconnect)
+AGENTIC_PERSISTENCE_DIR = Path.home() / ".xfactor-bot"
+AGENTIC_PERSISTENCE_FILE = AGENTIC_PERSISTENCE_DIR / "agentic_tuning_rankings.json"
 
 
 class OptimizationTarget(Enum):
@@ -144,6 +149,38 @@ class BotScore:
             "pruned_at": self.pruned_at.isoformat() if self.pruned_at else None,
             "pruned_reason": self.pruned_reason,
         }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "BotScore":
+        """Recreate BotScore from persisted dict."""
+        pruned_at = None
+        if d.get("pruned_at"):
+            try:
+                from datetime import datetime
+                pruned_at = datetime.fromisoformat(d["pruned_at"].replace("Z", "+00:00"))
+            except Exception:
+                pass
+        return cls(
+            bot_id=d.get("bot_id", ""),
+            bot_name=d.get("bot_name", ""),
+            total_profit=float(d.get("total_profit", 0)),
+            profit_pct=float(d.get("profit_pct", 0)),
+            win_rate=float(d.get("win_rate", 0)),
+            total_trades=int(d.get("total_trades", 0)),
+            avg_trade_duration_minutes=float(d.get("avg_trade_duration_minutes", 0)),
+            max_drawdown=float(d.get("max_drawdown", 0)),
+            sharpe_ratio=float(d.get("sharpe_ratio", 0)),
+            sentiment_accuracy=float(d.get("sentiment_accuracy", 0)),
+            gpu_id=int(d.get("gpu_id", 0)),
+            lane_id=int(d.get("lane_id", 0)),
+            compute_usage_pct=float(d.get("compute_usage_pct", 0)),
+            final_score=float(d.get("final_score", 0)),
+            rank=int(d.get("rank", 0)),
+            is_active=bool(d.get("is_active", True)),
+            is_champion=bool(d.get("is_champion", False)),
+            pruned_at=pruned_at,
+            pruned_reason=str(d.get("pruned_reason", "")),
+        )
 
 
 @dataclass 
@@ -369,12 +406,12 @@ class AgenticTuner:
         logger.info(f"AgenticTuner started - {self.active_bot_count} bots in initial blast phase")
     
     def stop(self) -> None:
-        """Stop the agentic tuning process."""
+        """Stop the agentic tuning process and persist rankings."""
         self._running = False
         if self._task:
             self._task.cancel()
             self._task = None
-        
+        self._save_persisted_scores()
         logger.info("AgenticTuner stopped")
     
     def _initialize_scores(self) -> None:
@@ -409,7 +446,50 @@ class AgenticTuner:
             self._gpu_allocation[gpu_id].append(bot_id)
             self._lane_allocation[lane_id] = bot_id
         
+        # Merge persisted rankings so performance data carries over after disconnect/restart
+        self._load_persisted_scores()
         logger.info(f"Initialized {len(self._bot_scores)} bot scores")
+    
+    def _persistence_path(self) -> Path:
+        """Path to persisted rankings file."""
+        return AGENTIC_PERSISTENCE_FILE
+    
+    def _load_persisted_scores(self) -> None:
+        """Load persisted bot scores from disk and merge into _bot_scores so rankings carry over."""
+        path = self._persistence_path()
+        if not path.exists():
+            return
+        try:
+            with open(path, "r") as f:
+                data = json.load(f)
+            for d in data.get("scores", []):
+                bot_id = d.get("bot_id")
+                if not bot_id:
+                    continue
+                if bot_id in self._bot_scores:
+                    # Merge persisted metrics into existing score so we don't lose history
+                    s = self._bot_scores[bot_id]
+                    s.total_profit = float(d.get("total_profit", s.total_profit))
+                    s.profit_pct = float(d.get("profit_pct", s.profit_pct))
+                    s.win_rate = float(d.get("win_rate", s.win_rate))
+                    s.total_trades = int(d.get("total_trades", s.total_trades))
+                    s.final_score = float(d.get("final_score", s.final_score))
+                    s.rank = int(d.get("rank", s.rank))
+                    s.is_champion = bool(d.get("is_champion", s.is_champion))
+            logger.info("Loaded persisted agentic tuning rankings")
+        except Exception as e:
+            logger.debug(f"Could not load persisted agentic rankings: {e}")
+    
+    def _save_persisted_scores(self) -> None:
+        """Save bot scores to disk so rankings carry over day-to-day and after disconnect."""
+        try:
+            AGENTIC_PERSISTENCE_DIR.mkdir(parents=True, exist_ok=True)
+            scores = [s.to_dict() for s in self._bot_scores.values()]
+            with open(self._persistence_path(), "w") as f:
+                json.dump({"scores": scores, "saved_at": datetime.now().isoformat()}, f, indent=2)
+            logger.debug("Saved agentic tuning rankings to disk")
+        except Exception as e:
+            logger.warning(f"Could not save agentic tuning rankings: {e}")
     
     async def _evaluation_loop(self) -> None:
         """Background loop for periodic evaluation."""
@@ -455,10 +535,12 @@ class AgenticTuner:
             logger.info("AgenticTuner Top 5 Performers:")
             for i, r in enumerate(rankings, 1):
                 logger.info(f"  #{i}: {r.get('bot_name', 'Unknown')} - Score: {r.get('composite_score', 0):.2f}, P&L: ${r.get('total_profit', 0):.2f}")
+            # Prune if auto-prune is enabled
+            if self.config.auto_prune:
+                await self._execute_pruning()
         
-                # Prune if auto-prune is enabled
-                if self.config.auto_prune:
-                    await self._execute_pruning()
+        # Persist rankings so they carry over after disconnect/restart
+        self._save_persisted_scores()
                 
         logger.info(f"AgenticTuner: Evaluation cycle complete. Phase: {self._current_phase.value}, Active: {self.active_bot_count}, Champions: {self.champion_count}")
     
@@ -754,11 +836,25 @@ class AgenticTuner:
             return 0  # Already at optimal
     
     def get_rankings(self) -> list[dict]:
-        """Get current bot rankings."""
+        """Get current bot rankings (from memory or persisted so data carries over after disconnect)."""
+        # Lazy-init scores so we have rankings even before start() (e.g. after reconnect)
+        if not self._bot_scores and self._get_all_bots:
+            self._initialize_scores()
         active_scores = [s for s in self._bot_scores.values() if s.is_active]
-        active_scores.sort(key=lambda x: x.rank)
-        
-        return [s.to_dict() for s in active_scores]
+        if active_scores:
+            active_scores.sort(key=lambda x: x.rank)
+            return [s.to_dict() for s in active_scores]
+        # No scores yet (e.g. before first evaluation) - return persisted so UI can show last rankings
+        path = self._persistence_path()
+        if path.exists():
+            try:
+                with open(path, "r") as f:
+                    data = json.load(f)
+                scores = data.get("scores", [])
+                return sorted(scores, key=lambda x: x.get("rank", 0))
+            except Exception:
+                pass
+        return []
     
     def get_pruning_history(self) -> list[dict]:
         """Get history of pruned bots."""

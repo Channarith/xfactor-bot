@@ -42,6 +42,7 @@ class SavedPositionTracking:
     opened_at: Optional[str] = None
     quantity: float = 0.0
     synced: bool = False
+    strategy: Optional[str] = None
 
 
 class SavedBotsManager:
@@ -331,6 +332,7 @@ class SavedBotsManager:
                         opened_at=pos_data.get('opened_at'),
                         quantity=pos_data.get('quantity', 0.0),
                         synced=pos_data.get('synced', False),
+                        strategy=pos_data.get('strategy'),
                     )
                     self._position_tracking[key] = tracking
                 except Exception as e:
@@ -376,6 +378,7 @@ class SavedBotsManager:
                     'opened_at': info.get('opened_at'),
                     'quantity': info.get('quantity', 0.0),
                     'synced': info.get('synced', False),
+                    'strategy': info.get('strategy'),
                 }
             
             data = {
