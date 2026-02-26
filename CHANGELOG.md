@@ -5,7 +5,21 @@ All notable changes to the XFactor Bot project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.3.0] - 2026-01-23
+## [2.4.0] - 2025-01-23
+
+### ✨ New Features
+
+- **Bot Manager P&L since inception**: The Bot Manager list row now shows total P&L since inception (+$X.XX and +X.XX%) instead of daily. This value updates as trades are realized and persists across broker disconnect and app restart (saved to `~/.xfactor-bot/saved_bots.json`, restored on startup).
+- **Broker reconnect without restart**: Disconnect from the UI (no broker type in path) disconnects all brokers; reconnecting uses stored config for IBKR (host, port, client_id) and Alpaca so you can keep the app running 24/7 and reconnect at any time.
+- **Portfolio subtitle**: When one broker is connected, the Portfolio Value card shows "Live from [Broker]" (e.g. "Live from IBKR"); never "Live from All Brokers".
+
+### 🔧 Fixes & Improvements
+
+- **Help page date**: Corrected release date display (January 23, 2025).
+
+---
+
+## [2.3.0] - 2025-01-23
 
 ### ✨ New Features
 

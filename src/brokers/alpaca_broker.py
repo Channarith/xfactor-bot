@@ -39,6 +39,11 @@ class AlpacaBroker(BaseBroker):
     Free, commission-free trading with excellent API.
     Supports stocks, ETFs, and crypto.
     
+    Base URLs per Alpaca docs (unchanged as of 2025-2026):
+    - Paper: https://paper-api.alpaca.markets
+    - Live:  https://api.alpaca.markets
+    - Data:  https://data.alpaca.markets
+    
     Environment variables needed:
     - ALPACA_API_KEY
     - ALPACA_SECRET_KEY
@@ -49,9 +54,9 @@ class AlpacaBroker(BaseBroker):
     BASE_URL_LIVE = "https://api.alpaca.markets"
     DATA_URL = "https://data.alpaca.markets"
     
-    # Timeouts
-    CONNECT_TIMEOUT = 30  # seconds
-    REQUEST_TIMEOUT = 15  # seconds
+    # Timeouts (generous to tolerate slow networks; transient DNS blips handled by consecutive-failure logic)
+    CONNECT_TIMEOUT = 30  # seconds for initial connect
+    REQUEST_TIMEOUT = 20  # seconds per request (was 15)
     
     def __init__(
         self,
@@ -101,6 +106,23 @@ class AlpacaBroker(BaseBroker):
         # Thread-safe lock to prevent concurrent API calls (connection pool exhaustion)
         # Using threading.Lock instead of asyncio.Lock because bots run in different event loops
         self._api_lock = threading.Lock()
+        
+        # Supported crypto symbols on Alpaca (as of 2024); Alpaca uses "/" format e.g. "BTC/USD"
+        self._supported_crypto = {
+            "BTC/USD", "ETH/USD", "LTC/USD", "BCH/USD", "AVAX/USD",
+            "LINK/USD", "UNI/USD", "AAVE/USD", "DOT/USD", "DOGE/USD",
+            "SHIB/USD", "SOL/USD", "MATIC/USD", "XLM/USD", "ALGO/USD",
+            "ATOM/USD", "CRV/USD", "GRT/USD", "MKR/USD", "SUSHI/USD",
+        }
+        self._crypto_symbol_map = {
+            "BTC-USD": "BTC/USD", "ETH-USD": "ETH/USD", "LTC-USD": "LTC/USD",
+            "BCH-USD": "BCH/USD", "AVAX-USD": "AVAX/USD", "LINK-USD": "LINK/USD",
+            "UNI-USD": "UNI/USD", "AAVE-USD": "AAVE/USD", "DOT-USD": "DOT/USD",
+            "DOGE-USD": "DOGE/USD", "SHIB-USD": "SHIB/USD", "SOL-USD": "SOL/USD",
+            "MATIC-USD": "MATIC/USD", "XLM-USD": "XLM/USD", "ALGO-USD": "ALGO/USD",
+            "ATOM-USD": "ATOM/USD", "CRV-USD": "CRV/USD", "GRT-USD": "GRT/USD",
+            "MKR-USD": "MKR/USD", "SUSHI-USD": "SUSHI/USD",
+        }
         
         logger.debug(f"AlpacaBroker initialized: paper={paper}, base_url={self.base_url}")
     
@@ -162,26 +184,6 @@ class AlpacaBroker(BaseBroker):
     def max_orders_per_minute(self) -> int:
         """Alpaca allows 200 API requests per minute."""
         return 200
-        
-        # Supported crypto symbols on Alpaca (as of 2024)
-        # Alpaca uses "/" format, e.g. "BTC/USD"
-        self._supported_crypto = {
-            "BTC/USD", "ETH/USD", "LTC/USD", "BCH/USD", "AVAX/USD", 
-            "LINK/USD", "UNI/USD", "AAVE/USD", "DOT/USD", "DOGE/USD",
-            "SHIB/USD", "SOL/USD", "MATIC/USD", "XLM/USD", "ALGO/USD",
-            "ATOM/USD", "CRV/USD", "GRT/USD", "MKR/USD", "SUSHI/USD",
-        }
-        
-        # Symbol conversion mappings (user-friendly -> Alpaca format)
-        self._crypto_symbol_map = {
-            "BTC-USD": "BTC/USD", "ETH-USD": "ETH/USD", "LTC-USD": "LTC/USD",
-            "BCH-USD": "BCH/USD", "AVAX-USD": "AVAX/USD", "LINK-USD": "LINK/USD",
-            "UNI-USD": "UNI/USD", "AAVE-USD": "AAVE/USD", "DOT-USD": "DOT/USD",
-            "DOGE-USD": "DOGE/USD", "SHIB-USD": "SHIB/USD", "SOL-USD": "SOL/USD",
-            "MATIC-USD": "MATIC/USD", "XLM-USD": "XLM/USD", "ALGO-USD": "ALGO/USD",
-            "ATOM-USD": "ATOM/USD", "CRV-USD": "CRV/USD", "GRT-USD": "GRT/USD",
-            "MKR-USD": "MKR/USD", "SUSHI-USD": "SUSHI/USD",
-        }
     
     async def connect(self) -> bool:
         """Connect to Alpaca API with timeout handling."""
@@ -316,12 +318,11 @@ class AlpacaBroker(BaseBroker):
         logger.info("Disconnected from Alpaca")
     
     async def health_check(self) -> bool:
-        """Check Alpaca connection health with throttling and caching."""
+        """Check Alpaca connection health with throttling, caching, and tolerance for transient DNS/network errors."""
         if not self._trading_client:
             logger.debug("Health check failed: No trading client")
             return False
         
-        # Throttle health checks - return cached result if checked recently
         now = datetime.now()
         if self._last_health_check:
             elapsed = (now - self._last_health_check).total_seconds()
@@ -347,19 +348,23 @@ class AlpacaBroker(BaseBroker):
             
         except asyncio.TimeoutError:
             self._consecutive_failures += 1
+            # Tolerate up to _max_consecutive_failures before reporting unhealthy (avoids disconnect on brief blips)
             self._last_health_result = self._consecutive_failures < self._max_consecutive_failures
             if self._should_log_network_error():
-                logger.warning(f"Alpaca health check timed out (failures: {self._consecutive_failures})")
+                logger.warning(f"Alpaca health check timed out (consecutive failures: {self._consecutive_failures})")
             return self._last_health_result
             
         except Exception as e:
             self._consecutive_failures += 1
-            self._last_health_result = False
             if self._is_network_error(e):
                 self._log_network_error("health_check", e)
+                # Treat transient DNS/network errors as "assume still connected" until we have 3 consecutive failures
+                self._last_health_result = self._consecutive_failures < self._max_consecutive_failures
             else:
+                # Auth/API errors: report unhealthy immediately
+                self._last_health_result = False
                 logger.warning(f"Alpaca health check failed: {e} (failures: {self._consecutive_failures})")
-            return False
+            return self._last_health_result
     
     async def get_accounts(self) -> List[AccountInfo]:
         """Get Alpaca account with caching."""

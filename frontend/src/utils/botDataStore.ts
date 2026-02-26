@@ -242,7 +242,7 @@ export async function saveBotPerformanceData(
     botsTradeData[bot.id] = {
       botId: bot.id,
       daily_pnl: bot.daily_pnl,
-      total_pnl: 0, // Not in summary, will be refreshed from backend
+      total_pnl: (bot as { total_pnl?: number }).total_pnl ?? 0,
       win_rate: 0,
       open_positions: 0,
       trades_today: 0,

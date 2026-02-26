@@ -163,13 +163,24 @@ export function TradingModeProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const disconnectBroker = () => {
+  const disconnectBroker = async () => {
     // Switch back to paper mode when disconnecting
     if (mode === 'live') {
       setMode('paper')
     }
-    setBroker({ provider: null, isConnected: false })
-    fetch('/api/integrations/brokers/disconnect', { method: 'POST' }).catch(() => {})
+    try {
+      const res = await fetch('/api/integrations/brokers/disconnect', { method: 'POST' })
+      if (res.ok) {
+        setBroker({ provider: null, isConnected: false })
+      } else {
+        // Backend may still disconnect; clear UI so user can try reconnect
+        setBroker({ provider: null, isConnected: false })
+      }
+    } catch {
+      setBroker({ provider: null, isConnected: false })
+    }
+    // Refresh status so UI and backend stay in sync for 24/7 reconnect
+    await checkBrokerConnection()
   }
 
   const refreshBrokerData = async () => {

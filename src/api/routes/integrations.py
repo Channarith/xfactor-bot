@@ -115,14 +115,6 @@ async def connect_broker(request: BrokerConnectRequest) -> Dict[str, Any]:
     except ValueError:
         raise HTTPException(400, f"Unknown broker type: {request.broker_type}")
     
-    # Validate required credentials for API-key based brokers
-    if broker_type.value == "alpaca":
-        if not request.api_key:
-            raise HTTPException(400, "API key is required for Alpaca")
-        if not effective_secret:
-            raise HTTPException(400, "Secret key is required for Alpaca")
-        logger.info(f"Alpaca credentials: api_key={request.api_key[:8]}..., secret_len={len(effective_secret)}")
-    
     config = {
         "api_key": request.api_key,
         "secret_key": effective_secret,  # Use effective_secret_key
@@ -134,6 +126,27 @@ async def connect_broker(request: BrokerConnectRequest) -> Dict[str, Any]:
         "client_id": request.client_id or 1,
         **request.config
     }
+    # Reconnect without app restart: prefer stored config when no broker currently connected (all brokers) or when request sent defaults (IBKR)
+    stored = registry.get_stored_connection_config(broker_type)
+    if stored:
+        # Fill any missing/empty fields from stored (Alpaca keys, etc.)
+        for k, v in stored.items():
+            if v is not None and v != "" and (config.get(k) is None or config.get(k) == ""):
+                config[k] = v
+        # For IBKR, when reconnecting (no active broker) use stored host/port/client_id so same session works 24/7
+        if broker_type.value == "ibkr" and registry.get_broker(broker_type) is None:
+            for key in ("host", "port", "client_id"):
+                if stored.get(key) is not None and stored.get(key) != "":
+                    config[key] = stored[key]
+            logger.debug(f"Using stored IBKR config for reconnect: host={config.get('host')}, port={config.get('port')}, client_id={config.get('client_id')}")
+        else:
+            logger.debug(f"Filled config from stored connection for {request.broker_type}")
+    if broker_type.value == "alpaca":
+        if not config.get("api_key"):
+            raise HTTPException(400, "API key is required for Alpaca")
+        if not config.get("secret_key"):
+            raise HTTPException(400, "Secret key is required for Alpaca")
+        logger.info(f"Alpaca credentials: api_key={config['api_key'][:8]}..., secret_len={len(config.get('secret_key', ''))}")
     
     success, error_msg = await registry.connect_broker(
         broker_type,
@@ -211,19 +224,33 @@ async def credential_login(request: CredentialLoginRequest) -> Dict[str, Any]:
     raise HTTPException(400, "Credential-based login is not supported. Use /brokers/connect with API keys instead.")
 
 
+@router.post("/brokers/disconnect")
+async def disconnect_all_brokers() -> Dict[str, Any]:
+    """Disconnect from all connected brokers (UI calls this without broker_type in path). Enables reconnect from UI without app restart."""
+    registry = get_broker_registry()
+    disconnected = []
+    for broker_type in list(registry.connected_brokers):
+        await registry.disconnect_broker(broker_type)
+        disconnected.append(broker_type.value)
+    _save_bot_state_on_disconnect()
+    return {"status": "disconnected", "brokers": disconnected}
+
+
 @router.post("/brokers/disconnect/{broker_type}")
 async def disconnect_broker(broker_type: str) -> Dict[str, Any]:
-    """Disconnect from a broker and persist bot/position state so data carries over on reconnect."""
+    """Disconnect from a specific broker and persist bot/position state so reconnect from UI works."""
     registry = get_broker_registry()
-    
     try:
         bt = BrokerType(broker_type.lower())
     except ValueError:
         raise HTTPException(400, f"Unknown broker type: {broker_type}")
-    
     await registry.disconnect_broker(bt)
-    
-    # Persist bot stats and position tracking so Bot Manager % and Agentic data carry over
+    _save_bot_state_on_disconnect()
+    return {"status": "disconnected", "broker": broker_type}
+
+
+def _save_bot_state_on_disconnect() -> None:
+    """Persist bot stats and position tracking so data carries over on reconnect."""
     try:
         from src.bot.bot_manager import get_bot_manager
         bot_mgr = get_bot_manager()
@@ -233,8 +260,6 @@ async def disconnect_broker(broker_type: str) -> Dict[str, Any]:
             logger.info("Saved bot state and position tracking on broker disconnect")
     except Exception as e:
         logger.warning(f"Could not save bot state on disconnect: {e}")
-    
-    return {"status": "disconnected", "broker": broker_type}
 
 
 @router.post("/brokers/reconnect/{broker_type}")

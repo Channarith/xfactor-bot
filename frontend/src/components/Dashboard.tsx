@@ -224,9 +224,11 @@ export function Dashboard() {
             portfolioData.totalValue > 0 
               ? usingCachedData
                 ? `📦 Cached from ${formatLastSaved(cacheLastSaved)}`
-                : selectedBroker === 'all' && connectedBrokers.length > 1
-                  ? `🟢 Live - Combined from ${connectedBrokers.length} brokers`
-                  : `🟢 Live from ${getBrokerLabel(selectedBroker)}`
+                : connectedBrokers.length === 1
+                  ? `🟢 Live from ${getBrokerLabel(connectedBrokers[0].broker)}`
+                  : selectedBroker === 'all' && connectedBrokers.length > 1
+                    ? `🟢 Live - Combined from ${connectedBrokers.length} brokers`
+                    : `🟢 Live from ${getBrokerLabel(selectedBroker)}`
               : "Connect broker to see data"
           }
           trend={portfolioData.totalValue > 0 ? "up" : "neutral"}

@@ -51,6 +51,9 @@ class BrokerRegistry:
         self._connection_events: List[Dict] = []  # Log of connection events
         self._last_reconnect_time: Dict[BrokerType, datetime] = {}  # Track last reconnect per broker
         self._is_network_issue: bool = False  # Track if we're in a network outage
+        # Require N consecutive health check failures before disconnecting (avoids drop on transient DNS/network blips)
+        self._health_check_failures: Dict[BrokerType, int] = {}
+        self._health_check_failures_required = 2  # Disconnect only after 2 consecutive failures
     
     def register_broker_class(
         self,
@@ -223,7 +226,7 @@ class BrokerRegistry:
             self._connection_events = self._connection_events[-100:]
     
     async def disconnect_broker(self, broker_type: BrokerType) -> None:
-        """Disconnect from a broker and clear stored connection config so reconnect uses fresh params (e.g. new clientID)."""
+        """Disconnect from a broker. Keeps stored connection config so reconnect from UI works without app restart."""
         if broker_type in self._brokers:
             try:
                 await self._brokers[broker_type].disconnect()
@@ -233,10 +236,9 @@ class BrokerRegistry:
             logger.info(f"Disconnected from broker: {broker_type.value}")
             if self._default_broker == broker_type:
                 self._default_broker = next(iter(self._brokers.keys()), None)
-        # Clear stored config so next connect uses fresh params from UI (e.g. new clientID)
-        self._connection_configs.pop(broker_type, None)
-        self._reconnect_attempts.pop(broker_type, None)
-        self._last_reconnect_time.pop(broker_type, None)
+        # Keep _connection_configs so user can reconnect from UI without restarting the app.
+        # Connect with new params (e.g. new clientID) still works: connect_broker uses request body.
+        self._health_check_failures.pop(broker_type, None)
     
     async def disconnect_all(self) -> None:
         """Disconnect from all brokers."""
@@ -246,6 +248,10 @@ class BrokerRegistry:
     def get_broker(self, broker_type: BrokerType) -> Optional[BaseBroker]:
         """Get a specific broker instance."""
         return self._brokers.get(broker_type)
+
+    def get_stored_connection_config(self, broker_type: BrokerType) -> Optional[Dict[str, Any]]:
+        """Get stored connection config for a broker (e.g. for reconnect when UI does not resend credentials)."""
+        return self._connection_configs.get(broker_type)
     
     def get_default_broker(self) -> Optional[BaseBroker]:
         """Get the default broker."""
@@ -385,27 +391,24 @@ class BrokerRegistry:
                 await asyncio.sleep(10)  # Brief pause on error
     
     async def _check_and_reconnect(self, broker_type: BrokerType):
-        """Check if a broker is connected and reconnect if needed."""
+        """Check broker health; do NOT remove brokers on failure so they remain valid and reconnect from UI works."""
         broker = self._brokers.get(broker_type)
         if not broker:
             return
         
         try:
-            # Check actual connection status
             is_healthy = await broker.health_check()
-            
-            if not is_healthy:
-                logger.warning(f"Broker {broker_type.value} health check failed - attempting reconnect")
-                self._log_connection_event(broker_type, "disconnected", "Health check failed")
-                
-                # Remove from active brokers
-                del self._brokers[broker_type]
-                
-                # Attempt reconnection
-                await self._attempt_reconnect(broker_type)
-            else:
-                # Reset reconnect attempts on successful health check
+            if is_healthy:
                 self._reconnect_attempts[broker_type] = 0
+                self._health_check_failures[broker_type] = 0
+            else:
+                failures = self._health_check_failures.get(broker_type, 0) + 1
+                self._health_check_failures[broker_type] = failures
+                logger.debug(
+                    f"Broker {broker_type.value} health check failed ({failures}x). "
+                    "Keeping broker in registry; use Disconnect then Connect in UI to reconnect."
+                )
+                # Do NOT remove broker or attempt auto-reconnect - user can reconnect from UI
                 
         except Exception as e:
             logger.error(f"Error checking broker {broker_type.value}: {e}")

@@ -647,20 +647,18 @@ class BotManager:
             "bots": bots_status,
         }
     
+    # Nominal capital for "since inception" P&L % (paper-style return on capital)
+    _NOMINAL_CAPITAL = 100_000.0
+
     def get_bot_summary(self) -> list[dict]:
-        """Get summary of all bots (lightweight)."""
+        """Get summary of all bots (lightweight). Includes total P&L since inception for Bot Manager display."""
         summaries = []
         for bot in self._bots.values():
-            # Calculate daily P&L percentage
             total_pnl = getattr(bot.stats, 'total_pnl', 0.0)
-            daily_pnl_pct = 0.0
-            if total_pnl > 0:
-                # Calculate percentage based on total portfolio value (estimate)
-                portfolio_value = 1000000.0  # Default assumption
-                if hasattr(bot.stats, 'portfolio_value') and bot.stats.portfolio_value > 0:
-                    portfolio_value = bot.stats.portfolio_value
-                daily_pnl_pct = (bot.stats.daily_pnl / portfolio_value) * 100
-            
+            # Since-inception %: return on nominal capital for Bot Manager "since inception" display
+            total_pnl_pct = (total_pnl / self._NOMINAL_CAPITAL) * 100 if self._NOMINAL_CAPITAL else 0.0
+            # Daily P&L % (for compatibility)
+            daily_pnl_pct = (bot.stats.daily_pnl / self._NOMINAL_CAPITAL) * 100 if self._NOMINAL_CAPITAL else 0.0
             summaries.append({
                 "id": bot.id,
                 "name": bot.config.name,
@@ -670,6 +668,7 @@ class BotManager:
                 "daily_pnl": bot.stats.daily_pnl,
                 "daily_pnl_pct": round(daily_pnl_pct, 2),
                 "total_pnl": total_pnl,
+                "total_pnl_pct": round(total_pnl_pct, 2),
                 "uptime_seconds": bot.uptime,
             })
         return summaries

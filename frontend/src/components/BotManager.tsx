@@ -23,6 +23,7 @@ interface BotSummary {
   daily_pnl: number
   daily_pnl_pct: number
   total_pnl: number
+  total_pnl_pct?: number
   uptime_seconds: number
 }
 
@@ -706,12 +707,12 @@ export function BotManager({ token = '' }: BotManagerProps) {
               </div>
               
               <div className="flex items-center gap-2">
-                <div className="text-right">
-                  <div className={`text-xs font-medium ${bot.daily_pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
-                    {bot.daily_pnl >= 0 ? '+' : ''}${bot.daily_pnl.toFixed(2)}
+                <div className="text-right" title="P&L since inception (persists across disconnect/restart)">
+                  <div className={`text-xs font-medium ${(bot.total_pnl ?? 0) >= 0 ? 'text-profit' : 'text-loss'}`}>
+                    {(bot.total_pnl ?? 0) >= 0 ? '+' : ''}${(bot.total_pnl ?? 0).toFixed(2)}
                   </div>
-                  <div className={`text-[10px] ${bot.daily_pnl_pct >= 0 ? 'text-profit' : 'text-loss'}`}>
-                    {bot.daily_pnl_pct >= 0 ? '+' : ''}{bot.daily_pnl_pct.toFixed(2)}%
+                  <div className={`text-[10px] ${((bot.total_pnl_pct ?? 0) >= 0) ? 'text-profit' : 'text-loss'}`}>
+                    {(bot.total_pnl_pct ?? 0) >= 0 ? '+' : ''}{(bot.total_pnl_pct ?? 0).toFixed(2)}%
                   </div>
                 </div>
                 

@@ -104,8 +104,25 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '2.4.0',
+    date: 'January 23, 2025',
+    changes: [
+      '🤖 Bot Manager: P&L since inception',
+      '',
+      '• List row shows total P&L since inception (+$X.XX / +X.XX%) instead of daily',
+      '• Value updates live and persists across disconnect and app restart',
+      '• Backend saves/restores total_pnl; Help date corrected',
+      '',
+      '🔧 Broker reconnect 24/7',
+      '',
+      '• Disconnect from UI (no broker_type in path) disconnects all brokers',
+      '• Reconnect without restart: stored config used for IBKR/Alpaca',
+      '• Portfolio subtitle: "Live from [Broker]" when one connected (never "All Brokers")',
+    ]
+  },
+  {
     version: '2.3.0',
-    date: 'January 23, 2026',
+    date: 'January 23, 2025',
     changes: [
       '✨ Portfolio on Connect',
       '',
