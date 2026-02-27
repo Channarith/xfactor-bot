@@ -961,10 +961,14 @@ _bot_manager: Optional[BotManager] = None
 _initialized: bool = False
 
 
-def _create_default_bots(manager: BotManager) -> None:
-    """Create default bot configurations with strategy-appropriate thresholds."""
-    
-    # Get presets for different trading styles
+_default_bot_configs_cache: Optional[list] = None
+
+
+def _get_default_bot_configs() -> list:
+    """Return the list of 80 default bot configs (cached). Used for creation and for 50->80 upgrade."""
+    global _default_bot_configs_cache
+    if _default_bot_configs_cache is not None:
+        return _default_bot_configs_cache
     aggressive = SignalPreset.AGGRESSIVE
     moderate = SignalPreset.MODERATE
     conservative = SignalPreset.CONSERVATIVE
@@ -973,8 +977,7 @@ def _create_default_bots(manager: BotManager) -> None:
     ultra_aggressive = SignalPreset.ULTRA_AGGRESSIVE
     crypto_preset = SignalPreset.CRYPTO
     commodity_preset = SignalPreset.COMMODITY
-    
-    default_bots = [
+    configs = [
         # =====================================================================
         # STOCK TRADING BOTS (1-10) - Each with strategy-specific thresholds
         # =====================================================================
@@ -2557,11 +2560,16 @@ def _create_default_bots(manager: BotManager) -> None:
             trade_frequency_seconds=240,
         ),
     ]
-    
-    for config in default_bots:
+    _default_bot_configs_cache = configs
+    return configs
+
+
+def _create_default_bots(manager: BotManager) -> None:
+    """Create default bot configurations with strategy-appropriate thresholds."""
+    configs = _get_default_bot_configs()
+    for config in configs:
         manager.create_bot(config)
-    
-    logger.info(f"Created {len(default_bots)} default bots")
+    logger.info(f"Created {len(configs)} default bots")
 
 
 def get_bot_manager() -> BotManager:
@@ -2593,7 +2601,16 @@ def get_bot_manager() -> BotManager:
     if _bot_manager.bot_count == 0:
         logger.warning("Bot manager had 0 bots; repopulating default bots")
         _create_default_bots(_bot_manager)
-    
+
+    # Upgrade: if manager has 50 bots (old default), add the 30 new defaults (51-80)
+    if _bot_manager.bot_count == 50 and _bot_manager.MAX_BOTS >= 80:
+        configs = _get_default_bot_configs()
+        if len(configs) >= 80:
+            logger.info("Upgrading from 50 to 80 default bots...")
+            for config in configs[50:80]:
+                _bot_manager.create_bot(config)
+            logger.info(f"Upgrade complete: {_bot_manager.bot_count} bots")
+
     return _bot_manager
 
 

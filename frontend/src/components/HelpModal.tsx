@@ -7,8 +7,9 @@ interface HelpModalProps {
   onClose: () => void;
 }
 
-// Version is injected from package.json via Vite at build time
+// Version and release date injected from package.json via Vite at build time (keep in sync)
 const VERSION = __APP_VERSION__;
+const RELEASE_DATE = __APP_RELEASE_DATE__ || 'Latest';
 
 const features = [
   // Core Trading
@@ -102,7 +103,24 @@ const quickStart = [
   { step: 9, title: 'Start Trading', description: 'Click Start on individual bots or use Start All to begin automated trading. Monitor performance in the Dashboard.' }
 ];
 
+// First entry's version and date are overridden at runtime from package.json (VERSION + RELEASE_DATE).
+// When releasing: update version + releaseDate in frontend/package.json and prepend a new entry here with the new changes.
 const changelog = [
+  {
+    version: '2.5.1',
+    date: 'January 24, 2026',
+    changes: [
+      '🤖 80 default bots + upgrade path',
+      '',
+      '• Default set increased from 50 to 80 bots; MAX_BOTS = 80',
+      '• If backend had 50 bots (old code), next request adds bots 51–80 automatically',
+      '',
+      '📋 Help version & date in sync',
+      '',
+      '• Release date comes from frontend/package.json releaseDate; stays in sync with version',
+      '• First changelog row uses build-injected version and date',
+    ]
+  },
   {
     version: '2.5.0',
     date: 'February 23, 2026',
@@ -3038,7 +3056,16 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
   const [glossaryCategory, setGlossaryCategory] = useState<string>('all');
   const [glossarySearch, setGlossarySearch] = useState('');
   const [expandedTerms, setExpandedTerms] = useState<Set<string>>(new Set());
-  
+
+  // Changelog with first entry synced to build-time version and release date
+  const displayChangelog = useMemo(
+    () =>
+      changelog.length > 0
+        ? [{ ...changelog[0], version: VERSION, date: RELEASE_DATE }, ...changelog.slice(1)]
+        : changelog,
+    [],
+  );
+
   // Voice search state
   const [isListening, setIsListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
@@ -3138,7 +3165,7 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
             </div>
             <div>
               <h2 className="text-xl font-bold text-white">XFactor Bot Help</h2>
-              <p className="text-sm text-slate-400">Version {VERSION} • {changelog[0]?.date || 'Latest'}</p>
+              <p className="text-sm text-slate-400">Version {VERSION} • {RELEASE_DATE}</p>
             </div>
           </div>
           <button
@@ -3331,7 +3358,7 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
 
           {activeTab === 'changelog' && (
             <div className="space-y-6">
-              {changelog.map((release) => (
+              {displayChangelog.map((release) => (
                 <div key={release.version} className="border-l-2 border-blue-500 pl-4">
                   <div className="flex items-center gap-3 mb-2">
                     <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-sm font-mono rounded">

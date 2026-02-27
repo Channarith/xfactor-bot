@@ -6,8 +6,9 @@ import packageJson from './package.json'
 export default defineConfig({
   plugins: [react()],
   define: {
-    // Inject version from package.json at build time
+    // Inject version and release date from package.json at build time (keep in sync)
     __APP_VERSION__: JSON.stringify(packageJson.version),
+    __APP_RELEASE_DATE__: JSON.stringify((packageJson as { releaseDate?: string }).releaseDate ?? ''),
   },
   resolve: {
     alias: {

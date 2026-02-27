@@ -1,6 +1,7 @@
 {
   "name": "xfactor-bot-dashboard",
-  "version": "2.5.0",
+  "version": "2.5.1",
+  "releaseDate": "January 24, 2026",
   "private": true,
   "type": "module",
   "scripts": {
