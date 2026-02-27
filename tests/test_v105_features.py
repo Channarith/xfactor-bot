@@ -36,7 +36,7 @@ class TestDefaultBots:
         manager._bots = {}  # Clear any existing bots
         _create_default_bots(manager)
         
-        assert manager.bot_count == 50, f"Expected 50 bots, got {manager.bot_count}"
+        assert manager.bot_count == 80, f"Expected 80 bots, got {manager.bot_count}"
 
     def test_forex_bots_exist(self):
         """Test that forex trading bots are included in defaults"""

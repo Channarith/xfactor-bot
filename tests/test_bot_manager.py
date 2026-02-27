@@ -189,8 +189,8 @@ class TestBotManager:
         """Test manager initialization."""
         assert manager.bot_count == 0
         assert manager.running_count == 0
-        # MAX_BOTS can be 25 or 100
-        assert manager.MAX_BOTS in [25, 100]
+        # MAX_BOTS can be 25 or 80
+        assert manager.MAX_BOTS in [25, 80]
 
     def test_create_bot(self, manager):
         """Test creating a bot."""

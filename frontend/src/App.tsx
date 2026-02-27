@@ -64,7 +64,7 @@ function App() {
             isStale: cached.isStale,
             lastSaved: cached.lastSaved,
           })
-          console.log('[App] Bot definitions will load from backend (all 50 bots always available)')
+          console.log('[App] Bot definitions will load from backend (all 80 bots always available)')
           emitCacheLoaded(cached)
         } else {
           console.log('[App] No cached trade data found')
@@ -132,7 +132,7 @@ function App() {
   // Bot definitions always come from backend - we only cache trade history and P&L
   const saveBotDataBeforeClose = useCallback(async () => {
     console.log('[Cleanup] Saving bot TRADE data before close...')
-    console.log('[Cleanup] (Bot definitions are NOT cached - all 50 bots load from backend)')
+    console.log('[Cleanup] (Bot definitions are NOT cached - all 80 bots load from backend)')
     
     try {
       // Fetch latest bot data from API if backend is available

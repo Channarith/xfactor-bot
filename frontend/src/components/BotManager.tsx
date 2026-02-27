@@ -93,7 +93,7 @@ export function BotManager({ token: tokenProp = '' }: BotManagerProps) {
   const [activityLogLoading, setActivityLogLoading] = useState(false)
   
   // Cache state
-  // All 50 bots always come from backend, cache only stores trade/position data
+  // All 80 bots always come from backend, cache only stores trade/position data
   const [cachedTradeData, setCachedTradeData] = useState<Record<string, BotTradeData>>({})
   const [usingCachedData, setUsingCachedData] = useState(false)
   const [cacheLastSaved, setCacheLastSaved] = useState<string>('')
@@ -285,7 +285,7 @@ export function BotManager({ token: tokenProp = '' }: BotManagerProps) {
       const cached = event.detail
       if (cached.botsTradeData && Object.keys(cached.botsTradeData).length > 0) {
         console.log('[BotManager] Loaded cached TRADE data for', Object.keys(cached.botsTradeData).length, 'bots')
-        console.log('[BotManager] Bot definitions will come from backend API (all 50 bots)')
+        console.log('[BotManager] Bot definitions will come from backend API (all 80 bots)')
         // Store trade data separately - will be merged with backend bots for display
         setCachedTradeData(cached.botsTradeData)
         setCacheLastSaved(cached.lastSaved)
@@ -304,66 +304,75 @@ export function BotManager({ token: tokenProp = '' }: BotManagerProps) {
   }, [])
 
   const fetchBots = useCallback(async (isManualRefresh: boolean = false) => {
-    try {
-      if (isManualRefresh) {
-        setIsRefreshingFromBrokerage(true)
-      }
-      
-      // Use explicit URL for desktop app compatibility
-      const baseUrl = getApiBaseUrl();
-      const url = baseUrl ? `${baseUrl}/api/bots/summary` : '/api/bots/summary';
-      
-      console.log('[BotManager] === FETCH BOTS DEBUG ===');
-      console.log('[BotManager] Base URL:', baseUrl || '(relative)');
-      console.log('[BotManager] Full URL:', url);
-      console.log('[BotManager] Window location:', window.location.href);
-      console.log('[BotManager] Is Tauri?:', typeof window !== 'undefined' && (window.hasOwnProperty('__TAURI__') || window.hasOwnProperty('__TAURI_INTERNALS__')));
-      
-      const response = await fetch(url);
-      
-      console.log('[BotManager] Response status:', response.status, response.statusText);
-      console.log('[BotManager] Response headers:', Object.fromEntries(response.headers.entries()));
-      
-      if (!response.ok) {
-        const errorBody = await response.text().catch(() => 'Could not read response body');
-        console.error('[BotManager] Error response body:', errorBody);
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      console.log('[BotManager] Fetched', data.bots?.length || 0, 'bots successfully (live data)');
-      setBots(data.bots || []);
-      setError(''); // Clear any previous errors
-      
-      // Mark that we now have live data (not cached)
-      setUsingCachedData(false)
-      setIsRefreshingFromBrokerage(false)
-    } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
-      const errorStack = e instanceof Error ? e.stack : '';
-      
-      console.error('[BotManager] === FETCH BOTS ERROR ===');
-      console.error('[BotManager] Error type:', e?.constructor?.name);
-      console.error('[BotManager] Error message:', errorMessage);
-      console.error('[BotManager] Error stack:', errorStack);
-      console.error('[BotManager] Is network error?:', errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('Failed to fetch'));
-      
-      // Check if backend is reachable at all
+    const baseUrl = getApiBaseUrl();
+    const url = baseUrl ? `${baseUrl}/api/bots/summary` : '/api/bots/summary';
+    const maxTries = 2;
+    let lastError: unknown = null;
+
+    for (let tryNum = 1; tryNum <= maxTries; tryNum++) {
       try {
-        const healthUrl = getApiBaseUrl() ? `${getApiBaseUrl()}/health` : '/health';
-        console.log('[BotManager] Checking backend health at:', healthUrl);
-        const healthResponse = await fetch(healthUrl);
-        console.log('[BotManager] Health check status:', healthResponse.status);
-      } catch (healthError) {
-        console.error('[BotManager] Health check also failed - backend is unreachable');
+        if (isManualRefresh) {
+          setIsRefreshingFromBrokerage(true)
+        }
+
+        console.log('[BotManager] Fetch bots attempt', tryNum, 'of', maxTries, '->', url);
+        const response = await fetch(url);
+
+        console.log('[BotManager] Response status:', response.status, response.statusText);
+
+        if (!response.ok) {
+          const errorBody = await response.text().catch(() => 'Could not read response body');
+          console.error('[BotManager] Error response body:', errorBody);
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log('[BotManager] Fetched', data.bots?.length || 0, 'bots successfully (live data)');
+        setBots(data.bots || []);
+        setError('');
+        setUsingCachedData(false);
+        setIsRefreshingFromBrokerage(false);
+        return;
+      } catch (e) {
+        lastError = e;
+        const msg = e instanceof Error ? e.message : 'Unknown error';
+        const isLoadFailed = /Load failed|Failed to fetch|network|NetworkError/i.test(msg);
+        if (tryNum < maxTries && isLoadFailed) {
+          console.log('[BotManager] Backend may still be starting, retrying in 2s...');
+          await new Promise((r) => setTimeout(r, 2000));
+          continue;
+        }
+        break;
       }
-      
-      // Only show error if we don't have cached data to display
-      if (!usingCachedData && bots.length === 0) {
-        setError(`Failed to fetch bots: ${errorMessage}`);
-      }
-      setIsRefreshingFromBrokerage(false)
     }
+
+    const e = lastError;
+    const errorMessage = e instanceof Error ? (e as Error).message : 'Unknown error';
+    const errorStack = e instanceof Error ? (e as Error).stack : '';
+
+    console.error('[BotManager] === FETCH BOTS ERROR ===');
+    console.error('[BotManager] Error type:', e && typeof e === 'object' && 'constructor' in e ? (e as Error).constructor?.name : '');
+    console.error('[BotManager] Error message:', errorMessage);
+    console.error('[BotManager] Error stack:', errorStack);
+
+    // Optional health check for debugging
+    try {
+      const healthUrl = getApiBaseUrl() ? `${getApiBaseUrl()}/health` : '/health';
+      const healthResponse = await fetch(healthUrl);
+      console.log('[BotManager] Health check status:', healthResponse.status);
+    } catch {
+      console.error('[BotManager] Health check also failed - backend is unreachable');
+    }
+
+    const isLoadFailed = /Load failed|Failed to fetch|network|NetworkError/i.test(errorMessage);
+    const displayMessage = isLoadFailed
+      ? 'Backend unreachable. Ensure the trading backend is running and the app can connect to it, then try again.'
+      : errorMessage;
+
+    if (!usingCachedData && bots.length === 0) {
+      setError(`Failed to fetch bots: ${displayMessage}`);
+    }
+    setIsRefreshingFromBrokerage(false);
   }, [usingCachedData, bots.length])
 
   useEffect(() => {

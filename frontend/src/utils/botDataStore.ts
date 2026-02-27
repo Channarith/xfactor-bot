@@ -5,7 +5,7 @@
  * and reloads it on startup to show previous trading state.
  * Uses Tauri's store plugin for desktop, falls back to localStorage for web.
  * 
- * IMPORTANT: Bot definitions (all 50 bots) always come from the backend.
+ * IMPORTANT: Bot definitions (all 80 bots) always come from the backend.
  * This store only caches:
  * - Trade history (open/closed positions)
  * - P&L data per bot
@@ -255,7 +255,7 @@ export async function saveBotPerformanceData(
 
 /**
  * Load cached bot trade data
- * NOTE: Bot definitions (all 50 bots) always come from backend API
+ * NOTE: Bot definitions (all 80 bots) always come from backend API
  */
 export async function loadBotPerformanceData(): Promise<CachedBotData> {
   console.log('[BotDataStore] Loading cached bot TRADE data...')
