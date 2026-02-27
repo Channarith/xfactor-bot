@@ -15,6 +15,11 @@ Advantages over IBKR:
 - Simpler setup (just API keys)
 - Modern REST API
 
+API & SDK docs (check for latest changes):
+- API reference: https://docs.alpaca.markets/reference
+- Python SDK: https://alpaca.markets/sdks/python/ | https://github.com/alpacahq/alpaca-py
+- Paper trading: https://docs.alpaca.markets/docs/paper-trading
+
 Get API keys: https://app.alpaca.markets/
 """
 
@@ -43,11 +48,8 @@ class AlpacaBroker(BaseBroker):
     - Paper: https://paper-api.alpaca.markets
     - Live:  https://api.alpaca.markets
     - Data:  https://data.alpaca.markets
-    
-    Environment variables needed:
-    - ALPACA_API_KEY
-    - ALPACA_SECRET_KEY
-    - ALPACA_PAPER (true/false)
+
+    We pass url_override to TradingClient so these URLs are explicit and resilient to SDK changes.
     """
     
     BASE_URL_PAPER = "https://paper-api.alpaca.markets"
@@ -185,8 +187,12 @@ class AlpacaBroker(BaseBroker):
         """Alpaca allows 200 API requests per minute."""
         return 200
     
+    # Retry config for connect (DNS/network can be transient)
+    CONNECT_RETRIES = 3
+    CONNECT_RETRY_DELAYS = (2, 4, 6)  # seconds between retries
+
     async def connect(self) -> bool:
-        """Connect to Alpaca API with timeout handling."""
+        """Connect to Alpaca API with timeout handling and retries for DNS/network errors."""
         logger.info(f"Connecting to Alpaca {'Paper' if self.paper else 'Live'} trading...")
         
         # Validate API keys
@@ -201,74 +207,100 @@ class AlpacaBroker(BaseBroker):
             return False
         
         try:
-            # Try to import alpaca-py
             from alpaca.trading.client import TradingClient
             from alpaca.data.historical import StockHistoricalDataClient
-            
-            logger.debug("Creating Alpaca trading client...")
-            
-            self._trading_client = TradingClient(
-                api_key=self.api_key,
-                secret_key=self.secret_key,
-                paper=self.paper
-            )
-            
-            self._data_client = StockHistoricalDataClient(
-                api_key=self.api_key,
-                secret_key=self.secret_key
-            )
-            
-            # Test connection by getting account with timeout
-            logger.debug("Testing connection by fetching account...")
-            
+        except ImportError:
+            self._error_message = "alpaca-py not installed. Run: pip install alpaca-py"
+            logger.error(self._error_message)
+            return False
+        
+        last_error: Optional[Exception] = None
+        for attempt in range(self.CONNECT_RETRIES):
             try:
-                # Wrap synchronous call in executor with timeout
+                if attempt > 0:
+                    delay = self.CONNECT_RETRY_DELAYS[attempt - 1]
+                    logger.info(f"Alpaca connect retry {attempt + 1}/{self.CONNECT_RETRIES} in {delay}s...")
+                    await asyncio.sleep(delay)
+                
+                logger.debug("Creating Alpaca trading client...")
+                self._trading_client = TradingClient(
+                    api_key=self.api_key,
+                    secret_key=self.secret_key,
+                    paper=self.paper,
+                    url_override=self.base_url,
+                )
+                self._data_client = StockHistoricalDataClient(
+                    api_key=self.api_key,
+                    secret_key=self.secret_key,
+                )
+                
+                logger.debug("Testing connection by fetching account...")
                 loop = asyncio.get_event_loop()
                 account = await asyncio.wait_for(
                     loop.run_in_executor(None, self._trading_client.get_account),
                     timeout=self.CONNECT_TIMEOUT
                 )
+                
+                self._connected = True
+                self._last_successful_call = datetime.now()
+                self._consecutive_failures = 0
+                logger.info(f"✅ Connected to Alpaca {'Paper' if self.paper else 'Live'}")
+                logger.info(f"   Account: {account.account_number}")
+                logger.info(f"   Status: {account.status}")
+                logger.info(f"   Equity: ${float(account.equity):,.2f}")
+                logger.info(f"   Buying Power: ${float(account.buying_power):,.2f}")
+                logger.info(f"   Cash: ${float(account.cash):,.2f}")
+                logger.info(f"   PDT: {account.pattern_day_trader}")
+                return True
+                
             except asyncio.TimeoutError:
+                last_error = asyncio.TimeoutError()
                 self._error_message = f"Connection timed out after {self.CONNECT_TIMEOUT}s"
-                logger.error(self._error_message)
-                return False
-            
-            self._connected = True
-            self._last_successful_call = datetime.now()
-            self._consecutive_failures = 0
-            
-            # Log account details
-            logger.info(f"✅ Connected to Alpaca {'Paper' if self.paper else 'Live'}")
-            logger.info(f"   Account: {account.account_number}")
-            logger.info(f"   Status: {account.status}")
-            logger.info(f"   Equity: ${float(account.equity):,.2f}")
-            logger.info(f"   Buying Power: ${float(account.buying_power):,.2f}")
-            logger.info(f"   Cash: ${float(account.cash):,.2f}")
-            logger.info(f"   PDT: {account.pattern_day_trader}")
-            
-            return True
-            
-        except ImportError as e:
-            self._error_message = "alpaca-py not installed. Run: pip install alpaca-py"
-            logger.error(self._error_message)
-            return False
-        except Exception as e:
-            error_str = str(e)
-            
-            # Parse common errors
-            if "forbidden" in error_str.lower() or "401" in error_str:
-                self._error_message = "Invalid API key or secret. Check your credentials."
-            elif "not found" in error_str.lower() or "404" in error_str:
-                self._error_message = "Account not found. Check your API key."
-            elif "rate limit" in error_str.lower() or "429" in error_str:
-                self._error_message = "Rate limited. Please wait and try again."
-            elif "timeout" in error_str.lower():
-                self._error_message = "Connection timed out. Check your network."
-            else:
-                self._error_message = f"Connection failed: {error_str}"
-            
-            logger.error(f"Failed to connect to Alpaca: {self._error_message}")
-            return False
+                if not self._is_network_error(Exception(self._error_message)):
+                    logger.error(self._error_message)
+                    return False
+                logger.warning(f"Attempt {attempt + 1} timed out (will retry)")
+            except Exception as e:
+                last_error = e
+                error_str = str(e)
+                if self._is_network_error(e):
+                    self._error_message = (
+                        "Cannot reach Alpaca (DNS or network error). "
+                        "Check your internet connection and try again."
+                    )
+                    logger.warning(f"Attempt {attempt + 1} network error: {error_str[:120]} (will retry)")
+                else:
+                    # Non-network error: don't retry
+                    self._set_connect_error_message(error_str)
+                    logger.error(f"Failed to connect to Alpaca: {self._error_message}")
+                    return False
+        
+        # All retries exhausted for network error
+        self._error_message = (
+            "Cannot reach Alpaca after several attempts (DNS or network issue). "
+            "Check your internet connection, DNS, and firewall; then try again."
+        )
+        logger.error(f"Failed to connect to Alpaca: {self._error_message}")
+        return False
+    
+    def _set_connect_error_message(self, error_str: str) -> None:
+        """Set user-facing error message from exception string."""
+        err = error_str.lower()
+        if "forbidden" in err or "401" in error_str:
+            self._error_message = "Invalid API key or secret. Check your credentials."
+        elif "not found" in err or "404" in error_str:
+            self._error_message = "Account not found. Check your API key."
+        elif "rate limit" in err or "429" in error_str:
+            self._error_message = "Rate limited. Please wait and try again."
+        elif "timeout" in err:
+            self._error_message = "Connection timed out. Check your network."
+        elif self._is_network_error(Exception(error_str)):
+            self._error_message = (
+                "Cannot reach Alpaca (DNS or network error). "
+                "Check your internet connection and try again."
+            )
+        else:
+            self._error_message = f"Connection failed: {error_str[:200]}"
     
     async def disconnect(self) -> None:
         """Disconnect from Alpaca."""
@@ -315,8 +347,7 @@ class AlpacaBroker(BaseBroker):
             return normalized in self._supported_crypto
         # For stocks, assume tradeable (will fail at order submission if not)
         return True
-        logger.info("Disconnected from Alpaca")
-    
+
     async def health_check(self) -> bool:
         """Check Alpaca connection health with throttling, caching, and tolerance for transient DNS/network errors."""
         if not self._trading_client:

@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "XFactor_Bot",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "identifier": "com.xfactor.trading",
   "build": {
     "frontendDist": "../../frontend/dist",
@@ -52,7 +52,7 @@
     "category": "Finance",
     "shortDescription": "AI-Powered Automated Trading System",
     "longDescription": "XFactor Bot is an intelligent trading platform featuring backtesting, ML-based strategy optimization, portfolio rebalancing, tax-loss harvesting, and multi-account support.",
-    "copyright": "© 2025 XFactor Trading",
+    "copyright": "© 2026 XFactor Trading",
     "macOS": {
       "entitlements": null,
       "exceptionDomain": null,

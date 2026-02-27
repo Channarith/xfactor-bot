@@ -1,8 +1,8 @@
 # IBKR Connection
 ib_insync>=0.9.86
 
-# Alpaca Trading
-alpaca-py>=0.21.0
+# Alpaca Trading (>=0.39 for 2025 API stability and url_override; see https://pypi.org/project/alpaca-py/)
+alpaca-py>=0.39.0
 
 # Note: Robinhood and Webull integrations have been removed due to unreliable APIs
 

@@ -265,63 +265,78 @@ class IBKRBroker(BaseBroker):
         """
         Synchronous connect method to be run in executor.
         ib_insync requires its own event loop management.
-        Includes retry logic for robustness.
+        Includes retry logic and alternate client_id when TWS reports "client id already in use".
         """
         import time
         
         last_error = None
+        # Try different client IDs if TWS says duplicate (it can take a few seconds to release)
+        client_id_attempts = [self.client_id] + [
+            (self.client_id + i) for i in range(1, 5)
+        ]
         
         for attempt in range(1, self.max_retries + 1):
-            try:
-                from ib_insync import IB, util
-                
-                # Enable nested event loops for ib_insync
-                util.startLoop()
-                
-                # Clean up any existing connection
-                if self._ib:
-                    try:
-                        self._ib.disconnect()
-                    except:
-                        pass
-                
-                self._ib = IB()
-                
-                logger.info(f"Attempting IBKR connection to {self.host}:{self.port} (attempt {attempt}/{self.max_retries})")
-                
-                # ib_insync connect is synchronous when called directly
-                self._ib.connect(
-                    self.host,
-                    self.port,
-                    clientId=self.client_id,
-                    timeout=self.timeout,
-                    readonly=self.readonly
-                )
-                
-                if self._ib.isConnected():
-                    # Get account ID if not provided
-                    if not self.account_id:
-                        accounts = self._ib.managedAccounts()
-                        if accounts:
-                            self.account_id = accounts[0]
+            for try_client_id in client_id_attempts:
+                try:
+                    from ib_insync import IB, util
                     
-                    logger.info(f"Connected to IBKR - Account: {self.account_id}")
-                    return True
-                else:
-                    logger.warning(f"IBKR connect attempt {attempt} returned but isConnected() is False")
-                    last_error = "Connection returned but not connected"
+                    util.startLoop()
                     
-            except Exception as e:
-                last_error = str(e)
-                logger.warning(f"IBKR connection attempt {attempt} failed: {e}")
+                    if self._ib:
+                        try:
+                            self._ib.disconnect()
+                        except Exception:
+                            pass
+                    
+                    self._ib = IB()
+                    
+                    logger.info(
+                        f"Attempting IBKR connection to {self.host}:{self.port} "
+                        f"(attempt {attempt}/{self.max_retries}, client_id={try_client_id})"
+                    )
+                    
+                    self._ib.connect(
+                        self.host,
+                        self.port,
+                        clientId=try_client_id,
+                        timeout=self.timeout,
+                        readonly=self.readonly
+                    )
+                    
+                    if self._ib.isConnected():
+                        if try_client_id != self.client_id:
+                            self.client_id = try_client_id
+                            logger.info(f"Connected with client_id={try_client_id} (TWS had not released previous id)")
+                        if not self.account_id:
+                            accounts = self._ib.managedAccounts()
+                            if accounts:
+                                self.account_id = accounts[0]
+                        logger.info(f"Connected to IBKR - Account: {self.account_id}")
+                        return True
+                    else:
+                        last_error = "Connection returned but not connected"
+                        
+                except Exception as e:
+                    last_error = str(e)
+                    err_lower = last_error.lower()
+                    # TWS/Gateway may not have released the client ID yet
+                    is_client_id_error = (
+                        "duplicate" in err_lower or "clientid" in err_lower or "client id" in err_lower
+                        or "already in use" in err_lower or "already connected" in err_lower
+                        or "10167" in last_error
+                    )
+                    if is_client_id_error and try_client_id != client_id_attempts[-1]:
+                        logger.warning(f"Client ID {try_client_id} in use, trying next id: {e}")
+                        continue
+                    logger.warning(f"IBKR connection attempt failed (client_id={try_client_id}): {e}")
+                    break
             
-            # Wait before retry (exponential backoff)
             if attempt < self.max_retries:
-                wait_time = min(2 ** attempt, 10)  # 2s, 4s, 8s max 10s
+                wait_time = min(2 ** attempt, 10)
                 logger.info(f"Retrying in {wait_time} seconds...")
                 time.sleep(wait_time)
         
-        logger.error(f"All {self.max_retries} IBKR connection attempts failed. Last error: {last_error}")
+        logger.error(f"All IBKR connection attempts failed. Last error: {last_error}")
         raise Exception(f"Failed to connect after {self.max_retries} attempts: {last_error}")
     
     async def connect(self) -> bool:

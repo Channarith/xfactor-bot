@@ -100,6 +100,10 @@ class BrokerRegistry:
         if broker_type in self._brokers:
             logger.info(f"Disconnecting existing {broker_type.value} before reconnecting with new config")
             await self.disconnect_broker(broker_type)
+            # TWS/Gateway need a few seconds to release the client ID before we can reconnect
+            if broker_type == BrokerType.IBKR:
+                await asyncio.sleep(3)
+                logger.debug("IBKR: waited 3s after disconnect before reconnect")
         
         try:
             broker_class = self._broker_classes[broker_type]

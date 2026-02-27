@@ -6,6 +6,8 @@ interface AuthContextType {
   isOfflineMode: boolean
   login: (password: string) => Promise<boolean>
   logout: () => Promise<void>
+  /** Call when an API returns 401 so we clear saved auth and show unlock again */
+  markUnauthorized: () => void
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -22,13 +24,16 @@ const generateOfflineToken = (): string => {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string>(() => {
-    // Try to restore token from localStorage
     return localStorage.getItem('admin_token') || ''
   })
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  // Recognize saved admin login immediately so pre-connected unlock is not lost (e.g. before broker connect)
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    const saved = localStorage.getItem('admin_token') || ''
+    return saved.length > 0
+  })
   const [isOfflineMode, setIsOfflineMode] = useState(false)
 
-  // Verify token on mount
+  // Verify token on mount; only clear auth when backend explicitly says invalid (401), not on network error
   useEffect(() => {
     if (token) {
       verifyToken(token)
@@ -36,7 +41,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const verifyToken = async (authToken: string) => {
-    // Check if it's an offline token
     if (authToken.startsWith('offline_')) {
       console.log('[Auth] Using offline token')
       setIsAuthenticated(true)
@@ -52,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAuthenticated(true)
         setIsOfflineMode(false)
       } else {
-        // Token expired or invalid
+        // Backend explicitly rejected token (expired/invalid)
         setToken('')
         setIsAuthenticated(false)
         setIsOfflineMode(false)
@@ -60,15 +64,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (e) {
       console.error('[Auth] Token verification failed (backend may be down):', e)
-      // If we have an offline token, keep it valid
+      // Network error: keep current auth state so pre-connected admin login is not lost
       if (authToken.startsWith('offline_')) {
         setIsAuthenticated(true)
         setIsOfflineMode(true)
-      } else {
-        // Backend unreachable, but don't clear token - might reconnect later
-        setIsAuthenticated(false)
       }
+      // For backend-issued tokens, leave isAuthenticated as-is (we started true if token existed)
     }
+  }
+
+  const markUnauthorized = () => {
+    setToken('')
+    setIsAuthenticated(false)
+    setIsOfflineMode(false)
+    localStorage.removeItem('admin_token')
+    console.log('[Auth] Marked unauthorized (e.g. API returned 401)')
   }
 
   const login = async (password: string): Promise<boolean> => {
@@ -134,7 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ token, isAuthenticated, isOfflineMode, login, logout }}>
+    <AuthContext.Provider value={{ token, isAuthenticated, isOfflineMode, login, logout, markUnauthorized }}>
       {children}
     </AuthContext.Provider>
   )

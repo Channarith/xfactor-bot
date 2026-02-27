@@ -104,8 +104,25 @@ const quickStart = [
 
 const changelog = [
   {
+    version: '2.5.0',
+    date: 'February 23, 2026',
+    changes: [
+      '🤖 Bot Manager: more robust Play & debug',
+      '',
+      '• Idempotent start: already running/starting returns success (no error)',
+      '• Buttons disabled with spinner while start/stop/pause/resume in progress',
+      '• Debug & Activity panel: last control results + recent activity log',
+      '• List: daily % and total % growth; detail: cycles, orders submitted/filled/rejected',
+      '',
+      '🔧 Backend: control lifecycle and API logging',
+      '',
+      '• Bot start/stop/pause/resume logged to activity log and server log',
+      '• Help window release date corrected to February 2026',
+    ]
+  },
+  {
     version: '2.4.0',
-    date: 'January 23, 2025',
+    date: 'February 23, 2026',
     changes: [
       '🤖 Bot Manager: P&L since inception',
       '',
@@ -122,7 +139,7 @@ const changelog = [
   },
   {
     version: '2.3.0',
-    date: 'January 23, 2025',
+    date: 'February 2026',
     changes: [
       '✨ Portfolio on Connect',
       '',
@@ -3340,7 +3357,7 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
         <div className="px-6 py-4 border-t border-slate-700 bg-slate-800/50">
           <div className="flex items-center justify-between">
             <p className="text-sm text-slate-400">
-              © 2025 XFactor Trading • AI-Powered Automated Trading System
+              © 2026 XFactor Trading • AI-Powered Automated Trading System
             </p>
             <div className="flex items-center gap-2">
               <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded">

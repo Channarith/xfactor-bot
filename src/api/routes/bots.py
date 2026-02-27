@@ -885,16 +885,27 @@ async def start_bot(
     bot_id: str,
     admin: AdminUser = Depends(get_admin_user),
 ):
-    """Start a bot (requires admin)."""
+    """Start a bot (requires admin). Idempotent: if already running/starting, returns success."""
     manager = get_bot_manager()
     bot = manager.get_bot(bot_id)
     
     if not bot:
+        logger.warning(f"start_bot: bot_id={bot_id} not found")
         raise HTTPException(status_code=404, detail="Bot not found")
     
-    if not bot.start():
-        raise HTTPException(status_code=400, detail="Failed to start bot")
+    status_before = bot.status.value
+    if bot.status.value in ("running", "starting"):
+        logger.info(f"start_bot: bot_id={bot_id} name={bot.config.name} already {status_before} -> 200 idempotent")
+        return {"success": True, "status": bot.status.value, "message": "Bot already running or starting"}
     
+    if not bot.start():
+        logger.error(f"start_bot: bot_id={bot_id} name={bot.config.name} start() returned False status={bot.status.value}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to start bot (status: {bot.status.value})",
+        )
+    
+    logger.info(f"start_bot: bot_id={bot_id} name={bot.config.name} status_before={status_before} -> started")
     return {"success": True, "status": bot.status.value}
 
 
@@ -908,11 +919,15 @@ async def stop_bot(
     bot = manager.get_bot(bot_id)
     
     if not bot:
+        logger.warning(f"stop_bot: bot_id={bot_id} not found")
         raise HTTPException(status_code=404, detail="Bot not found")
     
+    status_before = bot.status.value
     if not bot.stop():
+        logger.warning(f"stop_bot: bot_id={bot_id} name={bot.config.name} status={status_before} -> rejected (not running/paused)")
         raise HTTPException(status_code=400, detail="Failed to stop bot")
     
+    logger.info(f"stop_bot: bot_id={bot_id} name={bot.config.name} status_before={status_before} -> stopped")
     return {"success": True, "status": bot.status.value}
 
 
@@ -926,11 +941,15 @@ async def pause_bot(
     bot = manager.get_bot(bot_id)
     
     if not bot:
+        logger.warning(f"pause_bot: bot_id={bot_id} not found")
         raise HTTPException(status_code=404, detail="Bot not found")
     
+    status_before = bot.status.value
     if not bot.pause():
+        logger.warning(f"pause_bot: bot_id={bot_id} name={bot.config.name} status={status_before} -> rejected")
         raise HTTPException(status_code=400, detail="Failed to pause bot")
     
+    logger.info(f"pause_bot: bot_id={bot_id} name={bot.config.name} status_before={status_before} -> paused")
     return {"success": True, "status": bot.status.value}
 
 
@@ -944,11 +963,15 @@ async def resume_bot(
     bot = manager.get_bot(bot_id)
     
     if not bot:
+        logger.warning(f"resume_bot: bot_id={bot_id} not found")
         raise HTTPException(status_code=404, detail="Bot not found")
     
+    status_before = bot.status.value
     if not bot.resume():
+        logger.warning(f"resume_bot: bot_id={bot_id} name={bot.config.name} status={status_before} -> rejected")
         raise HTTPException(status_code=400, detail="Failed to resume bot")
     
+    logger.info(f"resume_bot: bot_id={bot_id} name={bot.config.name} status_before={status_before} -> resumed")
     return {"success": True, "status": bot.status.value}
 
 

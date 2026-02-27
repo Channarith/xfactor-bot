@@ -853,7 +853,13 @@ class BotInstance:
     
     def start(self) -> bool:
         """Start the bot in a new thread."""
+        status_before = self.status.value
         if self.status in (BotStatus.RUNNING, BotStatus.STARTING):
+            self._log_activity("control", "Start ignored: already running or starting", {
+                "action": "start",
+                "status_before": status_before,
+                "result": "ignored",
+            })
             logger.warning(f"Bot {self.id} is already running")
             return False
         
@@ -868,11 +874,23 @@ class BotInstance:
         )
         self._thread.start()
         
+        self._log_activity("control", "Start requested, thread started", {
+            "action": "start",
+            "status_before": status_before,
+            "status_after": self.status.value,
+            "result": "ok",
+        })
         return True
     
     def stop(self) -> bool:
         """Stop the bot."""
+        status_before = self.status.value
         if self.status not in (BotStatus.RUNNING, BotStatus.PAUSED):
+            self._log_activity("control", "Stop ignored: bot not running or paused", {
+                "action": "stop",
+                "status_before": status_before,
+                "result": "ignored",
+            })
             return False
         
         self.status = BotStatus.STOPPING
@@ -886,26 +904,56 @@ class BotInstance:
         self._stopped_at = datetime.utcnow()
         self._emit("on_stop")
         
+        self._log_activity("control", "Bot stopped", {
+            "action": "stop",
+            "status_before": status_before,
+            "status_after": self.status.value,
+            "result": "ok",
+        })
         logger.info(f"Bot {self.id} stopped")
         return True
     
     def pause(self) -> bool:
         """Pause the bot (keeps thread alive but stops trading)."""
+        status_before = self.status.value
         if self.status != BotStatus.RUNNING:
+            self._log_activity("control", "Pause ignored: bot not running", {
+                "action": "pause",
+                "status_before": status_before,
+                "result": "ignored",
+            })
             return False
         
         self._pause_event.set()
         self.status = BotStatus.PAUSED
+        self._log_activity("control", "Bot paused", {
+            "action": "pause",
+            "status_before": status_before,
+            "status_after": self.status.value,
+            "result": "ok",
+        })
         logger.info(f"Bot {self.id} paused")
         return True
     
     def resume(self) -> bool:
         """Resume the bot from paused state."""
+        status_before = self.status.value
         if self.status != BotStatus.PAUSED:
+            self._log_activity("control", "Resume ignored: bot not paused", {
+                "action": "resume",
+                "status_before": status_before,
+                "result": "ignored",
+            })
             return False
         
         self._pause_event.clear()
         self.status = BotStatus.RUNNING
+        self._log_activity("control", "Bot resumed", {
+            "action": "resume",
+            "status_before": status_before,
+            "status_after": self.status.value,
+            "result": "ok",
+        })
         logger.info(f"Bot {self.id} resumed")
         return True
     
@@ -944,6 +992,13 @@ class BotInstance:
         self.status = BotStatus.RUNNING
         self._started_at = datetime.utcnow()
         self._emit("on_start")
+        
+        self._log_activity("control", "Trading loop entered (RUNNING)", {
+            "action": "lifecycle",
+            "status_after": self.status.value,
+            "symbols": self.config.symbols[:5],
+            "strategies": self.config.strategies[:3],
+        })
         
         logger.info(f"Bot {self.id} ({self.config.name}) started trading")
         logger.info(f"  Symbols: {self.config.symbols}")
@@ -1215,6 +1270,13 @@ class BotInstance:
         mode = "PAPER" if self.config.use_paper_trading else "LIVE"
         self._log_activity("trading_mode", f"Trading mode: {mode} on {broker.name}")
         
+        # Fetch open/pending orders once so we don't queue duplicate orders when market is closed
+        try:
+            open_orders = await broker.get_open_orders(account_id)
+        except Exception as e:
+            open_orders = []
+            self._log_activity("open_orders_error", f"Could not get open orders from {broker.name}: {e}", {"error": str(e)})
+        
         symbols_analyzed = 0
         signals_generated = 0
         
@@ -1290,6 +1352,17 @@ class BotInstance:
                 
                 # Determine action based on signal
                 if signal_type in ('strong_buy', 'buy') and current_qty <= 0:
+                    # Do not queue duplicate buy orders when market is closed (one order per symbol)
+                    pending_buy_qty = sum(
+                        o.quantity for o in open_orders
+                        if getattr(o, 'symbol', '').upper() == symbol.upper()
+                        and getattr(o, 'side', None) == OrderSide.BUY
+                    )
+                    if pending_buy_qty > 0:
+                        self._log_activity("skip_duplicate_buy",
+                            f"Skip BUY {symbol}: already {pending_buy_qty} shares in pending buy order(s) (avoids multiple queued orders)",
+                            {"symbol": symbol, "pending_buy_qty": pending_buy_qty, "broker": broker.name})
+                        continue
                     # Check margin safety before buying
                     if not margin_safe_for_buys:
                         self._log_activity("margin_block", 
@@ -1501,21 +1574,34 @@ class BotInstance:
                             {"symbol": symbol, "cached": current_qty, "verified": verified_qty})
                         logger.info(f"[Bot {self.id}] Position qty updated: {symbol} {current_qty} → {verified_qty}")
                     
-                    # Step 4: Round sell quantity for brokers that don't support fractional shares
-                    sell_qty = abs(verified_qty)  # Use verified quantity
+                    # Step 4: Cap sell at position minus already-pending sell orders (queue must not exceed position)
+                    pending_sell_qty = sum(
+                        o.quantity for o in open_orders
+                        if getattr(o, 'symbol', '').upper() == symbol.upper()
+                        and getattr(o, 'side', None) == OrderSide.SELL
+                    )
+                    if pending_sell_qty >= verified_qty:
+                        self._log_activity("skip_duplicate_sell",
+                            f"Skip SELL {symbol}: position {verified_qty} already fully in pending sell order(s) ({pending_sell_qty})",
+                            {"symbol": symbol, "verified_qty": verified_qty, "pending_sell_qty": pending_sell_qty, "broker": broker.name})
+                        continue
+                    available_to_sell = verified_qty - pending_sell_qty
+                    
+                    # Step 5: Round sell quantity for brokers that don't support fractional shares
+                    sell_qty = abs(available_to_sell)  # Only sell amount not already in pending order(s)
                     if not getattr(broker, 'supports_fractional_shares', True):
                         sell_qty = int(sell_qty)  # Round down to whole shares
                         if sell_qty <= 0:
                             self._log_activity("skip_order", 
-                                f"SELL skipped for {symbol}: fractional position {verified_qty} rounds to 0 for {broker.name}",
-                                {"symbol": symbol, "verified_qty": verified_qty, "broker": broker.name})
+                                f"SELL skipped for {symbol}: fractional remaining {available_to_sell} rounds to 0 for {broker.name}",
+                                {"symbol": symbol, "available_to_sell": available_to_sell, "broker": broker.name})
                             continue
                     
-                    # Step 5: Final validation log
+                    # Step 6: Final validation log
                     self._log_activity("sell_validated", 
                         f"✅ SELL validated: {sell_qty} {symbol} on {broker.name} "
-                        f"(position verified: {verified_qty} shares)",
-                        {"symbol": symbol, "sell_qty": sell_qty, "verified_qty": verified_qty, 
+                        f"(position {verified_qty}, pending sell {pending_sell_qty}, selling {sell_qty})",
+                        {"symbol": symbol, "sell_qty": sell_qty, "verified_qty": verified_qty, "pending_sell_qty": pending_sell_qty,
                          "broker": broker.name, "avg_cost": fresh_position.avg_cost if fresh_position else 0})
                     
                     self._log_activity("order_intent", f"SELL {sell_qty} {symbol} @ market via {broker.name}", {

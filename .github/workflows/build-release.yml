@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v2.1.13)'
+        description: 'Version tag (e.g., v2.5.0)'
         required: true
-        default: 'v2.1.13'
+        default: 'v2.5.0'
 
 permissions:
   contents: write  # Required to create releases
@@ -48,9 +48,10 @@ jobs:
           pip install numpy==1.26.4 pandas==2.2.2 --only-binary :all:
           # Verify numpy version
           python -c "import numpy; print(f'NumPy version: {numpy.__version__}')"
-          # Install rest of requirements
+          # Install rest of requirements (includes alpaca-py>=0.39, ib_insync, etc.)
           pip install -r requirements.txt
           pip install pyinstaller
+          python -c "from alpaca.trading.client import TradingClient; print('alpaca-py OK')"
 
       - name: Build Python backend
         env:
@@ -137,6 +138,7 @@ jobs:
           python -c "import numpy; print(f'NumPy version: {numpy.__version__}')"
           pip install -r requirements.txt
           pip install pyinstaller
+          python -c "from alpaca.trading.client import TradingClient; print('alpaca-py OK')"
 
       - name: Check architecture
         run: |
@@ -230,6 +232,7 @@ jobs:
           python -c "import numpy; print(f'NumPy version: {numpy.__version__}')"
           pip install -r requirements.txt
           pip install pyinstaller
+          python -c "from alpaca.trading.client import TradingClient; print('alpaca-py OK')"
 
       - name: Check architecture
         run: |
@@ -322,6 +325,7 @@ jobs:
           pip install numpy==1.26.4 pandas==2.2.2
           pip install -r requirements.txt
           pip install pyinstaller
+          python -c "from alpaca.trading.client import TradingClient; print('alpaca-py OK')"
 
       - name: Build Python backend
         run: |
@@ -403,6 +407,7 @@ jobs:
           pip install numpy==1.26.4 pandas==2.2.2
           pip install -r requirements.txt
           pip install pyinstaller
+          python -c "from alpaca.trading.client import TradingClient; print('alpaca-py OK')"
 
       - name: Build Python backend
         run: |

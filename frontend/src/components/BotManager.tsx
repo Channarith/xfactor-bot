@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { BotPerformanceChart } from './BotPerformanceChart'
 import { getApiBaseUrl } from '../config/api'
+import { useAuth } from '../context/AuthContext'
 import { 
   type CachedBotData, 
   type BotTradeData,
@@ -58,6 +59,10 @@ interface BotDetails {
     open_positions: number
     errors_count: number
     uptime_seconds?: number
+    cycles_completed?: number
+    orders_submitted?: number
+    orders_filled?: number
+    orders_rejected?: number
   }
 }
 
@@ -65,7 +70,10 @@ interface BotManagerProps {
   token?: string
 }
 
-export function BotManager({ token = '' }: BotManagerProps) {
+export function BotManager({ token: tokenProp = '' }: BotManagerProps) {
+  const auth = useAuth()
+  const token = tokenProp || auth.token
+  const { markUnauthorized } = auth
   const [bots, setBots] = useState<BotSummary[]>([])
   const [selectedBot, setSelectedBot] = useState<BotDetails | null>(null)
   const [showBotDetail, setShowBotDetail] = useState(false)
@@ -75,8 +83,16 @@ export function BotManager({ token = '' }: BotManagerProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showAuthModal, setShowAuthModal] = useState(false)
+  /** Tracks which bot+action is in progress to prevent double-clicks and show loading */
+  const [controlPending, setControlPending] = useState<Record<string, string>>({})
+  /** Last control action result per bot for debug visibility */
+  const [lastControlResult, setLastControlResult] = useState<Record<string, { action: string; success: boolean; message?: string; at: string }>>({})
+  /** Global activity log (from /api/bots/activity) for debug panel */
+  const [activityLog, setActivityLog] = useState<{ entries: Array<{ timestamp: string; bot_id: string; bot_name?: string; event_type: string; message: string; data?: Record<string, unknown> }>; count: number }>({ entries: [], count: 0 })
+  const [showDebugPanel, setShowDebugPanel] = useState(false)
+  const [activityLogLoading, setActivityLogLoading] = useState(false)
   
-  // Cache state - tracks cached TRADE data (not bot definitions)
+  // Cache state
   // All 50 bots always come from backend, cache only stores trade/position data
   const [cachedTradeData, setCachedTradeData] = useState<Record<string, BotTradeData>>({})
   const [usingCachedData, setUsingCachedData] = useState(false)
@@ -379,6 +395,7 @@ export function BotManager({ token = '' }: BotManagerProps) {
       })
       
       if (response.status === 401) {
+        markUnauthorized()
         setShowAuthModal(true)
         setLoading(false)
         return
@@ -405,30 +422,51 @@ export function BotManager({ token = '' }: BotManagerProps) {
   }
 
   const controlBot = async (botId: string, action: string) => {
+    const key = `${botId}:${action}`
+    if (controlPending[key]) return
+    setControlPending((prev) => ({ ...prev, [key]: action }))
+    setError('')
     try {
-      const response = await fetch(`/api/bots/${botId}/${action}`, {
+      const baseUrl = getApiBaseUrl()
+      const url = baseUrl ? `${baseUrl}/api/bots/${botId}/${action}` : `/api/bots/${botId}/${action}`
+      const response = await fetch(url, {
         method: 'POST',
         headers: authHeaders,
       })
       
       if (response.status === 401) {
+        markUnauthorized()
         setShowAuthModal(true)
+        setControlPending((prev) => { const p = { ...prev }; delete p[key]; return p })
         return
       }
       
       if (!response.ok) {
-        const data = await response.json()
-        setError(data.detail || `Failed to ${action} bot`)
+        let detail = `Failed to ${action} bot`
+        try {
+          const data = await response.json()
+          detail = data.detail || detail
+        } catch {
+          detail = await response.text().catch(() => detail) || detail
+        }
+        setError(detail)
+        setLastControlResult((prev) => ({ ...prev, [botId]: { action, success: false, message: detail, at: new Date().toISOString() } }))
+        setControlPending((prev) => { const p = { ...prev }; delete p[key]; return p })
         return
       }
       
+      const data = await response.json().catch(() => ({}))
+      setLastControlResult((prev) => ({ ...prev, [botId]: { action, success: true, message: data.message || data.status || 'OK', at: new Date().toISOString() } }))
+      
       fetchBots()
-      // Refresh selected bot if it's the one being controlled
       if (selectedBot?.id === botId) {
         fetchBotDetails(botId)
       }
+      setControlPending((prev) => { const p = { ...prev }; delete p[key]; return p })
     } catch (e) {
-      setError(`Failed to ${action} bot`)
+      setError(`Failed to ${action} bot: ${e instanceof Error ? e.message : 'Network error'}`)
+      setLastControlResult((prev) => ({ ...prev, [botId]: { action, success: false, message: e instanceof Error ? e.message : 'Network error', at: new Date().toISOString() } }))
+      setControlPending((prev) => { const p = { ...prev }; delete p[key]; return p })
     }
   }
 
@@ -439,6 +477,7 @@ export function BotManager({ token = '' }: BotManagerProps) {
       })
       
       if (response.status === 401) {
+        markUnauthorized()
         setShowAuthModal(true)
         return
       }
@@ -465,6 +504,7 @@ export function BotManager({ token = '' }: BotManagerProps) {
       })
       
       if (response.status === 401) {
+        markUnauthorized()
         setShowAuthModal(true)
         return
       }
@@ -483,6 +523,7 @@ export function BotManager({ token = '' }: BotManagerProps) {
       })
       
       if (response.status === 401) {
+        markUnauthorized()
         setShowAuthModal(true)
         return
       }
@@ -508,6 +549,27 @@ export function BotManager({ token = '' }: BotManagerProps) {
     const minutes = Math.floor((seconds % 3600) / 60)
     return `${hours}h ${minutes}m`
   }
+
+  const fetchActivityLog = useCallback(async () => {
+    setActivityLogLoading(true)
+    try {
+      const baseUrl = getApiBaseUrl()
+      const url = baseUrl ? `${baseUrl}/api/bots/activity?limit=80` : '/api/bots/activity?limit=80'
+      const res = await fetch(url, { headers: authHeaders })
+      if (res.ok) {
+        const data = await res.json()
+        setActivityLog({ entries: data.entries || [], count: data.count || 0 })
+      }
+    } catch {
+      setActivityLog({ entries: [], count: 0 })
+    } finally {
+      setActivityLogLoading(false)
+    }
+  }, [authHeaders])
+
+  useEffect(() => {
+    if (showDebugPanel) fetchActivityLog()
+  }, [showDebugPanel, fetchActivityLog])
 
   return (
     <div>
@@ -677,6 +739,67 @@ export function BotManager({ token = '' }: BotManagerProps) {
         </div>
       )}
       
+      {/* Debug & Activity panel */}
+      <div className="mb-3 border border-border/50 rounded-lg overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowDebugPanel((v) => !v)}
+          className="w-full flex items-center justify-between px-3 py-2 bg-secondary/30 hover:bg-secondary/50 text-left text-sm"
+        >
+          <span className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-muted-foreground" />
+            Debug & Activity
+            {Object.keys(lastControlResult).length > 0 && (
+              <span className="text-xs text-muted-foreground">
+                ({Object.keys(lastControlResult).length} control result(s))
+              </span>
+            )}
+          </span>
+          {showDebugPanel ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+        {showDebugPanel && (
+          <div className="p-3 bg-background/50 space-y-4 text-xs">
+            {/* Last control results */}
+            {Object.keys(lastControlResult).length > 0 && (
+              <div>
+                <div className="font-medium text-muted-foreground mb-2">Last control results</div>
+                <div className="space-y-1 max-h-32 overflow-y-auto">
+                  {Object.entries(lastControlResult).map(([bid, r]) => (
+                    <div key={bid} className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono">{bid}</span>
+                      <span className="px-1.5 py-0.5 rounded bg-secondary">{r.action}</span>
+                      <span className={r.success ? 'text-profit' : 'text-loss'}>{r.success ? 'OK' : 'Failed'}</span>
+                      {r.message && <span className="text-muted-foreground truncate max-w-[200px]" title={r.message}>{r.message}</span>}
+                      <span className="text-muted-foreground">{r.at ? new Date(r.at).toLocaleTimeString() : ''}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Activity log */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-medium text-muted-foreground">Recent activity (all bots)</span>
+                <button type="button" onClick={fetchActivityLog} disabled={activityLogLoading} className="text-xfactor-teal hover:underline disabled:opacity-50">
+                  {activityLogLoading ? 'Loading…' : 'Refresh'}
+                </button>
+              </div>
+              <div className="max-h-48 overflow-y-auto font-mono space-y-1 text-[10px] bg-background rounded p-2 border border-border/50">
+                {activityLog.entries.length === 0 && !activityLogLoading && <div className="text-muted-foreground">No activity yet. Start a bot to see control and lifecycle events.</div>}
+                {activityLog.entries.slice(0, 60).map((entry, i) => (
+                  <div key={i} className="flex gap-2 flex-wrap">
+                    <span className="text-muted-foreground shrink-0">{entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : '--'}</span>
+                    <span className="text-xfactor-teal">{entry.bot_id}</span>
+                    <span className="px-1 rounded bg-secondary/70">{entry.event_type}</span>
+                    <span className="truncate">{entry.message}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      
       {/* Bot List */}
       <div className="space-y-2 max-h-96 overflow-y-auto">
         {filteredBots.map((bot, index) => (
@@ -712,7 +835,10 @@ export function BotManager({ token = '' }: BotManagerProps) {
                     {(bot.total_pnl ?? 0) >= 0 ? '+' : ''}${(bot.total_pnl ?? 0).toFixed(2)}
                   </div>
                   <div className={`text-[10px] ${((bot.total_pnl_pct ?? 0) >= 0) ? 'text-profit' : 'text-loss'}`}>
-                    {(bot.total_pnl_pct ?? 0) >= 0 ? '+' : ''}{(bot.total_pnl_pct ?? 0).toFixed(2)}%
+                    {(bot.total_pnl_pct ?? 0) >= 0 ? '+' : ''}{(bot.total_pnl_pct ?? 0).toFixed(2)}% total
+                  </div>
+                  <div className={`text-[10px] ${((bot.daily_pnl_pct ?? 0) >= 0) ? 'text-profit' : 'text-loss'}`} title="Daily P&L %">
+                    {(bot.daily_pnl_pct ?? 0) >= 0 ? '+' : ''}{(bot.daily_pnl_pct ?? 0).toFixed(2)}% daily
                   </div>
                 </div>
                 
@@ -721,43 +847,52 @@ export function BotManager({ token = '' }: BotManagerProps) {
                   <>
                     <button
                       onClick={() => controlBot(bot.id, 'pause')}
-                      className="p-1 rounded hover:bg-secondary"
-                      title="Pause"
+                      disabled={!!controlPending[`${bot.id}:pause`]}
+                      className="p-1 rounded hover:bg-secondary disabled:opacity-50 disabled:pointer-events-none"
+                      title={controlPending[`${bot.id}:pause`] ? 'Pausing…' : 'Pause'}
                     >
-                      <Pause className="h-3.5 w-3.5" />
+                      {controlPending[`${bot.id}:pause`] ? <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" /> : <Pause className="h-3.5 w-3.5" />}
                     </button>
                     <button
                       onClick={() => controlBot(bot.id, 'stop')}
-                      className="p-1 rounded hover:bg-secondary"
-                      title="Stop"
+                      disabled={!!controlPending[`${bot.id}:stop`]}
+                      className="p-1 rounded hover:bg-secondary disabled:opacity-50 disabled:pointer-events-none"
+                      title={controlPending[`${bot.id}:stop`] ? 'Stopping…' : 'Stop'}
                     >
-                      <Square className="h-3.5 w-3.5" />
+                      {controlPending[`${bot.id}:stop`] ? <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" /> : <Square className="h-3.5 w-3.5" />}
                     </button>
                   </>
                 ) : bot.status === 'paused' ? (
                   <>
                     <button
                       onClick={() => controlBot(bot.id, 'resume')}
-                      className="p-1 rounded hover:bg-secondary"
-                      title="Resume"
+                      disabled={!!controlPending[`${bot.id}:resume`]}
+                      className="p-1 rounded hover:bg-secondary disabled:opacity-50 disabled:pointer-events-none"
+                      title={controlPending[`${bot.id}:resume`] ? 'Resuming…' : 'Resume'}
                     >
-                      <Play className="h-3.5 w-3.5" />
+                      {controlPending[`${bot.id}:resume`] ? <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" /> : <Play className="h-3.5 w-3.5" />}
                     </button>
                     <button
                       onClick={() => controlBot(bot.id, 'stop')}
-                      className="p-1 rounded hover:bg-secondary"
-                      title="Stop"
+                      disabled={!!controlPending[`${bot.id}:stop`]}
+                      className="p-1 rounded hover:bg-secondary disabled:opacity-50 disabled:pointer-events-none"
+                      title={controlPending[`${bot.id}:stop`] ? 'Stopping…' : 'Stop'}
                     >
-                      <Square className="h-3.5 w-3.5" />
+                      {controlPending[`${bot.id}:stop`] ? <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" /> : <Square className="h-3.5 w-3.5" />}
                     </button>
                   </>
                 ) : (
                   <button
                     onClick={() => controlBot(bot.id, 'start')}
-                    className="p-1 rounded hover:bg-secondary text-profit"
-                    title="Start"
+                    disabled={!!controlPending[`${bot.id}:start`]}
+                    className="p-1 rounded hover:bg-secondary text-profit disabled:opacity-50 disabled:pointer-events-none"
+                    title={controlPending[`${bot.id}:start`] ? 'Starting…' : 'Start'}
                   >
-                    <Play className="h-3.5 w-3.5" />
+                    {controlPending[`${bot.id}:start`] ? (
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                    ) : (
+                      <Play className="h-3.5 w-3.5" />
+                    )}
                   </button>
                 )}
                 
@@ -1429,6 +1564,27 @@ export function BotManager({ token = '' }: BotManagerProps) {
                   <div className="text-xs text-muted-foreground">Errors</div>
                 </div>
               </div>
+              
+              {/* Debug / throughput stats: cycles, orders */}
+              {(selectedBot.stats.cycles_completed != null || selectedBot.stats.orders_submitted != null) && (
+                <div className="bg-secondary/30 rounded-lg p-3">
+                  <div className="text-xs text-muted-foreground mb-2">Throughput (debug)</div>
+                  <div className="flex flex-wrap gap-4 text-sm">
+                    {selectedBot.stats.cycles_completed != null && (
+                      <span>Cycles: <strong>{selectedBot.stats.cycles_completed}</strong></span>
+                    )}
+                    {selectedBot.stats.orders_submitted != null && (
+                      <span>Submitted: <strong>{selectedBot.stats.orders_submitted}</strong></span>
+                    )}
+                    {selectedBot.stats.orders_filled != null && (
+                      <span>Filled: <strong className="text-profit">{selectedBot.stats.orders_filled}</strong></span>
+                    )}
+                    {selectedBot.stats.orders_rejected != null && selectedBot.stats.orders_rejected > 0 && (
+                      <span>Rejected: <strong className="text-loss">{selectedBot.stats.orders_rejected}</strong></span>
+                    )}
+                  </div>
+                </div>
+              )}
               
               {/* Configuration */}
               <div className="space-y-3">
